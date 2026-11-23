@@ -1,11 +1,15 @@
 //! SynthCraft L3 Native Desktop Studio (`eframe` / `egui` 0.37).
 
+use crate::controls::{
+    illuminated_step_pad, lcd_display_banner, rotary_knob, vertical_fader, SynthLayout, SynthSkin,
+};
 use crate::subapps;
 use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 use std::path::PathBuf;
 use synthcraft_core::{
     analyze_patch_spectrum, default_db_path, export_clap_descriptor, export_djcraft_stem_manifest,
-    midi_to_freq_hz, write_wav_file, FilterMode, SynthEngine, WaveformKind, APP_VERSION,
+    midi_to_freq_hz, write_wav_file, FilterMode, KorgM1Program, SynthEngine, WaveformKind,
+    APP_VERSION,
 };
 
 const ATTRIBUTION_MD: &str = include_str!("../../../ATTRIBUTION.md");
@@ -56,6 +60,8 @@ pub struct SynthCraftApp {
     pub subpage: usize,
     pub locale: AppLocale,
     pub dark_mode: bool,
+    pub skin: SynthSkin,
+    pub layout_mode: SynthLayout,
     pub zoom_factor: f32,
     pub status_line: String,
     // Workbench 3: Scope & Spectrum
@@ -90,6 +96,8 @@ impl SynthCraftApp {
             subpage: 0,
             locale: AppLocale::En,
             dark_mode: true,
+            skin: SynthSkin::ObsidianVcv,
+            layout_mode: SynthLayout::WorkbenchSplit,
             zoom_factor: 1.0,
             status_line: format!(
                 "SynthCraft v{APP_VERSION} ready -- CLAP 1.2.2 (dev.sandraschi.synthcraft) & DJCraft Stem Forge"
@@ -124,7 +132,13 @@ impl SynthCraftApp {
         let _ = self.engine.save_db(&self.db_path);
     }
 
+    pub fn set_skin(&mut self, skin: SynthSkin) {
+        self.skin = skin;
+        self.dark_mode = skin.palette().is_dark;
+    }
+
     fn apply_theme(&self, ctx: &egui::Context) {
+        let pal = self.skin.palette();
         let theme = if self.dark_mode {
             egui::Theme::Dark
         } else {
@@ -132,13 +146,9 @@ impl SynthCraftApp {
         };
         ctx.set_theme(theme);
         let mut style = (*ctx.style_of(theme)).clone();
-        if self.dark_mode {
-            style.visuals.override_text_color = Some(Color32::from_rgb(241, 245, 249));
-            style.visuals.panel_fill = Color32::from_rgb(15, 23, 42);
-        } else {
-            style.visuals.override_text_color = Some(Color32::from_rgb(15, 23, 42));
-            style.visuals.panel_fill = Color32::from_rgb(248, 250, 252);
-        }
+        style.visuals.override_text_color = Some(pal.text_primary);
+        style.visuals.panel_fill = pal.panel_bg;
+        style.visuals.window_fill = pal.module_bg;
         ctx.set_style_of(theme, style);
     }
 
@@ -192,12 +202,37 @@ impl SynthCraftApp {
             });
             ui.menu_button("View", |ui| {
                 if ui.button("Dark").clicked() {
-                    self.dark_mode = true;
+                    self.set_skin(SynthSkin::ObsidianVcv);
                     ui.close();
                 }
                 if ui.button("Light").clicked() {
-                    self.dark_mode = false;
+                    self.set_skin(SynthSkin::DaylightStudio);
                     ui.close();
+                }
+                ui.separator();
+                ui.strong("Hardware Skin Theme:");
+                for sk in SynthSkin::all() {
+                    if ui
+                        .selectable_label(
+                            self.skin == *sk,
+                            format!("{} -- {}", sk.label(), sk.description()),
+                        )
+                        .clicked()
+                    {
+                        self.set_skin(*sk);
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                ui.strong("Studio Layout Mode:");
+                for lay in SynthLayout::all() {
+                    if ui
+                        .selectable_label(self.layout_mode == *lay, lay.label())
+                        .clicked()
+                    {
+                        self.layout_mode = *lay;
+                        ui.close();
+                    }
                 }
                 ui.separator();
                 if ui.button("English").clicked() {
@@ -301,7 +336,11 @@ impl SynthCraftApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let theme_lbl = if self.dark_mode { "Light" } else { "Dark" };
                 if ui.button(theme_lbl).clicked() {
-                    self.dark_mode = !self.dark_mode;
+                    if self.dark_mode {
+                        self.set_skin(SynthSkin::DaylightStudio);
+                    } else {
+                        self.set_skin(SynthSkin::ObsidianVcv);
+                    }
                 }
                 let loc_lbl = self.locale.label();
                 if ui.button(loc_lbl).clicked() {
@@ -310,12 +349,31 @@ impl SynthCraftApp {
                         AppLocale::De => AppLocale::En,
                     };
                 }
-                let ap = self.engine.active_patch();
-                ui.label(format!(
-                    "Patch: {} | {:.0} BPM | Key: {} | {} Hz",
-                    ap.name, ap.bpm, ap.camelot_key, self.engine.sample_rate_hz
-                ));
             });
+        });
+
+        ui.separator();
+        ui.horizontal_wrapped(|ui| {
+            ui.strong("Layout:");
+            for lay in SynthLayout::all() {
+                if ui
+                    .selectable_label(self.layout_mode == *lay, lay.label())
+                    .clicked()
+                {
+                    self.layout_mode = *lay;
+                }
+            }
+            ui.separator();
+            ui.strong("Skin:");
+            for sk in SynthSkin::all() {
+                if ui
+                    .selectable_label(self.skin == *sk, sk.label())
+                    .on_hover_text(sk.description())
+                    .clicked()
+                {
+                    self.set_skin(*sk);
+                }
+            }
         });
         let _ = ctx;
     }
@@ -344,18 +402,113 @@ impl SynthCraftApp {
         }
     }
 
+    pub fn render_lcd_header(&mut self, ui: &mut egui::Ui) {
+        let pal = self.skin.palette();
+        let ap = self.engine.active_patch();
+        let rep = analyze_patch_spectrum(ap, self.engine.sample_rate_hz, 80);
+        let m1_tag = ap.m1_program.map(KorgM1Program::as_str).unwrap_or("OFF");
+        let headline = format!(
+            "PROG: {} ({:.0} BPM | KEY {})",
+            ap.name, ap.bpm, ap.camelot_key
+        );
+        let subline = format!(
+            "VCO: {}+{} | M1 ROM: {} | X-DSP: {} | VCF: {:.0} Hz (Q {:.1})",
+            ap.vco1_wave.as_str(),
+            ap.vco2_wave.as_str(),
+            m1_tag,
+            ap.extreme_dsp.as_str(),
+            ap.cutoff_hz,
+            ap.resonance_q
+        );
+        lcd_display_banner(
+            ui,
+            &pal,
+            self.skin.label(),
+            &headline,
+            &subline,
+            rep.rms_dbfs,
+            rep.peak_dbfs,
+        );
+    }
+
     pub fn render_page(&mut self, ui: &mut egui::Ui) {
-        match self.page {
-            Page::ModularRack => self.render_modular_rack(ui),
-            Page::M1ExtremeDsp => crate::rack_ui::render_m1_and_extreme_dsp(self, ui),
-            Page::MidiDepot => crate::rack_ui::render_midi_and_depot(self, ui),
-            Page::DemoShowcase => crate::rack_ui::render_demo_showcase(self, ui),
-            Page::SequencerEnv => self.render_sequencer_env(ui),
-            Page::ScopeSpectrum => self.render_scope_spectrum(ui),
-            Page::ClapSoundcraft => self.render_clap_soundcraft(ui),
-            Page::DjcraftForge => self.render_djcraft_forge(ui),
-            Page::Chat => self.render_chat(ui),
-            Page::Help => self.render_help_view(ui),
+        egui::ScrollArea::vertical()
+            .id_salt("synthcraft_main_scroll")
+            .show(ui, |ui| {
+                self.render_lcd_header(ui);
+                ui.add_space(6.0);
+
+                // Special pages (Help & Chat) always render directly when opened via menu/F1
+                if matches!(self.page, Page::Help | Page::Chat) {
+                    match self.page {
+                        Page::Chat => self.render_chat(ui),
+                        Page::Help => self.render_help_view(ui),
+                        _ => {}
+                    }
+                    return;
+                }
+
+                match self.layout_mode {
+                    SynthLayout::WorkbenchSplit => match self.page {
+                        Page::ModularRack => self.render_modular_rack(ui),
+                        Page::M1ExtremeDsp => crate::rack_ui::render_m1_and_extreme_dsp(self, ui),
+                        Page::MidiDepot => crate::rack_ui::render_midi_and_depot(self, ui),
+                        Page::DemoShowcase => crate::rack_ui::render_demo_showcase(self, ui),
+                        Page::SequencerEnv => self.render_sequencer_env(ui),
+                        Page::ScopeSpectrum => self.render_scope_spectrum(ui),
+                        Page::ClapSoundcraft => self.render_clap_soundcraft(ui),
+                        Page::DjcraftForge => self.render_djcraft_forge(ui),
+                        Page::Chat => self.render_chat(ui),
+                        Page::Help => self.render_help_view(ui),
+                    },
+                    SynthLayout::EurorackBay => {
+                        crate::rack_ui::render_vcv_eurorack_canvas(self, ui);
+                        ui.add_space(6.0);
+                        self.render_rotary_console_strip(ui);
+                        ui.add_space(6.0);
+                        crate::rack_ui::render_piano_keyboard_strip(self, ui);
+                    }
+                    SynthLayout::Workstation1990 => {
+                        crate::rack_ui::render_m1_and_extreme_dsp(self, ui);
+                        ui.add_space(6.0);
+                        self.render_sequencer_env(ui);
+                        ui.add_space(6.0);
+                        crate::rack_ui::render_piano_keyboard_strip(self, ui);
+                    }
+                    SynthLayout::LiveCockpit => {
+                        self.render_rotary_console_strip(ui);
+                        ui.add_space(6.0);
+                        self.render_scope_spectrum(ui);
+                        ui.add_space(6.0);
+                        crate::rack_ui::render_piano_keyboard_strip(self, ui);
+                    }
+                }
+            });
+    }
+
+    fn render_rotary_console_strip(&mut self, ui: &mut egui::Ui) {
+        let pal = self.skin.palette();
+        let mut changed = false;
+        {
+            let p = self.engine.active_patch_mut();
+            ui.group(|ui| {
+                ui.strong("Hardware Rotary Potentiometer & Fader Performance Console (Drag or Shift+Drag; Double-Click Reset)");
+                ui.horizontal_wrapped(|ui| {
+                    changed |= rotary_knob(ui, &pal, "DETUNE", &mut p.vco2_detune_cents, -50.0, 50.0, "ct");
+                    changed |= rotary_knob(ui, &pal, "VCO MIX", &mut p.vco_mix, 0.0, 1.0, "%");
+                    changed |= rotary_knob(ui, &pal, "FM INDEX", &mut p.fm_index, 0.0, 4.0, "idx");
+                    changed |= rotary_knob(ui, &pal, "PWM DUTY", &mut p.pulse_width, 0.05, 0.95, "%");
+                    changed |= rotary_knob(ui, &pal, "CUTOFF", &mut p.cutoff_hz, 40.0, 12000.0, "Hz");
+                    changed |= rotary_knob(ui, &pal, "RESON Q", &mut p.resonance_q, 0.5, 12.0, "Q");
+                    changed |= rotary_knob(ui, &pal, "ENV MOD", &mut p.env_mod_depth, 0.0, 1.0, "%");
+                    changed |= rotary_knob(ui, &pal, "DRIVE", &mut p.drive_saturation, 0.0, 3.0, "x");
+                    changed |= rotary_knob(ui, &pal, "M1 ROM", &mut p.m1_layer_mix, 0.0, 1.0, "%");
+                    changed |= rotary_knob(ui, &pal, "X-MORPH", &mut p.extreme_morph, 0.0, 1.0, "%");
+                });
+            });
+        }
+        if changed {
+            self.persist();
         }
     }
 
@@ -419,12 +572,13 @@ impl SynthCraftApp {
             ui.add_space(6.0);
         }
 
+        let pal = self.skin.palette();
         let mut changed = false;
         {
             let p = self.engine.active_patch_mut();
             ui.columns(2, |cols| {
                 cols[0].group(|ui| {
-                    ui.strong("Dual Oscillators (VCO 1 & VCO 2) + FM");
+                    ui.strong("Dual Oscillators (VCO 1 & VCO 2) + FM Rotary Console");
                     ui.horizontal_wrapped(|ui| {
                         ui.label("VCO 1:");
                         for w in [
@@ -461,28 +615,27 @@ impl SynthCraftApp {
                             }
                         }
                     });
-                    changed |= ui
-                        .add(
-                            egui::Slider::new(&mut p.vco2_detune_cents, -50.0..=50.0)
-                                .text("VCO 2 Detune (cents)"),
-                        )
-                        .changed();
-                    changed |= ui
-                        .add(egui::Slider::new(&mut p.vco_mix, 0.0..=1.0).text("VCO 1/2 Mix"))
-                        .changed();
-                    changed |= ui
-                        .add(egui::Slider::new(&mut p.fm_index, 0.0..=4.0).text("FM Index"))
-                        .changed();
-                    changed |= ui
-                        .add(
-                            egui::Slider::new(&mut p.pulse_width, 0.05..=0.95)
-                                .text("PWM Duty Cycle"),
-                        )
-                        .changed();
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        changed |= rotary_knob(
+                            ui,
+                            &pal,
+                            "VCO2 DETUNE",
+                            &mut p.vco2_detune_cents,
+                            -50.0,
+                            50.0,
+                            "ct",
+                        );
+                        changed |= rotary_knob(ui, &pal, "VCO MIX", &mut p.vco_mix, 0.0, 1.0, "%");
+                        changed |=
+                            rotary_knob(ui, &pal, "FM INDEX", &mut p.fm_index, 0.0, 4.0, "idx");
+                        changed |=
+                            rotary_knob(ui, &pal, "PWM DUTY", &mut p.pulse_width, 0.05, 0.95, "%");
+                    });
                 });
 
                 cols[1].group(|ui| {
-                    ui.strong("4-Pole Resonant Ladder VCF & Saturation");
+                    ui.strong("4-Pole Resonant Ladder VCF & Saturation Rotary Console");
                     ui.horizontal_wrapped(|ui| {
                         for fm in [
                             FilterMode::LowPass24dB,
@@ -499,30 +652,17 @@ impl SynthCraftApp {
                             }
                         }
                     });
-                    changed |= ui
-                        .add(
-                            egui::Slider::new(&mut p.cutoff_hz, 40.0..=12000.0)
-                                .logarithmic(true)
-                                .text("Cutoff Frequency (Hz)"),
-                        )
-                        .changed();
-                    changed |= ui
-                        .add(
-                            egui::Slider::new(&mut p.resonance_q, 0.5..=12.0).text("Resonance (Q)"),
-                        )
-                        .changed();
-                    changed |= ui
-                        .add(
-                            egui::Slider::new(&mut p.env_mod_depth, 0.0..=1.0)
-                                .text("Envelope Mod Depth"),
-                        )
-                        .changed();
-                    changed |= ui
-                        .add(
-                            egui::Slider::new(&mut p.drive_saturation, 0.0..=3.0)
-                                .text("Diode Drive Saturation"),
-                        )
-                        .changed();
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        changed |=
+                            rotary_knob(ui, &pal, "CUTOFF", &mut p.cutoff_hz, 40.0, 12000.0, "Hz");
+                        changed |=
+                            rotary_knob(ui, &pal, "RESON Q", &mut p.resonance_q, 0.5, 12.0, "Q");
+                        changed |=
+                            rotary_knob(ui, &pal, "ENV MOD", &mut p.env_mod_depth, 0.0, 1.0, "%");
+                        changed |=
+                            rotary_knob(ui, &pal, "DRIVE", &mut p.drive_saturation, 0.0, 3.0, "x");
+                    });
                 });
             });
         }
@@ -532,76 +672,88 @@ impl SynthCraftApp {
     }
 
     fn render_sequencer_env(&mut self, ui: &mut egui::Ui) {
-        ui.heading("2. 16-Step TB-303 Acid Sequencer, ADSR & Tempo LFO");
+        let pal = self.skin.palette();
+        ui.heading("2. 16-Step TB-303 Acid Sequencer, ADSR Fader Bank & Tempo LFO");
         ui.separator();
 
+        let note_names = [
+            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+        ];
         let mut changed = false;
         {
             let p = self.engine.active_patch_mut();
-            if self.subpage == 1 {
-                ui.group(|ui| {
-                    ui.strong("ADSR Contour Generator & Sinusoidal Filter LFO");
-                    changed |= ui
-                        .add(egui::Slider::new(&mut p.attack_ms, 1.0..=1000.0).text("Attack (ms)"))
-                        .changed();
-                    changed |= ui
-                        .add(egui::Slider::new(&mut p.decay_ms, 10.0..=2000.0).text("Decay (ms)"))
-                        .changed();
-                    changed |= ui
-                        .add(
-                            egui::Slider::new(&mut p.sustain_level, 0.0..=1.0)
-                                .text("Sustain Level"),
-                        )
-                        .changed();
-                    changed |= ui
-                        .add(
-                            egui::Slider::new(&mut p.release_ms, 10.0..=2000.0)
-                                .text("Release (ms)"),
-                        )
-                        .changed();
-                    changed |= ui
-                        .add(
-                            egui::Slider::new(&mut p.lfo_rate_hz, 0.1..=20.0).text("LFO Rate (Hz)"),
-                        )
-                        .changed();
-                    changed |= ui
-                        .add(egui::Slider::new(&mut p.lfo_depth, 0.0..=1.0).text("LFO Depth"))
-                        .changed();
+            ui.group(|ui| {
+                ui.strong("Studio ADSR Envelope Fader Bank & Sinusoidal Filter LFO Rotaries");
+                ui.horizontal_wrapped(|ui| {
+                    changed |=
+                        vertical_fader(ui, &pal, "ATTACK", &mut p.attack_ms, 1.0, 1000.0, "ms");
+                    changed |=
+                        vertical_fader(ui, &pal, "DECAY", &mut p.decay_ms, 10.0, 2000.0, "ms");
+                    changed |=
+                        vertical_fader(ui, &pal, "SUSTAIN", &mut p.sustain_level, 0.0, 1.0, "%");
+                    changed |=
+                        vertical_fader(ui, &pal, "RELEASE", &mut p.release_ms, 10.0, 2000.0, "ms");
+                    ui.separator();
+                    changed |=
+                        rotary_knob(ui, &pal, "LFO RATE", &mut p.lfo_rate_hz, 0.1, 20.0, "Hz");
+                    changed |= rotary_knob(ui, &pal, "LFO DEPTH", &mut p.lfo_depth, 0.0, 1.0, "%");
+                    changed |= rotary_knob(ui, &pal, "TEMPO", &mut p.bpm, 70.0, 190.0, "BPM");
+                    changed |= rotary_knob(ui, &pal, "MASTER", &mut p.master_gain, 0.05, 1.0, "%");
                 });
-                ui.add_space(6.0);
-            }
+            });
+            ui.add_space(6.0);
 
             ui.group(|ui| {
                 ui.strong(format!(
-                    "16-Step Pattern ({:.0} BPM | Camelot Key {})",
+                    "16-Step Illuminated Hardware Step Pads ({:.0} BPM | Camelot Key {}) -- Click Pad = Gate, ACC = Accent, SLD = 303 Slide",
                     p.bpm, p.camelot_key
                 ));
-                egui::Grid::new("acid_seq_grid")
-                    .striped(true)
-                    .show(ui, |ui| {
-                        ui.strong("Step");
-                        ui.strong("Active");
-                        ui.strong("MIDI Note");
-                        ui.strong("Freq (Hz)");
-                        ui.strong("Accent");
-                        ui.strong("303 Slide");
-                        ui.end_row();
+                ui.horizontal_wrapped(|ui| {
+                    for s in &mut p.steps {
+                        let semitone = (s.midi_note % 12) as usize;
+                        let octave = (s.midi_note / 12) - 1;
+                        let n_lbl = format!("{}{}", note_names[semitone], octave);
+                        changed |= illuminated_step_pad(
+                            ui,
+                            &pal,
+                            s.step_index + 1,
+                            &n_lbl,
+                            &mut s.active,
+                            &mut s.accent,
+                            &mut s.slide,
+                        );
+                    }
+                });
 
-                        for s in &mut p.steps {
-                            ui.monospace(format!("#{:02}", s.step_index + 1));
-                            changed |= ui.checkbox(&mut s.active, "On").changed();
-                            changed |= ui
-                                .add(
-                                    egui::Slider::new(&mut s.midi_note, 36..=84)
-                                        .text(format!("S{}", s.step_index + 1)),
-                                )
-                                .changed();
-                            ui.monospace(format!("{:.1} Hz", midi_to_freq_hz(s.midi_note)));
-                            changed |= ui.checkbox(&mut s.accent, "Acc").changed();
-                            changed |= ui.checkbox(&mut s.slide, "Slide").changed();
-                            ui.end_row();
-                        }
-                    });
+                if self.subpage == 0 {
+                    ui.add_space(6.0);
+                    egui::CollapsingHeader::new("Fine MIDI Note & Frequency Step Matrix")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            egui::Grid::new("acid_seq_grid")
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.strong("Step");
+                                    ui.strong("MIDI Note");
+                                    ui.strong("Freq (Hz)");
+                                    ui.end_row();
+                                    for s in &mut p.steps {
+                                        ui.monospace(format!("#{:02}", s.step_index + 1));
+                                        changed |= ui
+                                            .add(
+                                                egui::Slider::new(&mut s.midi_note, 36..=84)
+                                                    .text(format!("S{}", s.step_index + 1)),
+                                            )
+                                            .changed();
+                                        ui.monospace(format!(
+                                            "{:.1} Hz",
+                                            midi_to_freq_hz(s.midi_note)
+                                        ));
+                                        ui.end_row();
+                                    }
+                                });
+                        });
+                }
             });
         }
         if changed {
@@ -941,14 +1093,23 @@ impl eframe::App for SynthCraftApp {
         });
         egui::Panel::bottom("synthcraft_status_bar").show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(&self.status_line);
+                ui.label(format!(
+                    "[{}] [{}] {}",
+                    self.layout_mode.label(),
+                    self.skin.label(),
+                    self.status_line
+                ));
             });
         });
-        egui::Panel::left("synthcraft_sidebar")
-            .default_size(225.0)
-            .show(ui, |ui| {
-                self.render_sidebar(ui);
-            });
+        if self.layout_mode == SynthLayout::WorkbenchSplit
+            || matches!(self.page, Page::Help | Page::Chat)
+        {
+            egui::Panel::left("synthcraft_sidebar")
+                .default_size(225.0)
+                .show(ui, |ui| {
+                    self.render_sidebar(ui);
+                });
+        }
         egui::CentralPanel::default().show(ui, |ui| {
             self.render_page(ui);
         });
@@ -1014,6 +1175,26 @@ mod tests {
                 app.render_page(ui);
             });
             harness.run();
+        }
+        let _ = std::fs::remove_file(&app.db_path);
+    }
+
+    #[test]
+    fn headless_egui_kittest_renders_all_five_skins_and_four_layouts() {
+        let mut app = temp_app();
+        app.goto(Page::ModularRack, 0);
+        for skin in SynthSkin::all() {
+            app.set_skin(*skin);
+            for layout in SynthLayout::all() {
+                app.layout_mode = *layout;
+                let mut harness = Harness::new_ui(|ui| {
+                    let ctx = ui.ctx().clone();
+                    app.apply_theme(&ctx);
+                    app.render_menu_bar(&ctx, ui);
+                    app.render_page(ui);
+                });
+                harness.run();
+            }
         }
         let _ = std::fs::remove_file(&app.db_path);
     }

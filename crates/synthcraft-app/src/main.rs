@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod controls;
 mod help_docs;
 mod rack_ui;
 mod subapps;

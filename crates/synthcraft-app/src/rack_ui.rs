@@ -3,6 +3,7 @@
 //! and 1-Click Demo Showcase.
 
 use crate::app::SynthCraftApp;
+use crate::controls::{rotary_knob, vertical_fader};
 use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 use std::collections::HashMap;
 use std::f32::consts::PI;
@@ -14,9 +15,10 @@ use synthcraft_core::{
 
 /// Render the VCV Rack 2-style 3U Eurorack module & draped patch-cable canvas.
 pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
-    let green = Color32::from_rgb(34, 197, 94);
-    let cyan = Color32::from_rgb(56, 189, 248);
-    let amber = Color32::from_rgb(245, 158, 11);
+    let pal = app.skin.palette();
+    let green = pal.arc_primary;
+    let cyan = pal.arc_secondary;
+    let amber = pal.led_accent;
     let purple = Color32::from_rgb(168, 85, 247);
     let red = Color32::from_rgb(239, 68, 68);
 
@@ -27,18 +29,12 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     let painter = ui.painter_at(rect);
 
     // 1. Anodized 3U rails top and bottom
-    let bg = if app.dark_mode {
-        Color32::from_rgb(8, 12, 22)
-    } else {
-        Color32::from_rgb(226, 232, 240)
-    };
-    painter.rect_filled(rect, 8.0, bg);
+    painter.rect_filled(rect, 8.0, pal.panel_bg);
 
-    let rail_col = Color32::from_rgb(51, 65, 85);
     let top_rail = Rect::from_min_max(rect.min, Pos2::new(rect.max.x, rect.min.y + 14.0));
     let bot_rail = Rect::from_min_max(Pos2::new(rect.min.x, rect.max.y - 14.0), rect.max);
-    painter.rect_filled(top_rail, 3.0, rail_col);
-    painter.rect_filled(bot_rail, 3.0, rail_col);
+    painter.rect_filled(top_rail, 3.0, pal.rail_col);
+    painter.rect_filled(bot_rail, 3.0, pal.rail_col);
 
     // 2. Six 3U Eurorack Modules across the bay
     let ap = app.engine.active_patch().clone();
@@ -114,23 +110,18 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             Pos2::new(x0 + 2.0, rect.top() + 16.0),
             Pos2::new(x0 + mod_w - 4.0, rect.bottom() - 16.0),
         );
-        let panel_col = if app.dark_mode {
-            Color32::from_rgb(22, 30, 46)
-        } else {
-            Color32::from_rgb(248, 250, 252)
-        };
-        painter.rect_filled(mod_rect, 4.0, panel_col);
+        painter.rect_filled(mod_rect, 4.0, pal.module_bg);
         painter.rect_stroke(
             mod_rect,
             4.0,
-            Stroke::new(1.5, Color32::from_rgb(71, 85, 105)),
+            Stroke::new(1.5, pal.module_border),
             egui::StrokeKind::Outside,
         );
 
         // Four corner Eurorack mounting screws
         for sx in [mod_rect.left() + 8.0, mod_rect.right() - 8.0] {
             for sy in [mod_rect.top() + 7.0, mod_rect.bottom() - 7.0] {
-                painter.circle_filled(Pos2::new(sx, sy), 2.5, Color32::from_rgb(148, 163, 184));
+                painter.circle_filled(Pos2::new(sx, sy), 2.5, pal.text_muted);
             }
         }
 
@@ -150,21 +141,37 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             green,
         );
 
-        // Rotary potentiometer dials
+        // Rotary potentiometer dials with glowing value arcs
         for (kidx, (k_label, norm_val)) in knobs.iter().enumerate() {
             let ky = mod_rect.top() + 68.0 + (kidx as f32) * 58.0;
             let center = Pos2::new(mod_rect.center().x, ky);
-            painter.circle_filled(center, 16.0, Color32::from_rgb(15, 23, 42));
-            painter.circle_stroke(center, 16.0, Stroke::new(2.0, amber));
-            let angle = (-135.0 + norm_val.clamp(0.0, 1.0) * 270.0 - 90.0).to_radians();
-            let tip = Pos2::new(center.x + angle.cos() * 13.0, center.y + angle.sin() * 13.0);
-            painter.line_segment([center, tip], Stroke::new(2.2, Color32::WHITE));
+            painter.circle_filled(center, 16.0, pal.knob_outer);
+            painter.circle_stroke(center, 16.0, Stroke::new(2.0, pal.arc_track));
+            painter.circle_filled(center, 12.0, pal.knob_cap);
+
+            // 270-degree LED value arc
+            let start_ang = PI * 0.75;
+            let sweep = PI * 1.5 * norm_val.clamp(0.0, 1.0);
+            let arc_pts: Vec<Pos2> = (0..=16)
+                .map(|s| {
+                    let a = start_ang + (s as f32 / 16.0) * sweep;
+                    Pos2::new(center.x + a.cos() * 16.5, center.y + a.sin() * 16.5)
+                })
+                .collect();
+            painter.add(egui::Shape::line(
+                arc_pts,
+                Stroke::new(2.4, pal.arc_primary),
+            ));
+
+            let angle = start_ang + sweep;
+            let tip = Pos2::new(center.x + angle.cos() * 12.0, center.y + angle.sin() * 12.0);
+            painter.line_segment([center, tip], Stroke::new(2.2, pal.knob_pointer));
             painter.text(
                 Pos2::new(center.x, ky + 23.0),
                 egui::Align2::CENTER_CENTER,
                 *k_label,
                 egui::FontId::monospace(9.0),
-                ui.visuals().text_color(),
+                pal.text_primary,
             );
         }
 
@@ -183,7 +190,7 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             let jy = mod_rect.bottom() - 48.0 + (row_idx as f32) * 24.0;
             let jpos = Pos2::new(jx, jy);
             let ring_col = if *is_out { green } else { cyan };
-            painter.circle_filled(jpos, 6.5, Color32::from_rgb(15, 23, 42));
+            painter.circle_filled(jpos, 6.5, pal.knob_outer);
             painter.circle_stroke(jpos, 6.5, Stroke::new(2.0, ring_col));
             painter.circle_filled(jpos, 2.5, Color32::BLACK);
             painter.text(
@@ -191,7 +198,7 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 egui::Align2::CENTER_CENTER,
                 *j_name,
                 egui::FontId::monospace(7.5),
-                ui.visuals().text_color(),
+                pal.text_primary,
             );
             jack_positions.insert(((*m_title).to_string(), (*j_name).to_string()), jpos);
             // Also index LFO-MOD and ADSR-ENV aliases to the combined LFO / ADSR faceplate
@@ -237,6 +244,7 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
 
 /// Render Workbench 4: 1990 Korg M1 AI2 PCM Workstation Rompler & Extreme Modern DSP Generators.
 pub fn render_m1_and_extreme_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
+    let pal = app.skin.palette();
     ui.heading("4. Korg M1 (1990) AI2 PCM Rompler & Extreme Modern DSP Forge");
     ui.label(
         "Layer authentic 1990 Korg M1 16-bit 32 kHz AI2 PCM multi-samples with modern physical modeling, granular clouds, and West-Coast wavefolding.",
@@ -264,12 +272,14 @@ pub fn render_m1_and_extreme_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                         changed = true;
                     }
                 }
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut p.m1_layer_mix, 0.0..=1.0)
-                            .text("Korg M1 PCM Layer Mix"),
-                    )
-                    .changed();
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    changed |=
+                        vertical_fader(ui, &pal, "M1 ROM MIX", &mut p.m1_layer_mix, 0.0, 1.0, "%");
+                    changed |=
+                        rotary_knob(ui, &pal, "CUTOFF", &mut p.cutoff_hz, 40.0, 12000.0, "Hz");
+                    changed |= rotary_knob(ui, &pal, "MASTER", &mut p.master_gain, 0.05, 1.0, "%");
+                });
             });
 
             cols[1].group(|ui| {
@@ -281,12 +291,14 @@ pub fn render_m1_and_extreme_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                         changed = true;
                     }
                 }
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut p.extreme_morph, 0.0..=1.0)
-                            .text("Extreme DSP Morph / Harmonics Macro"),
-                    )
-                    .changed();
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    changed |=
+                        rotary_knob(ui, &pal, "X-MORPH", &mut p.extreme_morph, 0.0, 1.0, "%");
+                    changed |= rotary_knob(ui, &pal, "FM INDEX", &mut p.fm_index, 0.0, 4.0, "idx");
+                    changed |=
+                        vertical_fader(ui, &pal, "DRIVE", &mut p.drive_saturation, 0.0, 3.0, "x");
+                });
             });
         });
     }
@@ -417,54 +429,7 @@ pub fn render_midi_and_depot(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     });
 
     ui.add_space(8.0);
-    ui.group(|ui| {
-        let last_note = app.engine.midi_hw.last_triggered_note;
-        ui.strong(format!(
-            "Interactive 25-Key On-Screen Studio Keyboard (C3..C5) -- Last Triggered: MIDI {} ({:.1} Hz)",
-            last_note,
-            midi_to_freq_hz(last_note)
-        ));
-
-        let note_names = [
-            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
-        ];
-        let mut triggered: Option<u8> = None;
-        ui.horizontal_wrapped(|ui| {
-            for midi in 48_u8..=72_u8 {
-                let semitone = (midi % 12) as usize;
-                let octave = (midi / 12) - 1;
-                let is_black = matches!(semitone, 1 | 3 | 6 | 8 | 10);
-                let label = format!("{}{}", note_names[semitone], octave);
-                let is_active = app.engine.midi_hw.last_triggered_note == midi;
-                let fill = if is_active {
-                    green
-                } else if is_black {
-                    Color32::from_rgb(30, 41, 59)
-                } else {
-                    Color32::from_rgb(100, 116, 139)
-                };
-                let btn = egui::Button::new(RichText::new(label).color(Color32::WHITE).small())
-                    .fill(fill);
-                if ui.add(btn).clicked() {
-                    triggered = Some(midi);
-                }
-            }
-        });
-
-        if let Some(note) = triggered {
-            app.engine.midi_hw.last_triggered_note = note;
-            if let Some(first_step) = app.engine.active_patch_mut().steps.first_mut() {
-                first_step.midi_note = note;
-            }
-            app.status_line = format!(
-                "Triggered MIDI Note {} ({:.1} Hz) on {}",
-                note,
-                midi_to_freq_hz(note),
-                app.engine.active_patch().name
-            );
-            app.persist_state();
-        }
-    });
+    render_piano_keyboard_strip(app, ui);
 
     // Live single-note waveform preview for the triggered key
     let freq = midi_to_freq_hz(app.engine.midi_hw.last_triggered_note);
@@ -474,7 +439,7 @@ pub fn render_midi_and_depot(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
         Sense::hover(),
     );
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 4.0, Color32::from_rgb(9, 14, 28));
+    painter.rect_filled(rect, 4.0, app.skin.palette().lcd_bg);
     let mid_y = rect.center().y;
     let steps = 96;
     let step_x = (rect.width() - 16.0) / (steps as f32);
@@ -506,6 +471,60 @@ pub fn render_midi_and_depot(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             Stroke::new(2.0, cyan),
         );
     }
+    let _ = green;
+}
+
+/// Reusable 25-Key On-Screen Studio Piano Keyboard (C3..C5) used across workbenches and layouts.
+pub fn render_piano_keyboard_strip(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
+    let pal = app.skin.palette();
+    ui.group(|ui| {
+        let last_note = app.engine.midi_hw.last_triggered_note;
+        ui.strong(format!(
+            "Interactive 25-Key On-Screen Studio Keyboard (C3..C5) -- Last Triggered: MIDI {} ({:.1} Hz)",
+            last_note,
+            midi_to_freq_hz(last_note)
+        ));
+
+        let note_names = [
+            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+        ];
+        let mut triggered: Option<u8> = None;
+        ui.horizontal_wrapped(|ui| {
+            for midi in 48_u8..=72_u8 {
+                let semitone = (midi % 12) as usize;
+                let octave = (midi / 12) - 1;
+                let is_black = matches!(semitone, 1 | 3 | 6 | 8 | 10);
+                let label = format!("{}{}", note_names[semitone], octave);
+                let is_active = app.engine.midi_hw.last_triggered_note == midi;
+                let fill = if is_active {
+                    pal.arc_primary
+                } else if is_black {
+                    Color32::from_rgb(30, 41, 59)
+                } else {
+                    Color32::from_rgb(100, 116, 139)
+                };
+                let btn = egui::Button::new(RichText::new(label).color(Color32::WHITE).small())
+                    .fill(fill);
+                if ui.add(btn).clicked() {
+                    triggered = Some(midi);
+                }
+            }
+        });
+
+        if let Some(note) = triggered {
+            app.engine.midi_hw.last_triggered_note = note;
+            if let Some(first_step) = app.engine.active_patch_mut().steps.first_mut() {
+                first_step.midi_note = note;
+            }
+            app.status_line = format!(
+                "Triggered MIDI Note {} ({:.1} Hz) on {}",
+                note,
+                midi_to_freq_hz(note),
+                app.engine.active_patch().name
+            );
+            app.persist_state();
+        }
+    });
 }
 
 /// Render Demo Showcase & 1-Click Audition Cards.
