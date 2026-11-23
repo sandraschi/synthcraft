@@ -70,7 +70,7 @@ pub fn render_help_tab_content(app: &SynthCraftApp, ui: &mut egui::Ui) {
                 ui.monospace(
                     "Mod Wheel (CC#01) -> LFO Filter Modulation Depth (CLAP 0x100A)\nBrightness (CC#74) -> 4-Pole Ladder VCF Cutoff Frequency Hz (CLAP 0x1004)\nTimbre     (CC#71) -> VCF Resonance Q (CLAP 0x1005)\nAttack     (CC#73) -> ADSR Attack Time ms (CLAP 0x1007)\nFX Depth   (CC#91) -> Extreme DSP Morph / Harmonics Macro",
                 );
-                ui.label("Step 3 (DAW / SoundCraft Low-Latency ASIO/WASAPI Mode): Load 'dev.sandraschi.synthcraft' as a CLAP 1.2.2 instrument plugin inside SoundCraft, Bitwig Studio, or REAPER and arm the instrument track for sub-5ms live keyboard performance.");
+                ui.label("Step 3 (DAW / SoundCraft Low-Latency ASIO/WASAPI Mode): Once the loadable CLAP build exists (not built yet; today SynthCraft exports the descriptor JSON and WAV stems), load 'dev.sandraschi.synthcraft' as a CLAP 1.2.2 instrument plugin inside SoundCraft, Bitwig Studio, or REAPER and arm the instrument track for sub-5ms live keyboard performance.");
                 ui.label("Step 4 (On-Screen Audition): You can also click any of the 25 piano keys (C3..C5) directly in Workbench 3 to audition notes without hardware attached.");
             });
 

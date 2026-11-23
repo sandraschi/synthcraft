@@ -8,6 +8,7 @@
 pub mod banks;
 pub mod db;
 pub mod dsp;
+pub mod edit;
 pub mod error;
 pub mod midi;
 pub mod model;
@@ -20,8 +21,9 @@ pub use db::{default_db_path, load_from_db, save_to_db};
 pub use error::SynthError;
 pub use model::{
     analyze_patch_spectrum, export_clap_descriptor, export_djcraft_stem_manifest, midi_to_freq_hz,
-    synthesize_audio_buffer, write_wav_file, ClapParameterSpec, FilterMode, FxParams,
-    SamplerParams, SequencerStep, SpectrumAnalysisReport, SynthPatch, WaveformKind,
+    stem_duration_ms, synthesize_audio_buffer, write_wav_file, ClapParameterSpec, FilterMode,
+    FxParams, SamplerParams, SequencerStep, SpectrumAnalysisReport, SynthPatch, WaveformKind,
+    MAX_RENDER_MS,
 };
 pub use rompler::{
     builtin_demo_showcases, builtin_midi_depot, default_rack_cables, export_midi_smf_file,
@@ -401,8 +403,10 @@ pub enum Command {
         duration_ms: u32,
     },
     ExportClapManifest,
+    /// Stem metadata for `bars` bars; with `output_path` the mono loop is also rendered to a WAV.
     ExportDjcraftStem {
         bars: usize,
+        output_path: Option<String>,
     },
     LoadPcmProgram {
         program: String,
@@ -434,6 +438,16 @@ pub enum Command {
     },
     RunDemoShowcase {
         demo_id: String,
+    },
+    /// Set one scalar parameter of the active patch (see `edit::PATCH_PARAMS`, `stepN.velocity`,
+    /// `stepN.gate_pct`).
+    SetPatchParam {
+        param: String,
+        value: f32,
+    },
+    /// Set the Camelot key label of the active patch (for example `8A Am`).
+    SetCamelotKey {
+        key: String,
     },
     ResetFactoryPatches,
 }
@@ -597,8 +611,30 @@ impl Command {
                 }))
             }
             Self::ExportClapManifest => Ok(export_clap_descriptor(engine.active_patch())),
-            Self::ExportDjcraftStem { bars } => {
-                Ok(export_djcraft_stem_manifest(engine.active_patch(), *bars))
+            Self::ExportDjcraftStem { bars, output_path } => {
+                let sr = engine.sample_rate_hz;
+                let mut manifest = export_djcraft_stem_manifest(engine.active_patch(), *bars, sr);
+                if let Some(path) = output_path {
+                    let ms = stem_duration_ms(engine.active_patch(), *bars);
+                    let frames = write_wav_file(engine.active_patch(), Path::new(path), sr, ms)?;
+                    manifest["wav_path"] = json!(path);
+                    manifest["wav_frames"] = json!(frames);
+                }
+                Ok(manifest)
+            }
+            Self::SetPatchParam { param, value } => {
+                let v = edit::set_patch_param(engine.active_patch_mut(), param, *value)?;
+                Ok(json!({ "param": param, "value": v }))
+            }
+            Self::SetCamelotKey { key } => {
+                let k = key.trim();
+                if k.is_empty() || k.len() > 16 {
+                    return Err(SynthError::Validation(
+                        "Camelot key must be 1 to 16 characters".into(),
+                    ));
+                }
+                engine.active_patch_mut().camelot_key = k.to_string();
+                Ok(json!({ "camelot_key": k }))
             }
             Self::LoadPcmProgram { program, mix } => {
                 let p = engine.active_patch_mut();
@@ -857,7 +893,7 @@ mod tests {
         assert_eq!(clap["plugin_id"], "dev.sandraschi.synthcraft");
         assert_eq!(clap["parameters"].as_array().map(Vec::len), Some(10));
 
-        let stem = export_djcraft_stem_manifest(eng.active_patch(), 4);
+        let stem = export_djcraft_stem_manifest(eng.active_patch(), 4, 48000);
         assert_eq!(stem["camelot_key"], "8A Am");
         assert_eq!(stem["bars"], 4);
         assert_eq!(stem["beats"], 16);

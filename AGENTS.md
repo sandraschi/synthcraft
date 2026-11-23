@@ -64,4 +64,26 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119
 <!-- craft-agents:end -->
 ## This repository
 
-SynthCraft workspace ($name). Run cargo xtask ci before every commit.
+SynthCraft workspace. Run `cargo xtask ci` before every commit (alias in `.cargo/config.toml`; it runs fmt, clippy with `-D warnings`, tests, asset attribution, layer check, wasm check and cargo-deny).
+
+### Layout
+
+- `crates/synthcraft-core` (L1): engine, DSP (`dsp.rs`), real-time voice engine `SynthRt` (`rt.rs`), sampler (`sampler.rs`), free bank catalogue (`banks.rs`), SQLite persistence (`db.rs`), agent sandbox (`sandbox.rs`), `Command` and `SynthEngine` (`lib.rs`). No UI, no network.
+- `crates/synthcraft-mcp` (L2): CLI and hand-rolled MCP stdio server. Every tool maps to a `Command`. File paths from agents go through `PathPolicy` (`enforce_command`); the MCP server refuses to start without both automation roots.
+- `crates/synthcraft-app` (L3): eframe/egui studio, live audio (cpal), MIDI (midir), background saver, bank downloader.
+- `banks/manifest.json`: pinned sources, SHA-256 and licences for downloadable sample packs. Samples are never committed.
+
+### Commands
+
+- `cargo xtask ci` - full gate. `cargo test -p synthcraft-core` for the engine.
+- `SYNTHCRAFT_TEST_BANK=<path to .sfz>` enables the real-bank test (`tests/real_banks.rs`).
+- On low-memory machines use `CARGO_BUILD_JOBS=2`. Close a running `synthcraft-app.exe` before `cargo run` (it locks the exe).
+
+### Repository rules
+
+- Line endings are LF only, in every file including `start.bat`. Do not commit CRLF.
+- Single trunk: work on `main`, no agent branches, no leftover WIP branches or stashes. Merge or delete before you stop.
+- Existing content is never removed or rewritten by a standard or template sweep unless the owner explicitly commands it.
+- No trademarked product or song names in presets, programs, ids or docs; no em dash anywhere.
+- Panel edits go through `Command` so agents can do everything a panel does (rule 14); say so in the PR if a panel still mutates state directly.
+- CLAP: only the descriptor JSON exists. Do not claim a loadable plugin until a separate cdylib crate ships one.

@@ -597,8 +597,10 @@ fn render_tab_m1_extreme(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             ui.horizontal_wrapped(|ui| {
                 let mut m1_mix = app.engine.active_patch().m1_layer_mix;
                 if vertical_fader(ui, &pal, "PCM MIX", &mut m1_mix, 0.0, 1.0, "%") {
-                    app.engine.active_patch_mut().m1_layer_mix = m1_mix;
-                    app.persist_state();
+                    let before = app.engine.active_patch().clone();
+                    let mut after = before.clone();
+                    after.m1_layer_mix = m1_mix;
+                    app.apply_patch_edit(&before, &after);
                 }
                 rotary_knob(
                     ui,
@@ -638,8 +640,10 @@ fn render_tab_m1_extreme(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 );
                 let mut morph = app.engine.active_patch().extreme_morph;
                 if rotary_knob(ui, &pal, "X-DSP MORPH", &mut morph, 0.0, 1.0, "%") {
-                    app.engine.active_patch_mut().extreme_morph = morph;
-                    app.persist_state();
+                    let before = app.engine.active_patch().clone();
+                    let mut after = before.clone();
+                    after.extreme_morph = morph;
+                    app.apply_patch_edit(&before, &after);
                 }
             });
         });

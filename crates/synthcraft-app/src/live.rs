@@ -271,7 +271,9 @@ impl SynthCraftApp {
             return;
         };
         let exp = |lo: f32, hi: f32| lo * (hi / lo).powf(value);
-        let p = self.engine.active_patch_mut();
+        let before = self.engine.active_patch().clone();
+        let mut edited = before.clone();
+        let p = &mut edited;
         match cc {
             74 => p.cutoff_hz = exp(35.0, 16000.0),
             71 => p.resonance_q = 0.5 + value * 11.5,
@@ -280,6 +282,7 @@ impl SynthCraftApp {
             91 => p.extreme_morph = value,
             _ => {}
         }
+        self.apply_patch_edit(&before, &edited);
     }
 
     /// Computer-keyboard piano and transport. Ignored while a text field has focus.

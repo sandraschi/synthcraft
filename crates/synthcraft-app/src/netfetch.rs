@@ -53,3 +53,16 @@ pub fn start(id: String, dest: PathBuf) -> Receiver<FetchMsg> {
     });
     rx
 }
+
+/// Decode a bank spec on a worker thread (warming the shared cache) so loading a big SF2 does
+/// not freeze the UI. Finishes with the same messages as [`start`].
+pub fn prime(spec: String) -> Receiver<FetchMsg> {
+    let (tx, rx) = channel();
+    std::thread::spawn(move || {
+        let r = synthcraft_core::sampler::load_cached(&spec)
+            .map(|_| spec.clone())
+            .map_err(|e| e.to_string());
+        let _ = tx.send(FetchMsg::Done(r));
+    });
+    rx
+}

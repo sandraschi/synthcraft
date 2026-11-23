@@ -91,7 +91,8 @@ impl WaveformKind {
                 x ^= x << 5;
                 ((x & 0xFFFF) as f32 / 32768.0) - 1.0
             }
-            Self::SubOctave => (PI * phase).sin(),
+            // `phase` is the phase of the sub itself: one full sine period, no DC offset.
+            Self::SubOctave => (2.0 * PI * phase).sin(),
             Self::AtmoPad => (2.0 * PI * phase).sin(),
         }
     }
@@ -244,12 +245,15 @@ pub fn midi_to_freq_hz(midi_note: u8) -> f32 {
     440.0 * 2.0_f32.powf((f32::from(midi_note) - 69.0) / 12.0)
 }
 
+/// Longest offline render in milliseconds (5 minutes).
+pub const MAX_RENDER_MS: u32 = 300_000;
+
 /// Render mono audio (`[-1.0, 1.0]`) for `duration_ms` by running the sequencer through the
 /// same [`crate::rt::SynthRt`] engine the live audio callback uses.
 pub fn synthesize_audio_buffer(patch: &SynthPatch, sample_rate: u32, duration_ms: u32) -> Vec<f32> {
     let sr = sample_rate.clamp(8000, 96000);
-    let total =
-        ((f64::from(sr) * f64::from(duration_ms.clamp(20, 15000))) / 1000.0).round() as usize;
+    let total = ((f64::from(sr) * f64::from(duration_ms.clamp(20, MAX_RENDER_MS))) / 1000.0).round()
+        as usize;
     let mut out = vec![0.0_f32; total];
     let mut rt = crate::rt::SynthRt::new(sr as f32, patch.clone());
     if let Some(spec) = patch.sampler.bank.as_deref() {
@@ -500,12 +504,28 @@ pub fn export_clap_descriptor(patch: &SynthPatch) -> Value {
     })
 }
 
-/// Export BPM-locked, Camelot-keyed stem metadata and cue points for **DJCraft** & **SoundCraft**.
-pub fn export_djcraft_stem_manifest(patch: &SynthPatch, bars: usize) -> Value {
+/// Duration in ms of a stem of `bars` bars (4 beats each) at the patch tempo.
+pub fn stem_duration_ms(patch: &SynthPatch, bars: usize) -> u32 {
+    let beats = bars.clamp(1, 32) * 4;
+    let sec = (beats as f32) * (60.0 / patch.bpm.clamp(40.0, 240.0));
+    ((sec * 1000.0).round() as u32).min(MAX_RENDER_MS)
+}
+
+/// Export BPM-locked, Camelot-keyed stem metadata and bar-grid cue points for **DJCraft** &
+/// **SoundCraft**. Cue points are derived from the tempo: the loop start, every fourth bar
+/// (phrase boundaries) and the loop end.
+pub fn export_djcraft_stem_manifest(patch: &SynthPatch, bars: usize, sample_rate: u32) -> Value {
     let clamped_bars = bars.clamp(1, 32);
     let beats = clamped_bars * 4;
-    let duration_sec = (beats as f32) * (60.0 / patch.bpm.clamp(40.0, 240.0));
-    let duration_ms = (duration_sec * 1000.0).round() as u32;
+    let duration_ms = stem_duration_ms(patch, clamped_bars);
+    let bar_ms = f64::from(duration_ms) / clamped_bars as f64;
+    let mut cues = vec![json!({ "label": "LOOP_IN", "ms": 0 })];
+    let mut bar = 4;
+    while bar < clamped_bars {
+        cues.push(json!({ "label": format!("PHRASE_BAR_{}", bar + 1), "ms": (bar_ms * bar as f64).round() as u32 }));
+        bar += 4;
+    }
+    cues.push(json!({ "label": "LOOP_OUT", "ms": duration_ms }));
 
     json!({
         "target_host": "DJCraft & SoundCraft",
@@ -517,12 +537,9 @@ pub fn export_djcraft_stem_manifest(patch: &SynthPatch, bars: usize) -> Value {
         "bars": clamped_bars,
         "beats": beats,
         "duration_ms": duration_ms,
-        "sample_rate_hz": 48000,
-        "cue_points_ms": [
-            { "label": "LOOP_IN", "ms": 0 },
-            { "label": "FILTER_PEAK", "ms": duration_ms / 2 },
-            { "label": "DROP_OUT", "ms": duration_ms }
-        ],
+        "sample_rate_hz": sample_rate,
+        "channels": 1,
+        "cue_points_ms": cues,
         "clap_plugin_id": "dev.sandraschi.synthcraft"
     })
 }

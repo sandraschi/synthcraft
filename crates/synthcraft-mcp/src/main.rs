@@ -141,6 +141,9 @@ pub enum CliSub {
     ExportDjcraftStem {
         #[arg(long, default_value_t = 4)]
         bars: usize,
+        /// Also render the mono loop to this WAV file
+        #[arg(long)]
+        output: Option<String>,
     },
     /// Load a 1990-style PCM sample program (m1_00_universe, m1_01_piano16, m1_17_organ2, ...)
     LoadM1 {
@@ -192,6 +195,10 @@ pub enum CliSub {
         #[arg(long, default_value_t = 0.5)]
         reverb_damping: f32,
     },
+    /// Set one scalar patch parameter (bpm, pulse_width, master_gain, drive_saturation, ...)
+    SetParam { param: String, value: f32 },
+    /// Set the Camelot key label
+    SetCamelotKey { key: String },
     /// Reset all patches to factory defaults
     ResetFactory,
 }
@@ -375,7 +382,10 @@ fn main() {
             duration_ms,
         },
         CliSub::ExportClap => Command::ExportClapManifest,
-        CliSub::ExportDjcraftStem { bars } => Command::ExportDjcraftStem { bars },
+        CliSub::ExportDjcraftStem { bars, output } => Command::ExportDjcraftStem {
+            bars,
+            output_path: output,
+        },
         CliSub::LoadM1 { program, mix } => Command::LoadPcmProgram { program, mix },
         CliSub::SetExtremeDsp { mode, morph } => Command::SetExtremeDsp { mode, morph },
         CliSub::LoadMidiClip { clip_id } => Command::LoadMidiDepotClip { clip_id },
@@ -396,6 +406,8 @@ fn main() {
             reverb_decay_s,
             reverb_damping,
         },
+        CliSub::SetParam { param, value } => Command::SetPatchParam { param, value },
+        CliSub::SetCamelotKey { key } => Command::SetCamelotKey { key },
         CliSub::ResetFactory => Command::ResetFactoryPatches,
     };
     let cmd = if policy.is_active() {
@@ -457,6 +469,13 @@ fn enforce_command(
                 .to_string_lossy()
                 .into_owned(),
             duration_ms,
+        },
+        Command::ExportDjcraftStem { bars, output_path } => Command::ExportDjcraftStem {
+            bars,
+            output_path: match output_path {
+                Some(p) => Some(policy.check_write(&p)?.to_string_lossy().into_owned()),
+                None => None,
+            },
         },
         Command::ExportMidiFile {
             clip_id,
@@ -711,7 +730,12 @@ pub fn handle_mcp_request(
                 "export_clap_manifest" => Command::ExportClapManifest.dispatch(engine),
                 "export_djcraft_stem" => {
                     let bars = args.get("bars").and_then(Value::as_u64).unwrap_or(4) as usize;
-                    Command::ExportDjcraftStem { bars }.dispatch(engine)
+                    let output_path = args
+                        .get("output_path")
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                    enforce_command(Command::ExportDjcraftStem { bars, output_path }, policy)
+                        .and_then(|c| c.dispatch(engine))
                 }
                 "load_pcm_program" => {
                     let program = args
@@ -766,6 +790,23 @@ pub fn handle_mcp_request(
                         .unwrap_or("demo_1990_m1_piano")
                         .to_string();
                     Command::RunDemoShowcase { demo_id }.dispatch(engine)
+                }
+                "set_patch_param" => {
+                    let param = args
+                        .get("param")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    let value = args.get("value").and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                    Command::SetPatchParam { param, value }.dispatch(engine)
+                }
+                "set_camelot_key" => {
+                    let key = args
+                        .get("key")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    Command::SetCamelotKey { key }.dispatch(engine)
                 }
                 "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
                 other => Err(synthcraft_core::SynthError::Validation(format!(
@@ -827,7 +868,7 @@ fn mcp_tools_schema() -> Value {
         { "name": "analyze_spectrum", "description": "Compute 32-band DFT harmonic spectrum, 128-sample oscilloscope buffer, RMS/Peak dBFS, crest factor, and fundamental pitch Hz.", "inputSchema": { "type": "object", "properties": { "duration_ms": { "type": "integer" } } } },
         { "name": "render_wav_file", "description": "Render the active patch to a 16-bit RIFF PCM .wav file on disk for SoundCraft or DJCraft.", "inputSchema": { "type": "object", "properties": { "output_path": { "type": "string" }, "duration_ms": { "type": "integer" } }, "required": ["output_path"] } },
         { "name": "export_clap_manifest", "description": "Export CLAP 1.2.2 plugin descriptor (dev.sandraschi.synthcraft) and polyphonic parameter automation table for SoundCraft.", "inputSchema": { "type": "object", "properties": {} } },
-        { "name": "export_djcraft_stem", "description": "Export BPM-locked, Camelot-keyed loop/stem metadata and cue points for DJCraft.", "inputSchema": { "type": "object", "properties": { "bars": { "type": "integer" } } } },
+        { "name": "export_djcraft_stem", "description": "Export BPM-locked, Camelot-keyed loop/stem metadata and bar-grid cue points for DJCraft. With output_path (inside the write root) the mono loop is also rendered to a WAV at the engine sample rate.", "inputSchema": { "type": "object", "properties": { "bars": { "type": "integer" }, "output_path": { "type": "string" } } } },
         { "name": "load_pcm_program", "description": "Layer a 1990-style PCM sample program (m1_00_universe, m1_01_piano16, m1_11_fretless, m1_12_slapbass, m1_17_organ2, m1_24_panflute, m1_36_choir, m1_48_orchhit, or off).", "inputSchema": { "type": "object", "properties": { "program": { "type": "string" }, "mix": { "type": "number" } }, "required": ["program"] } },
         { "name": "set_extreme_dsp", "description": "Activate an Extreme Modern DSP generator (off, karplus_strong_pluck, granular_cloud, wavetable_morph, west_coast_wavefolder, phase_distortion_cz, modal_struck_bar).", "inputSchema": { "type": "object", "properties": { "mode": { "type": "string" }, "morph": { "type": "number" } }, "required": ["mode"] } },
         { "name": "set_sampler_bank", "description": "Load a sample bank into the active patch: an .sf2 (add #N for preset N), .sfz, .wav or a folder of wavs named by note. Must be inside the read root. Omit bank to unload.", "inputSchema": { "type": "object", "properties": { "bank": { "type": "string" }, "mix": { "type": "number" } } } },
@@ -835,6 +876,8 @@ fn mcp_tools_schema() -> Value {
         { "name": "load_midi_depot_clip", "description": "Load one of the 8 built-in MIDI Depot patterns into the 16-step sequencer.", "inputSchema": { "type": "object", "properties": { "clip_id": { "type": "string" } }, "required": ["clip_id"] } },
         { "name": "export_midi_file", "description": "Export a MIDI Depot clip as a Standard MIDI File (.mid, SMF Format 0, 480 PPQN).", "inputSchema": { "type": "object", "properties": { "clip_id": { "type": "string" }, "output_path": { "type": "string" } }, "required": ["clip_id", "output_path"] } },
         { "name": "run_demo_showcase", "description": "Configure and audition one of the 6 curated 1-click Demo Showcases (demo_1990_m1_piano, demo_club_organ_bass, demo_m1_universe_granular, demo_buchla_wavefolder, demo_karplus_panflute, demo_modal_glass_choir).", "inputSchema": { "type": "object", "properties": { "demo_id": { "type": "string" } }, "required": ["demo_id"] } },
+        { "name": "set_patch_param", "description": "Set one scalar parameter of the active patch: bpm, pulse_width, master_gain, drive_saturation, m1_layer_mix, extreme_morph, stepN.velocity or stepN.gate_pct (N = 0..15). Values are clamped to the parameter range.", "inputSchema": { "type": "object", "properties": { "param": { "type": "string" }, "value": { "type": "number" } }, "required": ["param", "value"] } },
+        { "name": "set_camelot_key", "description": "Set the Camelot key label of the active patch, for example 8A Am.", "inputSchema": { "type": "object", "properties": { "key": { "type": "string" } }, "required": ["key"] } },
         { "name": "reset_factory_patches", "description": "Reset all 6 factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
     ])
 }
@@ -871,7 +914,7 @@ mod tests {
     }
 
     #[test]
-    fn mcp_initialize_returns_2026_07_28_and_21_tools() {
+    fn mcp_initialize_returns_2026_07_28_and_23_tools() {
         let mut eng = SynthEngine::default();
         let db = temp_db();
         let init = handle_mcp_request(
@@ -894,7 +937,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 21);
+        assert_eq!(tools, 23);
         let _ = std::fs::remove_file(&db);
     }
 

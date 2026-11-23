@@ -253,7 +253,9 @@ pub fn render_m1_and_extreme_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
 
     let mut changed = false;
     {
-        let p = app.engine.active_patch_mut();
+        let before = app.engine.active_patch().clone();
+        let mut edited = before.clone();
+        let p = &mut edited;
         ui.columns(2, |cols| {
             cols[0].group(|ui| {
                 ui.strong("1990-style PCM program bank (synthesized, 32 kHz character)");
@@ -301,6 +303,7 @@ pub fn render_m1_and_extreme_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 });
             });
         });
+        app.apply_patch_edit(&before, &edited);
     }
     if changed {
         app.persist_state();
@@ -629,8 +632,11 @@ fn render_sampler_and_fx(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             load = Some(app.bank_input.trim().to_string());
         }
         if ui.button("Unload").clicked() {
-            app.engine.active_patch_mut().sampler.bank = None;
-            changed = true;
+            let before = app.engine.active_patch().clone();
+            let mut after = before.clone();
+            after.sampler.bank = None;
+            app.apply_patch_edit(&before, &after);
+            app.bank_status.clear();
         }
         if ui.button("List SF2 presets").clicked() {
             let spec = app.bank_input.trim();
@@ -716,14 +722,19 @@ fn render_sampler_and_fx(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     }
     if let Some(spec) = load {
         app.bank_input = spec.clone();
-        app.engine.active_patch_mut().sampler.bank = Some(spec);
-        changed = true;
+        if app.bank_fetch_rx.is_none() {
+            app.bank_status = format!("Loading {spec} ...");
+            app.bank_fetch_id = Some(spec.clone());
+            app.bank_fetch_rx = Some(crate::netfetch::prime(spec));
+        }
     }
     if !app.bank_status.is_empty() {
         ui.label(&app.bank_status);
     }
     {
-        let p = app.engine.active_patch_mut();
+        let before = app.engine.active_patch().clone();
+        let mut edited = before.clone();
+        let p = &mut edited;
         ui.horizontal(|ui| {
             changed |= rotary_knob(ui, &pal, "SAMPLE MIX", &mut p.sampler.mix, 0.0, 1.0, "%");
             changed |= rotary_knob(ui, &pal, "CHORUS", &mut p.fx.chorus_mix, 0.0, 1.0, "%");
@@ -731,6 +742,7 @@ fn render_sampler_and_fx(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             changed |= rotary_knob(ui, &pal, "DECAY", &mut p.fx.reverb_decay_s, 0.3, 20.0, "s");
             changed |= rotary_knob(ui, &pal, "DAMP", &mut p.fx.reverb_damping, 0.0, 0.95, "%");
         });
+        app.apply_patch_edit(&before, &edited);
     }
     if changed {
         app.persist_state();

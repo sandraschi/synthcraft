@@ -12,7 +12,7 @@ fn midi_a4_is_440_hz_and_a3_is_220_hz() {
 }
 
 #[test]
-fn all_eight_waveform_kinds_parse_and_sample_within_bounds() {
+fn all_waveform_kinds_parse_and_sample_within_bounds() {
     for (raw, expected) in [
         ("sine", WaveformKind::Sine),
         ("saw", WaveformKind::Saw),
@@ -22,6 +22,7 @@ fn all_eight_waveform_kinds_parse_and_sample_within_bounds() {
         ("supersaw", WaveformKind::SuperSaw),
         ("white_noise", WaveformKind::WhiteNoise),
         ("sub_octave", WaveformKind::SubOctave),
+        ("atmo_pad", WaveformKind::AtmoPad),
     ] {
         let parsed = WaveformKind::parse(raw);
         assert_eq!(parsed, Some(expected));
@@ -135,9 +136,12 @@ fn export_clap_and_djcraft_stem_commands_return_structured_json() {
         .unwrap_or_default();
     assert_eq!(clap["plugin_id"], "dev.sandraschi.synthcraft");
 
-    let stem = Command::ExportDjcraftStem { bars: 8 }
-        .dispatch(&mut eng)
-        .unwrap_or_default();
+    let stem = Command::ExportDjcraftStem {
+        bars: 8,
+        output_path: None,
+    }
+    .dispatch(&mut eng)
+    .unwrap_or_default();
     assert_eq!(stem["bars"], 8);
 }
 
@@ -541,4 +545,101 @@ fn ambient_factory_patches_are_audible_unclipped_and_dc_free() {
         assert!(level > 0.05, "{id} rms {level}");
         assert!(dc.abs() < 0.01, "{id} dc {dc}");
     }
+}
+
+#[test]
+fn stem_manifest_matches_what_can_be_rendered() {
+    let mut eng = SynthEngine::factory_seed();
+    eng.active_patch_mut().bpm = 60.0;
+    let m = synthcraft_core::export_djcraft_stem_manifest(eng.active_patch(), 16, 44_100);
+    assert_eq!(m["sample_rate_hz"], 44_100);
+    assert_eq!(m["duration_ms"], 64_000);
+    let cues = m["cue_points_ms"].as_array().cloned().unwrap_or_default();
+    let ms: Vec<u64> = cues.iter().filter_map(|c| c["ms"].as_u64()).collect();
+    assert_eq!(ms, vec![0, 16_000, 32_000, 48_000, 64_000]);
+    // The renderer now accepts the full stem length instead of clamping to 15 s.
+    let buf = synthcraft_core::synthesize_audio_buffer(eng.active_patch(), 8000, 64_000);
+    assert_eq!(buf.len(), 64 * 8000);
+}
+
+#[test]
+fn stem_command_renders_the_wav_it_describes() {
+    let mut eng = SynthEngine::factory_seed();
+    eng.active_patch_mut().bpm = 120.0;
+    let mut path = std::env::temp_dir();
+    path.push(format!("synthcraft_stem_{}.wav", std::process::id()));
+    let out = Command::ExportDjcraftStem {
+        bars: 2,
+        output_path: Some(path.to_string_lossy().into_owned()),
+    }
+    .dispatch(&mut eng);
+    let v = out.unwrap_or_default();
+    // 2 bars at 120 BPM is 4 s at the engine rate.
+    assert_eq!(
+        v["wav_frames"].as_u64(),
+        Some(4 * u64::from(eng.sample_rate_hz))
+    );
+    assert!(std::fs::metadata(&path).is_ok_and(|m| m.len() > 44));
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn sub_octave_reference_wave_has_no_dc_offset() {
+    let n = 1000;
+    let mean: f32 = (0..n)
+        .map(|i| WaveformKind::SubOctave.sample(i as f32 / n as f32, 0.5, 1))
+        .sum::<f32>()
+        / n as f32;
+    assert!(mean.abs() < 0.01, "mean {mean}");
+}
+
+#[test]
+fn a_panel_edit_becomes_commands_that_reproduce_it() {
+    let mut eng = SynthEngine::factory_seed();
+    let before = eng.active_patch().clone();
+    let mut after = before.clone();
+    after.vco1_wave = WaveformKind::Triangle;
+    after.vco2_detune_cents = 17.0;
+    after.cutoff_hz = 1234.0;
+    after.resonance_q = 3.5;
+    after.attack_ms = 40.0;
+    after.lfo_depth = 0.33;
+    after.m1_program = Some(PcmProgram::Piano16_01);
+    after.m1_layer_mix = 0.42;
+    after.extreme_morph = 0.9;
+    after.master_gain = 0.6;
+    after.drive_saturation = 1.5;
+    after.bpm = 133.0;
+    after.pulse_width = 0.3;
+    after.camelot_key = "4A Fm".into();
+    after.fx.reverb_mix = 0.25;
+    after.steps[3].midi_note = 52;
+    after.steps[3].slide = !before.steps[3].slide;
+    after.steps[5].velocity = 0.4;
+    after.steps[6].gate_pct = 0.9;
+    let cmds = before.edit_commands(&after);
+    assert!(!cmds.is_empty());
+    for c in &cmds {
+        assert!(c.dispatch(&mut eng).is_ok(), "{c:?}");
+    }
+    let got = eng.active_patch();
+    assert_eq!(got.vco1_wave, WaveformKind::Triangle);
+    assert!((got.cutoff_hz - 1234.0).abs() < 1e-3 && (got.attack_ms - 40.0).abs() < 1e-3);
+    assert_eq!(got.m1_program, Some(PcmProgram::Piano16_01));
+    assert!((got.m1_layer_mix - 0.42).abs() < 1e-3 && (got.extreme_morph - 0.9).abs() < 1e-3);
+    assert!((got.bpm - 133.0).abs() < 1e-3 && (got.pulse_width - 0.3).abs() < 1e-3);
+    assert!((got.master_gain - 0.6).abs() < 1e-3 && (got.drive_saturation - 1.5).abs() < 1e-3);
+    assert_eq!(got.camelot_key, "4A Fm");
+    assert!((got.fx.reverb_mix - 0.25).abs() < 1e-3);
+    assert_eq!(got.steps[3].midi_note, 52);
+    assert!((got.steps[5].velocity - 0.4).abs() < 1e-3);
+    assert!((got.steps[6].gate_pct - 0.9).abs() < 1e-3);
+    // Nothing else moved, and a second diff is empty.
+    assert!(got.edit_commands(&after).is_empty());
+    // Bad parameters are rejected, not ignored.
+    let bad = Command::SetPatchParam {
+        param: "nope".into(),
+        value: 1.0,
+    };
+    assert!(bad.dispatch(&mut eng).is_err());
 }

@@ -6,10 +6,10 @@
 
 SynthCraft is a 3-tier Pure-Rust ArtCraft modular audio synthesis studio and MCP `2026-07-28` server designed to work standalone or as a companion synth engine for **SoundCraft** (via CLAP `1.2.2` plugin ABI & 48 kHz `.wav` stems) and **DJCraft** (via BPM-locked, Camelot-keyed loops, acid basslines, and transition risers). It bundles 6 hierarchical workbenches:
 
-1. **Modular Rack & VCO/VCF** -- dual oscillators (`Sine`, `Saw`, `Square`, `Triangle`, `PulsePWM`, `SuperSaw`, `WhiteNoise`, `SubOctave`) with detune, FM index, and 4-pole resonant ladder filter (`LowPass24dB`, `BandPass12dB`, `HighPass12dB`, `AcidResonant`).
+1. **Modular Rack & VCO/VCF** -- dual oscillators (`Sine`, `Saw`, `Square`, `Triangle`, `PulsePWM`, `SuperSaw`, `WhiteNoise`, `SubOctave`, `AtmoPad`) with detune, FM index, and 4-pole resonant ladder filter (`LowPass24dB`, `BandPass12dB`, `HighPass12dB`, `AcidResonant`).
 2. **ADSR, LFO & Step Sequencer** -- 16-step BPM-locked sequencer (`36..84` MIDI notes, velocity, gate %, accent, acid slide) plus ADSR envelope and tempo-synced LFO modulation.
 3. **Oscilloscope & Spectrum** -- 256-sample real-time waveform scope, 32-band harmonic DFT/FFT spectrum analyzer, RMS/Peak dBFS metering, crest factor, and zero-crossing pitch tracker (`Hz`).
-4. **CLAP Plugin & SoundCraft** -- native CLAP (`u-he` / Bitwig Clever Audio Plug-in `1.2.2`, ID `dev.sandraschi.synthcraft`) plugin descriptor, polyphonic parameter automation table (`0x1001..0x100C`), and C-ABI plugin bundle manifest for **SoundCraft**.
+4. **CLAP Plugin & SoundCraft** -- native CLAP (`u-he` / Bitwig Clever Audio Plug-in `1.2.2`, ID `dev.sandraschi.synthcraft`) plugin descriptor and polyphonic parameter automation table (`0x1001..0x100C`) exported as JSON for **SoundCraft**. A loadable CLAP plugin binary is not built yet.
 5. **DJCraft Stem & WAV Forge** -- exports 48 kHz / 44.1 kHz 16-bit PCM `.wav` loops, risers, sub-drops, and stem metadata (`bpm`, `camelot_key`, `bars`, `cue_points`) directly compatible with **DJCraft** decks.
 6. **Assistant & 6-Tab Help** -- local-first Patch Co-Designer Chat and comprehensive 6-tab reference documentation.
 
@@ -17,13 +17,17 @@ SynthCraft is a 3-tier Pure-Rust ArtCraft modular audio synthesis studio and MCP
 
 | Capability | Status | Crate / Module |
 |---|---|---|
-| Dual VCO (`8` waveforms, FM/detune) + 4-Pole Resonant Ladder VCF (`4` modes) | `Implemented` | `synthcraft-core::model` |
+| Dual VCO (`9` waveforms, FM/detune) + 4-Pole Resonant Ladder VCF (`4` modes) | `Implemented` | `synthcraft-core::model` |
 | ADSR Envelope + Tempo-Synced LFO + 16-Step Acid Sequencer | `Implemented` | `synthcraft-core::model` |
 | 32-Band DFT Spectrum Analyzer, Oscilloscope & RMS/Peak dBFS Metering | `Implemented` | `synthcraft-core::model` |
-| CLAP `1.2.2` Plugin Descriptor & Parameter Automation Bridge for SoundCraft | `Implemented` | `synthcraft-core::model` |
+| CLAP `1.2.2` Plugin Descriptor & Parameter Automation Bridge for SoundCraft | `Descriptor and parameter map only; no loadable plugin yet` | `synthcraft-core::model` |
 | RIFF PCM `.wav` Renderer + BPM/Camelot Stem & Riser Exporter for DJCraft | `Implemented` | `synthcraft-core::model` |
-| Bundled SQLite Persistence (`%LOCALAPPDATA%\synthcraft\synthcraft.db`) | `Implemented` | `synthcraft-core::db` |
-| CLI (`--json`) + MCP `2026-07-28` Stdio Server (`14` tools) | `Implemented` | `synthcraft-mcp` |
+| Bundled SQLite Persistence (`%LOCALAPPDATA%\synthcraft\synthcraft.db`), schema v2, backup before migration, bad rows quarantined, saves off the UI thread | `Implemented` | `synthcraft-core::db`, `synthcraft-app::saver` |
+| Live audio (cpal) and MIDI input (midir) through the same `SynthRt` engine as offline rendering | `Implemented` | `synthcraft-core::rt`, `synthcraft-app` |
+| Sampler: WAV, SFZ, SF2 banks, loop points, automatic sustain loops, free CC0 bank downloader | `Implemented` | `synthcraft-core::sampler`, `synthcraft-core::banks` |
+| Atmospheric pad oscillator, chorus, reverb | `Implemented` | `synthcraft-core::dsp` |
+| Agent file sandbox (`--automation-read-root` / `--automation-write-root`, required for MCP) | `Implemented` | `synthcraft-core::sandbox` |
+| CLI (`--json`) + MCP `2026-07-28` Stdio Server (`23` tools) | `Implemented` | `synthcraft-mcp` |
 | Native `eframe`/`egui` 0.37 Studio (6 Workbenches, WCAG AAA Dark/Light) | `Implemented` | `synthcraft-app` |
 
 ## Quick Start

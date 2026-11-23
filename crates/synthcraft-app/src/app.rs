@@ -318,6 +318,25 @@ impl SynthCraftApp {
     }
 
     /// Debounced background save. Called once per frame.
+    /// Turn a panel edit (`before` -> `after`) into engine commands and run them, so a panel
+    /// can do nothing an agent cannot do through the same commands (AGENTS rule 14).
+    pub fn apply_patch_edit(
+        &mut self,
+        before: &synthcraft_core::SynthPatch,
+        after: &synthcraft_core::SynthPatch,
+    ) {
+        let cmds = before.edit_commands(after);
+        if cmds.is_empty() {
+            return;
+        }
+        for c in cmds {
+            if let Err(e) = c.dispatch(&mut self.engine) {
+                self.status_line = format!("Edit rejected: {e}");
+            }
+        }
+        self.persist();
+    }
+
     /// Poll the background sample-bank download and, when it finishes, load the bank through
     /// the engine command so persistence and the live audio sync follow the normal path.
     pub fn pump_bank_fetch(&mut self, ctx: &egui::Context) {
@@ -340,7 +359,14 @@ impl SynthCraftApp {
         self.bank_fetch_id = None;
         match result {
             Ok(spec) => {
-                let mix = self.engine.active_patch_mut().sampler.mix.max(0.8);
+                let mix = {
+                    let m = self.engine.active_patch().sampler.mix;
+                    if m < 0.05 {
+                        0.8
+                    } else {
+                        m
+                    }
+                };
                 let cmd = synthcraft_core::Command::SetSamplerBank {
                     bank: Some(spec.clone()),
                     mix,
@@ -348,13 +374,13 @@ impl SynthCraftApp {
                 match cmd.dispatch(&mut self.engine) {
                     Ok(_) => {
                         self.bank_input = spec;
-                        self.bank_status = "Bank downloaded and loaded.".to_string();
+                        self.bank_status = "Bank loaded.".to_string();
                         self.persist_state();
                     }
-                    Err(e) => self.bank_status = format!("Bank downloaded but not loaded: {e}"),
+                    Err(e) => self.bank_status = format!("Bank not loaded: {e}"),
                 }
             }
-            Err(e) => self.bank_status = format!("Download failed: {e}"),
+            Err(e) => self.bank_status = format!("Bank not loaded: {e}"),
         }
     }
 
@@ -482,7 +508,9 @@ impl SynthCraftApp {
                 }
                 if ui.button("Randomize Acid Sequence").clicked() {
                     let scale = [45_u8, 48, 50, 52, 55, 57, 60, 62];
-                    let p = self.engine.active_patch_mut();
+                    let before = self.engine.active_patch().clone();
+                    let mut edited = before.clone();
+                    let p = &mut edited;
                     for (i, step) in p.steps.iter_mut().enumerate() {
                         step.midi_note = scale[(i * 3 + 1) % scale.len()];
                         step.accent = i % 3 == 0;
@@ -490,6 +518,7 @@ impl SynthCraftApp {
                     }
                     self.persist();
                     ui.close();
+                    self.apply_patch_edit(&before, &edited);
                 }
             });
             ui.menu_button("View", |ui| {
@@ -563,10 +592,13 @@ impl SynthCraftApp {
             });
             ui.menu_button("Modify", |ui| {
                 if ui.button("Boost Filter Resonance (+1.5 Q)").clicked() {
-                    let p = self.engine.active_patch_mut();
+                    let before = self.engine.active_patch().clone();
+                    let mut edited = before.clone();
+                    let p = &mut edited;
                     p.resonance_q = (p.resonance_q + 1.5).clamp(0.5, 12.0);
                     self.persist();
                     ui.close();
+                    self.apply_patch_edit(&before, &edited);
                 }
             });
             ui.menu_button("Commands", |ui| {
@@ -826,7 +858,9 @@ impl SynthCraftApp {
         let pal = self.skin.palette();
         let mut changed = false;
         {
-            let p = self.engine.active_patch_mut();
+            let before = self.engine.active_patch().clone();
+            let mut edited = before.clone();
+            let p = &mut edited;
             ui.group(|ui| {
                 ui.strong("Hardware Rotary Potentiometer & Fader Performance Console (Drag or Shift+Drag; Double-Click Reset)");
                 ui.horizontal_wrapped(|ui| {
@@ -842,6 +876,7 @@ impl SynthCraftApp {
                     changed |= rotary_knob(ui, &pal, "X-MORPH", &mut p.extreme_morph, 0.0, 1.0, "%");
                 });
             });
+            self.apply_patch_edit(&before, &edited);
         }
         if changed {
             self.persist();
@@ -911,7 +946,9 @@ impl SynthCraftApp {
         let pal = self.skin.palette();
         let mut changed = false;
         {
-            let p = self.engine.active_patch_mut();
+            let before = self.engine.active_patch().clone();
+            let mut edited = before.clone();
+            let p = &mut edited;
             ui.columns(2, |cols| {
                 cols[0].group(|ui| {
                     ui.strong("Dual Oscillators (VCO 1 & VCO 2) + FM Rotary Console");
@@ -1003,6 +1040,7 @@ impl SynthCraftApp {
                     });
                 });
             });
+            self.apply_patch_edit(&before, &edited);
         }
         if changed {
             self.persist();
@@ -1020,7 +1058,9 @@ impl SynthCraftApp {
         let mut changed = false;
         let playing_step = self.playing_step();
         {
-            let p = self.engine.active_patch_mut();
+            let before = self.engine.active_patch().clone();
+            let mut edited = before.clone();
+            let p = &mut edited;
             ui.group(|ui| {
                 ui.strong("Studio ADSR Envelope Fader Bank & Sinusoidal Filter LFO Rotaries");
                 ui.horizontal_wrapped(|ui| {
@@ -1098,6 +1138,7 @@ impl SynthCraftApp {
                         });
                 }
             });
+            self.apply_patch_edit(&before, &edited);
         }
         if changed {
             self.persist();
@@ -1259,7 +1300,9 @@ impl SynthCraftApp {
         ui.separator();
 
         {
-            let p = self.engine.active_patch_mut();
+            let before = self.engine.active_patch().clone();
+            let mut edited = before.clone();
+            let p = &mut edited;
             ui.horizontal_wrapped(|ui| {
                 ui.add(egui::Slider::new(&mut p.bpm, 70.0..=190.0).text("Deck Tempo (BPM)"));
                 ui.label("Camelot Key:");
@@ -1270,6 +1313,7 @@ impl SynthCraftApp {
                 }
                 ui.add(egui::Slider::new(&mut self.djcraft_bars, 1..=16).text("Loop Bars"));
             });
+            self.apply_patch_edit(&before, &edited);
         }
 
         if self.subpage == 1 {
@@ -1302,7 +1346,11 @@ impl SynthCraftApp {
         }
 
         ui.add_space(6.0);
-        let stem = export_djcraft_stem_manifest(self.engine.active_patch(), self.djcraft_bars);
+        let stem = export_djcraft_stem_manifest(
+            self.engine.active_patch(),
+            self.djcraft_bars,
+            self.engine.sample_rate_hz,
+        );
         let pretty = serde_json::to_string_pretty(&stem).unwrap_or_default();
         ui.add(
             egui::TextEdit::multiline(&mut pretty.as_str())
@@ -1335,7 +1383,7 @@ impl SynthCraftApp {
                 self.chat_history.push(("You".into(), q));
                 self.chat_history.push((
                     "SynthCraft".into(),
-                    "no model selected -- use the 14 SynthCraft MCP tools (`load_patch`, `update_filter`, `analyze_spectrum`, `export_clap_manifest`, `export_djcraft_stem`, `render_wav_file`) from your agent IDE.".into(),
+                    "no model selected -- use the 23 SynthCraft MCP tools (`load_patch`, `update_filter`, `analyze_spectrum`, `export_clap_manifest`, `export_djcraft_stem`, `render_wav_file`) from your agent IDE.".into(),
                 ));
             }
         });
@@ -1532,7 +1580,7 @@ mod tests {
         app.bank_fetch_rx = Some(rx);
         let _ = tx.send(FetchMsg::Done(Err("offline".into())));
         app.pump_bank_fetch(&ctx);
-        assert!(app.bank_status.contains("Download failed: offline"));
+        assert!(app.bank_status.contains("Bank not loaded: offline"));
         assert!(app.bank_fetch_rx.is_none());
 
         let dir = std::env::temp_dir().join(format!("sc_app_bank_{}", std::process::id()));
@@ -1545,7 +1593,7 @@ mod tests {
         app.bank_fetch_rx = Some(rx);
         let _ = tx.send(FetchMsg::Done(Ok(spec.clone())));
         app.pump_bank_fetch(&ctx);
-        assert_eq!(app.bank_status, "Bank downloaded and loaded.");
+        assert_eq!(app.bank_status, "Bank loaded.");
         assert_eq!(
             app.engine.active_patch_mut().sampler.bank.as_deref(),
             Some(spec.as_str())
@@ -1557,7 +1605,7 @@ mod tests {
         let _ = tx.send(FetchMsg::Done(Ok("Z:\\nowhere\\x.sfz".into())));
         app.pump_bank_fetch(&ctx);
         assert!(
-            app.bank_status.contains("not loaded"),
+            app.bank_status.contains("Bank not loaded"),
             "{}",
             app.bank_status
         );
@@ -1565,7 +1613,25 @@ mod tests {
     }
 
     #[test]
-    fn subapp_registry_exposes_all_six_workbenches() {
+    fn panel_edits_run_as_engine_commands_and_are_validated() {
+        let mut app = temp_app();
+        let before = app.engine.active_patch().clone();
+        let mut after = before.clone();
+        after.cutoff_hz = 2222.0;
+        after.bpm = 99.0;
+        app.apply_patch_edit(&before, &after);
+        assert!((app.engine.active_patch().cutoff_hz - 2222.0).abs() < 1e-3);
+        assert!((app.engine.active_patch().bpm - 99.0).abs() < 1e-3);
+        // Out-of-range values are clamped by the command, the way an agent would see them.
+        let before = app.engine.active_patch().clone();
+        let mut after = before.clone();
+        after.bpm = 900.0;
+        app.apply_patch_edit(&before, &after);
+        assert!((app.engine.active_patch().bpm - 240.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn subapp_registry_exposes_every_workbench() {
         let reg = subapps::registry();
         assert_eq!(reg.len(), 10);
         let total_subpages: usize = reg.iter().map(|w| w.subpages().len()).sum();
@@ -1573,7 +1639,7 @@ mod tests {
     }
 
     #[test]
-    fn headless_egui_kittest_renders_all_twelve_workbench_subpages() {
+    fn headless_egui_kittest_renders_every_workbench_subpage() {
         let mut app = temp_app();
         for wb in subapps::registry() {
             for sp in wb.subpages() {
