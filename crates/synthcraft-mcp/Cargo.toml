@@ -15,7 +15,6 @@ path = "src/main.rs"
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2 = "0.10"
 ureq = "3"
 synthcraft-core = { path = "../synthcraft-core" }
 

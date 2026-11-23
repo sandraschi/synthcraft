@@ -20,6 +20,15 @@ fn downloaded_sfz_bank_loads_with_audible_zones() {
         let peak = z.data.iter().fold(0.0_f32, |m, v| m.max(v.abs()));
         assert!(peak > 0.01, "silent zone at root {}", z.root_key);
         assert!(z.data.len() > 4410, "zone at root {} too short", z.root_key);
+        let (s, e) = z.loop_range.unwrap_or((0, 0));
+        assert!(
+            e > s && e - s < z.data.len() && e - s >= (0.4 * z.sample_rate) as usize,
+            "no auto loop at root {}: {:?}",
+            z.root_key,
+            z.loop_range
+        );
+        let click = (z.data[e - 1] - z.data[s - 1]).abs();
+        assert!(click < 0.1 * peak, "click {click} at root {}", z.root_key);
     }
     let z = bank.find(60, 0.7);
     assert!(z.is_some(), "no zone for middle C");

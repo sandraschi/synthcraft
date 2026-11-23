@@ -5,6 +5,7 @@
 //! and BPM/Camelot Stem & Riser Forge for DJCraft.
 #![forbid(unsafe_code)]
 
+pub mod banks;
 pub mod db;
 pub mod dsp;
 pub mod error;

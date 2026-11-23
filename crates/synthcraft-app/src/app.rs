@@ -125,6 +125,8 @@ pub struct SynthCraftApp {
     pub bank_loading: Option<String>,
     pub bank_tx: std::sync::mpsc::Sender<BankResult>,
     pub bank_rx: std::sync::mpsc::Receiver<BankResult>,
+    pub bank_fetch_rx: Option<std::sync::mpsc::Receiver<crate::netfetch::FetchMsg>>,
+    pub bank_fetch_id: Option<String>,
     pub sf2_presets: Vec<String>,
     pub last_opts: Option<synthcraft_core::RtOptions>,
     pub held_ui_note: Option<u8>,
@@ -216,6 +218,8 @@ impl SynthCraftApp {
             bank_loading: None,
             bank_tx,
             bank_rx,
+            bank_fetch_rx: None,
+            bank_fetch_id: None,
             sf2_presets: Vec::new(),
             last_opts: None,
             held_ui_note: None,
@@ -314,6 +318,46 @@ impl SynthCraftApp {
     }
 
     /// Debounced background save. Called once per frame.
+    /// Poll the background sample-bank download and, when it finishes, load the bank through
+    /// the engine command so persistence and the live audio sync follow the normal path.
+    pub fn pump_bank_fetch(&mut self, ctx: &egui::Context) {
+        use crate::netfetch::FetchMsg;
+        let Some(rx) = self.bank_fetch_rx.as_ref() else {
+            return;
+        };
+        let mut finished: Option<Result<String, String>> = None;
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                FetchMsg::Progress(s) => self.bank_status = s,
+                FetchMsg::Done(r) => finished = Some(r),
+            }
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        let Some(result) = finished else {
+            return;
+        };
+        self.bank_fetch_rx = None;
+        self.bank_fetch_id = None;
+        match result {
+            Ok(spec) => {
+                let mix = self.engine.active_patch_mut().sampler.mix.max(0.8);
+                let cmd = synthcraft_core::Command::SetSamplerBank {
+                    bank: Some(spec.clone()),
+                    mix,
+                };
+                match cmd.dispatch(&mut self.engine) {
+                    Ok(_) => {
+                        self.bank_input = spec;
+                        self.bank_status = "Bank downloaded and loaded.".to_string();
+                        self.persist_state();
+                    }
+                    Err(e) => self.bank_status = format!("Bank downloaded but not loaded: {e}"),
+                }
+            }
+            Err(e) => self.bank_status = format!("Download failed: {e}"),
+        }
+    }
+
     pub fn pump_saves(&mut self, ctx: &egui::Context) {
         use std::time::Duration;
         let blobs = self.settings_blobs();
@@ -1397,6 +1441,7 @@ impl eframe::App for SynthCraftApp {
         self.handle_keyboard(&ctx);
         self.pump_live(&ctx);
         self.pump_saves(&ctx);
+        self.pump_bank_fetch(&ctx);
 
         egui::Panel::top("synthcraft_top_menu").show(ui, |ui| {
             self.render_menu_bar(&ctx, ui);
@@ -1453,6 +1498,70 @@ mod tests {
         let mut p = std::env::temp_dir();
         p.push(format!("synthcraft_app_test_{}.db", std::process::id()));
         SynthCraftApp::with_db_path(p)
+    }
+
+    fn tiny_wav(secs: f32) -> Vec<u8> {
+        let sr = 22_050u32;
+        let n = (secs * sr as f32) as usize;
+        let mut out = Vec::new();
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&(36 + 2 * n as u32).to_le_bytes());
+        out.extend_from_slice(b"WAVEfmt ");
+        out.extend_from_slice(&16u32.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&sr.to_le_bytes());
+        out.extend_from_slice(&(sr * 2).to_le_bytes());
+        out.extend_from_slice(&2u16.to_le_bytes());
+        out.extend_from_slice(&16u16.to_le_bytes());
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&(2 * n as u32).to_le_bytes());
+        for i in 0..n {
+            let v = ((i as f32 * 0.06).sin() * 12000.0) as i16;
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        out
+    }
+
+    #[test]
+    fn finished_bank_download_loads_through_the_command_and_reports_errors() {
+        use crate::netfetch::FetchMsg;
+        let ctx = egui::Context::default();
+        let mut app = temp_app();
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.bank_fetch_rx = Some(rx);
+        let _ = tx.send(FetchMsg::Done(Err("offline".into())));
+        app.pump_bank_fetch(&ctx);
+        assert!(app.bank_status.contains("Download failed: offline"));
+        assert!(app.bank_fetch_rx.is_none());
+
+        let dir = std::env::temp_dir().join(format!("sc_app_bank_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(dir.join("a.wav"), tiny_wav(0.3));
+        let sfz = dir.join("a.sfz");
+        let _ = std::fs::write(&sfz, "<region> sample=a.wav pitch_keycenter=60\n");
+        let spec = sfz.to_string_lossy().into_owned();
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.bank_fetch_rx = Some(rx);
+        let _ = tx.send(FetchMsg::Done(Ok(spec.clone())));
+        app.pump_bank_fetch(&ctx);
+        assert_eq!(app.bank_status, "Bank downloaded and loaded.");
+        assert_eq!(
+            app.engine.active_patch_mut().sampler.bank.as_deref(),
+            Some(spec.as_str())
+        );
+        assert!(app.engine.active_patch_mut().sampler.mix >= 0.8);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.bank_fetch_rx = Some(rx);
+        let _ = tx.send(FetchMsg::Done(Ok("Z:\\nowhere\\x.sfz".into())));
+        app.pump_bank_fetch(&ctx);
+        assert!(
+            app.bank_status.contains("not loaded"),
+            "{}",
+            app.bank_status
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

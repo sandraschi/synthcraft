@@ -10,7 +10,7 @@ SynthCraft is dual-licensed under `MIT OR Apache-2.0` and authored by Sandra Sch
 ## Rust Crates
 
 - `egui` / `eframe` / `egui_kittest` 0.37 -- Emil Ernerfeldt & Embark Studios (`MIT OR Apache-2.0`)
-- `rusqlite` 0.40 (`bundled` SQLite) -- The rusqlite Developers (`MIT`)
+- `rusqlite` 0.41 (`bundled` SQLite) -- The rusqlite Developers (`MIT`)
 - `clap` 4.5 -- clap Contributors (`MIT OR Apache-2.0`)
 - `serde` / `serde_json` 1.0 -- Erick Tryzelaar & David Tolnay (`MIT OR Apache-2.0`)
 - `thiserror` 2.0 -- David Tolnay (`MIT OR Apache-2.0`)

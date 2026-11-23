@@ -231,6 +231,76 @@ fn read_wav(path: &Path) -> Result<Wav, SynthError> {
     decode_wav(&bytes).map_err(|e| err(format!("{}: {e}", path.display())))
 }
 
+/// Find a seamless sustain loop in a one-shot sample and bake an equal-power crossfade into
+/// `data` so jumping from the loop end back to its start has no click. Returns `None` when the
+/// sample is too short or no region repeats well enough (it is then played once, unlooped).
+pub fn auto_loop(data: &mut [f32], sample_rate: f32) -> Option<(usize, usize)> {
+    const WIN: usize = 512;
+    let n = data.len();
+    let sr = sample_rate.max(8000.0);
+    if n < (1.2 * sr) as usize {
+        return None;
+    }
+    let min_len = (0.4 * sr) as usize;
+    let score = |d: &[f32], s: usize, e: usize| -> f32 {
+        if s < WIN || e + WIN > d.len() {
+            return -1.0;
+        }
+        let a = &d[s - WIN..s + WIN];
+        let b = &d[e - WIN..e + WIN];
+        let (mut ab, mut aa, mut bb) = (0.0_f32, 0.0_f32, 0.0_f32);
+        for (x, y) in a.iter().zip(b) {
+            ab += x * y;
+            aa += x * x;
+            bb += y * y;
+        }
+        if aa < 1e-9 || bb < 1e-9 {
+            return -1.0;
+        }
+        let ratio = (aa.min(bb) / aa.max(bb)).sqrt();
+        ab / (aa * bb).sqrt() * ratio
+    };
+    let mut best: Option<(f32, usize, usize)> = None;
+    for frac in [0.88_f32, 0.80, 0.72] {
+        let e = (n as f32 * frac) as usize;
+        let lo = ((n as f32 * 0.2) as usize).max(4096);
+        let hi = e.saturating_sub(min_len);
+        let mut s = lo;
+        while s < hi {
+            let sc = score(data, s, e);
+            if best.is_none_or(|(b, _, _)| sc > b) {
+                best = Some((sc, s, e));
+            }
+            s += 32;
+        }
+    }
+    let (_, s0, e) = best?;
+    let mut best_s = (score(data, s0, e), s0);
+    for s in s0.saturating_sub(32)..(s0 + 32).min(e.saturating_sub(min_len)) {
+        let sc = score(data, s, e);
+        if sc > best_s.0 {
+            best_s = (sc, s);
+        }
+    }
+    if best_s.0 < 0.6 {
+        return None;
+    }
+    let s = best_s.1;
+    let xf = 4096.min(s).min((e - s) / 4);
+    for i in 0..xf {
+        let t = (i as f32 + 0.5) / xf as f32;
+        let (g_out, g_in) = (
+            (t * std::f32::consts::FRAC_PI_2).cos(),
+            (t * std::f32::consts::FRAC_PI_2).sin(),
+        );
+        data[e - xf + i] = data[e - xf + i] * g_out + data[s - xf + i] * g_in;
+    }
+    Some((s, e))
+}
+
+/// Sample data with a baked loop crossfade, plus its loop range.
+type LoopedSample = (Arc<[f32]>, Option<(usize, usize)>);
+
 fn wav_zone(w: Wav, key_lo: u8, key_hi: u8, root: u8) -> Zone {
     Zone {
         sample_rate: w.sample_rate as f32,
@@ -403,6 +473,7 @@ pub fn load_sfz(path: &Path) -> Result<SampleBank, SynthError> {
     flush(&mut region, &global, &master, &group);
 
     let mut cache: HashMap<PathBuf, (Arc<[f32]>, Wav)> = HashMap::new();
+    let mut looped: HashMap<PathBuf, LoopedSample> = HashMap::new();
     let mut zones = Vec::new();
     for ops in &regions {
         let Some(sample) = ops.get("sample") else {
@@ -434,20 +505,33 @@ pub fn load_sfz(path: &Path) -> Result<SampleBank, SynthError> {
             Some(_) => false,
             None => meta.loop_range.is_some(),
         };
+        let mut data = arc.clone();
         let loop_range = if looping {
             let s = sfz_f(ops, "loop_start").map(|v| v as usize);
             let e = sfz_f(ops, "loop_end").map(|v| v as usize + 1);
             match (s, e, meta.loop_range) {
                 (Some(s), Some(e), _) if e > s => Some((s, e)),
                 (_, _, Some(r)) => Some(r),
-                _ => Some((0, arc.len())),
+                _ => {
+                    if let Some((d, r)) = looped.get(&full) {
+                        data = d.clone();
+                        *r
+                    } else {
+                        let mut v = arc.to_vec();
+                        let r = auto_loop(&mut v, meta.sample_rate as f32).or(Some((0, v.len())));
+                        let d: Arc<[f32]> = v.into();
+                        looped.insert(full.clone(), (d.clone(), r));
+                        data = d;
+                        r
+                    }
+                }
             }
         } else {
             None
         };
         let vol_db = sfz_f(ops, "volume").unwrap_or(0.0);
         zones.push(Zone {
-            data: arc.clone(),
+            data,
             sample_rate: meta.sample_rate as f32,
             key_lo: lo.min(hi),
             key_hi: hi.max(lo),
@@ -1064,5 +1148,29 @@ mod tests {
         assert_eq!(z.len(), 200);
         assert!((z.sample_rate - 32000.0).abs() < 1.0);
         let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn auto_loop_finds_a_clickless_sustain_loop() {
+        let sr = 48_000.0_f32;
+        let n = (3.0 * sr) as usize;
+        let mut d: Vec<f32> = (0..n)
+            .map(|i| {
+                let t = i as f32 / sr;
+                let env = 0.3 + 0.7 * (-t * 0.4).exp();
+                env * ((std::f32::consts::TAU * 220.0 * t).sin()
+                    + 0.4 * (std::f32::consts::TAU * 660.0 * t).sin())
+            })
+            .collect();
+        let r = auto_loop(&mut d, sr);
+        let (s, e) = r.unwrap_or((0, 0));
+        assert!(e > s && e - s >= (0.4 * sr) as usize, "loop {r:?}");
+        assert!(
+            (d[e - 1] - d[s - 1]).abs() < 0.08,
+            "splice click {}",
+            (d[e - 1] - d[s - 1]).abs()
+        );
+        let mut short = vec![0.1_f32; 1000];
+        assert!(auto_loop(&mut short, sr).is_none());
     }
 }

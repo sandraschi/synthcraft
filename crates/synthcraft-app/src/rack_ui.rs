@@ -668,6 +668,33 @@ fn render_sampler_and_fx(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             }
         });
     }
+    egui::CollapsingHeader::new("Free sample banks (download)")
+        .id_salt("free_banks")
+        .show(ui, |ui| {
+            ui.label("CC0 packs, checksum verified, saved in the Banks folder. Strings are looped automatically.");
+            match synthcraft_core::banks::manifest() {
+                Ok(m) => {
+                    let busy = app.bank_fetch_rx.is_some();
+                    for b in &m.banks {
+                        ui.horizontal(|ui| {
+                            let mb = b.files.iter().map(|f| f.bytes).sum::<u64>() / 1_000_000;
+                            ui.label(format!("{} ({} MB, {})", b.name, mb, b.license));
+                            let running = app.bank_fetch_id.as_deref() == Some(b.id.as_str());
+                            let label = if running { "Downloading..." } else { "Download and load" };
+                            if ui.add_enabled(!busy, egui::Button::new(label)).clicked() {
+                                app.bank_status = format!("Starting download of {}...", b.name);
+                                app.bank_fetch_id = Some(b.id.clone());
+                                app.bank_fetch_rx =
+                                    Some(crate::netfetch::start(b.id.clone(), dir.clone()));
+                            }
+                        });
+                    }
+                }
+                Err(e) => {
+                    ui.label(format!("Bank list unavailable: {e}"));
+                }
+            }
+        });
     if !app.sf2_presets.is_empty() {
         let base = app
             .bank_input

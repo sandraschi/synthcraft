@@ -205,7 +205,7 @@ fn default_banks_dir() -> PathBuf {
 }
 
 fn run_list_banks(json: bool) -> i32 {
-    let m = match fetch::manifest() {
+    let m = match synthcraft_core::banks::manifest() {
         Ok(m) => m,
         Err(e) => {
             eprintln!("error: {e}");
@@ -229,7 +229,7 @@ fn run_list_banks(json: bool) -> i32 {
 }
 
 fn run_fetch_bank(id: &str, dest: Option<&Path>, policy: &PathPolicy) -> i32 {
-    let m = match fetch::manifest() {
+    let m = match synthcraft_core::banks::manifest() {
         Ok(m) => m,
         Err(e) => {
             eprintln!("error: {e}");
@@ -254,7 +254,9 @@ fn run_fetch_bank(id: &str, dest: Option<&Path>, policy: &PathPolicy) -> i32 {
     } else {
         dest
     };
-    match fetch::fetch_bank(bank, &dest, &fetch::http_get, &mut |l| eprintln!("{l}")) {
+    match synthcraft_core::banks::fetch_bank(bank, &dest, &fetch::http_get, &mut |l| {
+        eprintln!("{l}")
+    }) {
         Ok(sfz) => {
             println!("{}", sfz.display());
             0

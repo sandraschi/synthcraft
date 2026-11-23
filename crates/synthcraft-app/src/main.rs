@@ -7,6 +7,7 @@ mod controls;
 mod help_docs;
 mod live;
 mod midi_io;
+mod netfetch;
 mod rack_ui;
 mod saver;
 mod settings_ui;
