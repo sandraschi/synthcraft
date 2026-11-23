@@ -61,6 +61,8 @@ synthcraft-mcp fetch-bank vsco2ce-cello-section-sus
 
 Then enter the printed `.sfz` path in the sample bank field of the rack. Sample files are never stored in this repository; `banks/manifest.json` pins source commit, SHA-256 and licence. Bring your own SF2/SFZ files for anything else.
 
+See `docs/SAMPLES_AND_M1.md` for licensing rules, adding packs and the M1 question, and `docs/ROADMAP.md` for plans (CLAP, VCV Rack module, features).
+
 ## License
 
 Dual-licensed under `MIT OR Apache-2.0`.
