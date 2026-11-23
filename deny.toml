@@ -7,9 +7,15 @@ all-features = true
 [advisories]
 version = 2
 db-urls = ["https://github.com/rustsec/advisory-db"]
+# cargo-deny 0.18+ takes a scope here (all, workspace, transitive, none), not a level.
 unmaintained = "workspace"
 yanked = "warn"
-ignore = []
+ignore = [
+    # chrono is flagged unmaintained (RUSTSEC-2026-0543), but craft-contrib app-agents rule 12
+    # requires it for calendar dates and craft-libs depends on it. Revisit when the standard
+    # names a successor.
+    { id = "RUSTSEC-2026-0543", reason = "chrono is mandated by craft-contrib app-agents rule 12" },
+]
 
 [licenses]
 version = 2
