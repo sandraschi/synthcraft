@@ -20,6 +20,16 @@ use synthcraft_core::{
 
 const ATTRIBUTION_MD: &str = include_str!("../../../ATTRIBUTION.md");
 
+/// UI choices remembered between runs.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+struct UiPrefs {
+    skin: Option<SynthSkin>,
+    layout: Option<SynthLayout>,
+    dark_mode: Option<bool>,
+    zoom: Option<f32>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppLocale {
     En,
@@ -103,6 +113,12 @@ pub struct SynthCraftApp {
     pub midi_rx: Receiver<MidiEvent>,
     pub repaint_ctx: Option<egui::Context>,
     pub last_patch_json: String,
+    pub saver: Option<crate::saver::SaveWorker>,
+    pub dirty_since: Option<std::time::Instant>,
+    pub persist_blocked: Option<String>,
+    pub save_requested: bool,
+    pub save_requested_in_flight: bool,
+    pub last_saved_prefs: String,
     pub bank_input: String,
     pub bank_status: String,
     pub bank_loaded_spec: Option<String>,
@@ -124,8 +140,26 @@ impl Default for SynthCraftApp {
 }
 
 impl SynthCraftApp {
+    /// Build the app on `db_path` and apply the stored studio settings and UI preferences.
     pub fn with_db_path(db_path: PathBuf) -> Self {
-        let engine = SynthEngine::open_or_seed(&db_path).unwrap_or_default();
+        let mut app = Self::build(db_path);
+        app.load_prefs();
+        app
+    }
+
+    fn build(db_path: PathBuf) -> Self {
+        // A database that cannot be opened is never replaced: the app runs on factory data,
+        // saving is disabled, and the reason is shown.
+        let (engine, persist_blocked) = match SynthEngine::open_or_seed(&db_path) {
+            Ok(e) => (e, None),
+            Err(e) => (
+                SynthEngine::factory_seed(),
+                Some(format!(
+                    "Cannot use {}: {e}. Running on factory data; nothing will be saved.",
+                    db_path.display()
+                )),
+            ),
+        };
         let (midi_tx, midi_rx) = channel();
         let (bank_tx, bank_rx) = channel();
         let midi_shared = MidiShared::new(
@@ -170,6 +204,12 @@ impl SynthCraftApp {
             midi_rx,
             repaint_ctx: None,
             last_patch_json: String::new(),
+            saver: Some(crate::saver::SaveWorker::spawn()),
+            dirty_since: None,
+            persist_blocked,
+            save_requested: false,
+            save_requested_in_flight: false,
+            last_saved_prefs: String::new(),
             bank_input: String::new(),
             bank_status: String::new(),
             bank_loaded_spec: None,
@@ -195,7 +235,132 @@ impl SynthCraftApp {
     }
 
     fn persist(&mut self) {
-        let _ = self.engine.save_db(&self.db_path);
+        self.mark_dirty();
+    }
+
+    /// Note that something changed. The debounced saver writes it shortly after.
+    pub fn mark_dirty(&mut self) {
+        if self.dirty_since.is_none() {
+            self.dirty_since = Some(std::time::Instant::now());
+        }
+    }
+
+    /// Save as soon as the next frame runs (File menu), regardless of the auto-save setting.
+    pub fn save_now(&mut self) {
+        self.save_requested = true;
+        self.dirty_since = Some(std::time::Instant::now() - std::time::Duration::from_secs(5));
+    }
+
+    fn settings_blobs(&self) -> Vec<(String, String)> {
+        let prefs = UiPrefs {
+            skin: Some(self.skin),
+            layout: Some(self.layout_mode),
+            dark_mode: Some(self.dark_mode),
+            zoom: Some(self.zoom_factor),
+        };
+        vec![
+            (
+                "app:studio_settings".to_string(),
+                serde_json::to_string(&self.settings).unwrap_or_default(),
+            ),
+            (
+                "app:ui_prefs".to_string(),
+                serde_json::to_string(&prefs).unwrap_or_default(),
+            ),
+        ]
+    }
+
+    fn load_prefs(&mut self) {
+        if self.persist_blocked.is_some() {
+            return;
+        }
+        let get = |key: &str| synthcraft_core::db::load_setting(&self.db_path, key);
+        let settings = get("app:studio_settings");
+        let prefs = get("app:ui_prefs");
+        match settings {
+            Ok(Some(raw)) => match serde_json::from_str::<StudioSettings>(&raw) {
+                Ok(s) => self.settings = s,
+                Err(e) => {
+                    self.status_line =
+                        format!("Stored studio settings unreadable ({e}); defaults in use.")
+                }
+            },
+            Ok(None) => {}
+            Err(e) => self.status_line = format!("Could not load studio settings: {e}"),
+        }
+        if let Ok(Some(raw)) = prefs {
+            if let Ok(p) = serde_json::from_str::<UiPrefs>(&raw) {
+                if let Some(s) = p.skin {
+                    self.set_skin(s);
+                }
+                if let Some(l) = p.layout {
+                    self.layout_mode = l;
+                }
+                if let Some(d) = p.dark_mode {
+                    self.dark_mode = d;
+                }
+                if let Some(z) = p.zoom {
+                    self.zoom_factor = z.clamp(0.75, 1.75);
+                }
+            }
+        }
+        for w in &self.engine.load_warnings {
+            self.status_line = format!("Database warning: {w}");
+        }
+        if let Some(msg) = &self.persist_blocked {
+            self.status_line.clone_from(msg);
+        }
+        self.last_saved_prefs = self.settings_blobs().into_iter().map(|(_, v)| v).collect();
+    }
+
+    /// Debounced background save. Called once per frame.
+    pub fn pump_saves(&mut self, ctx: &egui::Context) {
+        use std::time::Duration;
+        let blobs = self.settings_blobs();
+        let joined: String = blobs.iter().map(|(_, v)| v.as_str()).collect();
+        if joined != self.last_saved_prefs {
+            self.mark_dirty();
+        }
+        if let Some(w) = &self.saver {
+            for r in w.poll() {
+                match r {
+                    Ok(()) => {
+                        if self.save_requested_in_flight {
+                            self.save_requested_in_flight = false;
+                            self.status_line = format!("Saved to {}", self.db_path.display());
+                        }
+                    }
+                    Err(e) => {
+                        self.save_requested_in_flight = false;
+                        self.status_line = format!("SAVE FAILED: {e}");
+                    }
+                }
+            }
+        }
+        let Some(since) = self.dirty_since else {
+            return;
+        };
+        let auto = self.settings.auto_save_sqlite_on_tweak || self.save_requested;
+        if since.elapsed() < Duration::from_millis(400) || !auto {
+            ctx.request_repaint_after(Duration::from_millis(450));
+            return;
+        }
+        self.dirty_since = None;
+        if let Some(msg) = &self.persist_blocked {
+            self.status_line.clone_from(msg);
+            self.save_requested = false;
+            return;
+        }
+        if let Some(w) = &self.saver {
+            w.submit(crate::saver::SaveJob {
+                path: self.db_path.clone(),
+                engine: self.engine.clone(),
+                settings: blobs,
+            });
+            self.last_saved_prefs = joined;
+            self.save_requested_in_flight = self.save_requested;
+            self.save_requested = false;
+        }
     }
 
     pub fn set_skin(&mut self, skin: SynthSkin) {
@@ -246,8 +411,8 @@ impl SynthCraftApp {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
                 if ui.button("Save Patch Bank to SQLite").clicked() {
-                    self.persist();
-                    self.status_line = format!("Saved to {}", self.db_path.display());
+                    self.save_now();
+                    self.status_line = format!("Saving to {} ...", self.db_path.display());
                     ui.close();
                 }
                 if ui
@@ -1231,6 +1396,7 @@ impl eframe::App for SynthCraftApp {
         self.handle_shortcuts(&ctx);
         self.handle_keyboard(&ctx);
         self.pump_live(&ctx);
+        self.pump_saves(&ctx);
 
         egui::Panel::top("synthcraft_top_menu").show(ui, |ui| {
             self.render_menu_bar(&ctx, ui);
@@ -1259,6 +1425,22 @@ impl eframe::App for SynthCraftApp {
         });
 
         self.render_modals(&ctx);
+    }
+}
+
+impl Drop for SynthCraftApp {
+    fn drop(&mut self) {
+        // Dropping the worker waits for queued saves, so the final write below is the newest.
+        self.saver = None;
+        let wanted = self.settings.auto_save_sqlite_on_tweak || self.save_requested;
+        if self.persist_blocked.is_none() && self.dirty_since.is_some() && wanted {
+            let job = crate::saver::SaveJob {
+                path: self.db_path.clone(),
+                engine: self.engine.clone(),
+                settings: self.settings_blobs(),
+            };
+            let _ = crate::saver::run_job(&job);
+        }
     }
 }
 

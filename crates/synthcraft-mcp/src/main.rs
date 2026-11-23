@@ -159,7 +159,16 @@ pub enum CliSub {
 fn main() {
     let cli = Cli::parse();
     let db_path = cli.db.unwrap_or_else(default_db_path);
-    let mut engine = SynthEngine::open_or_seed(&db_path).unwrap_or_default();
+    let mut engine = match SynthEngine::open_or_seed(&db_path) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("error: cannot open database {}: {e}", db_path.display());
+            std::process::exit(1);
+        }
+    };
+    for w in &engine.load_warnings {
+        eprintln!("warning: {w}");
+    }
 
     if cli.mcp || matches!(cli.subcommand, Some(CliSub::Mcp)) {
         run_mcp_stdio(&mut engine, &db_path);
@@ -242,9 +251,13 @@ fn main() {
         CliSub::ResetFactory => Command::ResetFactoryPatches,
     };
 
+    let before = serde_json::to_string(&engine).unwrap_or_default();
     match cmd.dispatch(&mut engine) {
         Ok(val) => {
-            let _ = engine.save_db(&db_path);
+            if let Err(e) = save_if_changed(&engine, &before, &db_path) {
+                eprintln!("error: command succeeded but saving failed: {e}");
+                std::process::exit(1);
+            }
             let out = serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string());
             println!("{out}");
         }
@@ -253,6 +266,20 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// Save only when the command changed something, so read-only calls never write and a
+/// long-lived server does not overwrite edits made elsewhere with a stale snapshot.
+fn save_if_changed(
+    engine: &SynthEngine,
+    before: &str,
+    db_path: &Path,
+) -> Result<(), synthcraft_core::SynthError> {
+    let after = serde_json::to_string(engine).unwrap_or_default();
+    if after == before {
+        return Ok(());
+    }
+    engine.save_db(db_path)
 }
 
 pub fn handle_mcp_request(req: &Value, engine: &mut SynthEngine, db_path: &Path) -> Option<Value> {
@@ -292,6 +319,7 @@ pub fn handle_mcp_request(req: &Value, engine: &mut SynthEngine, db_path: &Path)
                 .cloned()
                 .unwrap_or_else(|| json!({}));
 
+            let before = serde_json::to_string(&*engine).unwrap_or_default();
             let cmd_res = match name {
                 "synth_status" => Command::Status.dispatch(engine),
                 "synth_summary" => Command::Summary.dispatch(engine),
@@ -501,7 +529,16 @@ pub fn handle_mcp_request(req: &Value, engine: &mut SynthEngine, db_path: &Path)
 
             match cmd_res {
                 Ok(val) => {
-                    let _ = engine.save_db(db_path);
+                    if let Err(e) = save_if_changed(engine, &before, db_path) {
+                        return Some(json!({
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "result": {
+                                "content": [{ "type": "text", "text": format!("saving failed: {e}") }],
+                                "isError": true
+                            }
+                        }));
+                    }
                     let text = serde_json::to_string_pretty(&val).unwrap_or_default();
                     Some(json!({
                         "jsonrpc": "2.0",

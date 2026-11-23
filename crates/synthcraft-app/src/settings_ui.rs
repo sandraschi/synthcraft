@@ -67,7 +67,8 @@ impl SettingsTab {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct StudioSettings {
     // 1. Audio & DSP Engine
     pub output_device: String,

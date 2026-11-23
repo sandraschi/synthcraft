@@ -3,7 +3,7 @@
 
 use eframe::egui;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SynthSkin {
     ObsidianVcv,
     KorgM1Vintage,
@@ -211,7 +211,7 @@ pub struct SkinPalette {
     pub text_muted: egui::Color32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SynthLayout {
     WorkbenchSplit,
     EurorackBay,

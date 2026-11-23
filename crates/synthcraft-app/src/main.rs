@@ -8,6 +8,7 @@ mod help_docs;
 mod live;
 mod midi_io;
 mod rack_ui;
+mod saver;
 mod settings_ui;
 mod subapps;
 
@@ -42,7 +43,8 @@ fn main() -> eframe::Result<()> {
     let resolved_db = db_path.unwrap_or_else(default_db_path);
 
     if args.iter().any(|a| a == "--smoke" || a == "--smoke-test") {
-        let mut eng = SynthEngine::open_or_seed(&resolved_db).unwrap_or_default();
+        let mut eng = SynthEngine::open_or_seed(&resolved_db)
+            .map_err(|e| eframe::Error::AppCreation(Box::new(e)))?;
         let status = Command::Status
             .dispatch(&mut eng)
             .map_err(|e| eframe::Error::AppCreation(Box::new(e)))?;
@@ -83,7 +85,8 @@ fn main() -> eframe::Result<()> {
 /// Headless end-to-end check of the live path: device, callback, engine and meters.
 fn audio_check(db: PathBuf) -> eframe::Result<()> {
     use audio_io::{AudioHandle, AudioMsg};
-    let eng = SynthEngine::open_or_seed(&db).unwrap_or_default();
+    let eng =
+        SynthEngine::open_or_seed(&db).map_err(|e| eframe::Error::AppCreation(Box::new(e)))?;
     let handle = AudioHandle::start(
         None,
         Some(eng.sample_rate_hz),

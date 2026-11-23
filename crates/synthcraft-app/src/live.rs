@@ -180,6 +180,9 @@ impl SynthCraftApp {
         let patch_changed = json != self.last_patch_json;
         let opts_changed = self.last_opts != Some(opts);
         self.sync_bank();
+        if patch_changed && !self.last_patch_json.is_empty() {
+            self.dirty_since.get_or_insert_with(std::time::Instant::now);
+        }
         let Some(a) = &self.audio else {
             return;
         };

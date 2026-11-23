@@ -46,6 +46,9 @@ pub struct SynthEngine {
     pub demos: Vec<DemoShowcaseItem>,
     #[serde(default)]
     pub midi_hw: MidiHardwareConfig,
+    /// Problems found while loading the database (unreadable rows, missing active patch).
+    #[serde(skip)]
+    pub load_warnings: Vec<String>,
 }
 
 impl Default for SynthEngine {
@@ -319,6 +322,7 @@ impl SynthEngine {
             midi_depot: builtin_midi_depot(),
             demos: builtin_demo_showcases(),
             midi_hw: MidiHardwareConfig::default(),
+            load_warnings: Vec::new(),
         }
     }
 
