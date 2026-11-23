@@ -1,0 +1,19 @@
+{
+  "manifest_version": "0.2",
+  "name": "synthcraft",
+  "version": "0.2.0",
+  "description": "Pure-Rust Modular DSP Synthesizer, 16-Step Acid Sequencer, Spectral Analyzer, CLAP 1.2.2 Plugin Bridge for SoundCraft, and BPM/Camelot Stem Forge for DJCraft",
+  "author": {
+    "name": "Sandra Schipal",
+    "url": "https://github.com/sandraschi/synthcraft"
+  },
+  "license": "MIT OR Apache-2.0",
+  "server": {
+    "type": "binary",
+    "entry_point": "synthcraft-mcp.exe",
+    "mcp_config": {
+      "command": "${__dirname}/synthcraft-mcp.exe",
+      "args": ["--mcp"]
+    }
+  }
+}

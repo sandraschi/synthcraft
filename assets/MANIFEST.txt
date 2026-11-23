@@ -1,0 +1,2 @@
+# path min-bytes
+assets/synth.svg 300
