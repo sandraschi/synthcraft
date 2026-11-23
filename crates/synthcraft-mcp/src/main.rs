@@ -1,0 +1,573 @@
+//! SynthCraft L2 CLI & MCP `2026-07-28` stdio server.
+#![forbid(unsafe_code)]
+
+use clap::{Parser, Subcommand};
+use serde_json::{json, Value};
+use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
+use synthcraft_core::{default_db_path, Command, SynthEngine, APP_VERSION};
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "synthcraft-mcp",
+    version,
+    about = "SynthCraft Modular DSP Synthesizer, CLAP 1.2.2 Bridge for SoundCraft & Stem Forge for DJCraft"
+)]
+pub struct Cli {
+    /// Emit structured JSON output
+    #[arg(long, global = true, default_value_t = false)]
+    pub json: bool,
+
+    /// Optional SQLite database file path override
+    #[arg(long, global = true)]
+    pub db: Option<PathBuf>,
+
+    /// Launch MCP 2026-07-28 JSON-RPC server on stdio
+    #[arg(long, global = true, default_value_t = false)]
+    pub mcp: bool,
+
+    #[command(subcommand)]
+    pub subcommand: Option<CliSub>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CliSub {
+    /// Run MCP 2026-07-28 JSON-RPC server on stdio
+    Mcp,
+    /// Show SynthCraft engine status
+    Status,
+    /// Show full active patch and engine summary
+    Summary,
+    /// List all factory and user patches
+    ListPatches,
+    /// Load a patch by ID
+    LoadPatch {
+        #[arg(long, default_value = "vienna_acid_303")]
+        id: String,
+    },
+    /// Update dual VCO waveforms, detune, mix, and FM index
+    UpdateOscillators {
+        #[arg(long, default_value = "saw")]
+        vco1: String,
+        #[arg(long, default_value = "sub_octave")]
+        vco2: String,
+        #[arg(long, default_value_t = 12.0)]
+        detune_cents: f32,
+        #[arg(long, default_value_t = 0.35)]
+        mix: f32,
+        #[arg(long, default_value_t = 0.2)]
+        fm_index: f32,
+    },
+    /// Update 4-pole ladder filter mode, cutoff Hz, resonance Q, and envelope mod depth
+    UpdateFilter {
+        #[arg(long, default_value = "acid_resonant")]
+        mode: String,
+        #[arg(long, default_value_t = 850.0)]
+        cutoff_hz: f32,
+        #[arg(long, default_value_t = 6.5)]
+        resonance_q: f32,
+        #[arg(long, default_value_t = 0.8)]
+        env_mod_depth: f32,
+    },
+    /// Update ADSR envelope and tempo-synced LFO parameters
+    UpdateEnvelopeLfo {
+        #[arg(long, default_value_t = 5.0)]
+        attack_ms: f32,
+        #[arg(long, default_value_t = 200.0)]
+        decay_ms: f32,
+        #[arg(long, default_value_t = 0.3)]
+        sustain_level: f32,
+        #[arg(long, default_value_t = 120.0)]
+        release_ms: f32,
+        #[arg(long, default_value_t = 2.0)]
+        lfo_rate_hz: f32,
+        #[arg(long, default_value_t = 0.25)]
+        lfo_depth: f32,
+    },
+    /// Configure one of the 16 acid sequencer steps (0..15)
+    SetStep {
+        #[arg(long)]
+        step: usize,
+        #[arg(long, default_value_t = 45)]
+        midi_note: u8,
+        #[arg(long, default_value_t = false)]
+        accent: bool,
+        #[arg(long, default_value_t = false)]
+        slide: bool,
+        #[arg(long, default_value_t = true)]
+        active: bool,
+    },
+    /// Synthesize a preview audio buffer and return first 64 PCM samples
+    Preview {
+        #[arg(long, default_value_t = 250)]
+        duration_ms: u32,
+    },
+    /// Analyze 32-band DFT harmonic spectrum, RMS/Peak dBFS, and pitch Hz
+    AnalyzeSpectrum {
+        #[arg(long, default_value_t = 300)]
+        duration_ms: u32,
+    },
+    /// Render a 16-bit RIFF PCM .wav file to disk for SoundCraft or DJCraft
+    RenderWav {
+        #[arg(long)]
+        path: String,
+        #[arg(long, default_value_t = 2000)]
+        duration_ms: u32,
+    },
+    /// Export CLAP 1.2.2 plugin descriptor and parameter automation map for SoundCraft
+    ExportClap,
+    /// Export BPM/Camelot stem manifest and cue points for DJCraft
+    ExportDjcraftStem {
+        #[arg(long, default_value_t = 4)]
+        bars: usize,
+    },
+    /// Reset all patches to factory defaults
+    ResetFactory,
+}
+
+fn main() {
+    let cli = Cli::parse();
+    let db_path = cli.db.unwrap_or_else(default_db_path);
+    let mut engine = SynthEngine::open_or_seed(&db_path).unwrap_or_default();
+
+    if cli.mcp || matches!(cli.subcommand, Some(CliSub::Mcp)) {
+        run_mcp_stdio(&mut engine, &db_path);
+        return;
+    }
+
+    let cmd = match cli.subcommand.unwrap_or(CliSub::Status) {
+        CliSub::Mcp | CliSub::Status => Command::Status,
+        CliSub::Summary => Command::Summary,
+        CliSub::ListPatches => Command::ListPatches,
+        CliSub::LoadPatch { id } => Command::LoadPatch { patch_id: id },
+        CliSub::UpdateOscillators {
+            vco1,
+            vco2,
+            detune_cents,
+            mix,
+            fm_index,
+        } => Command::UpdateOscillators {
+            vco1_wave: vco1,
+            vco2_wave: vco2,
+            detune_cents,
+            mix,
+            fm_index,
+        },
+        CliSub::UpdateFilter {
+            mode,
+            cutoff_hz,
+            resonance_q,
+            env_mod_depth,
+        } => Command::UpdateFilter {
+            mode,
+            cutoff_hz,
+            resonance_q,
+            env_mod_depth,
+        },
+        CliSub::UpdateEnvelopeLfo {
+            attack_ms,
+            decay_ms,
+            sustain_level,
+            release_ms,
+            lfo_rate_hz,
+            lfo_depth,
+        } => Command::UpdateEnvelopeLfo {
+            attack_ms,
+            decay_ms,
+            sustain_level,
+            release_ms,
+            lfo_rate_hz,
+            lfo_depth,
+        },
+        CliSub::SetStep {
+            step,
+            midi_note,
+            accent,
+            slide,
+            active,
+        } => Command::SetSequencerStep {
+            step_index: step,
+            midi_note,
+            accent,
+            slide,
+            active,
+        },
+        CliSub::Preview { duration_ms } => Command::SynthesizePreview { duration_ms },
+        CliSub::AnalyzeSpectrum { duration_ms } => Command::AnalyzeSpectrum { duration_ms },
+        CliSub::RenderWav { path, duration_ms } => Command::RenderWavFile {
+            output_path: path,
+            duration_ms,
+        },
+        CliSub::ExportClap => Command::ExportClapManifest,
+        CliSub::ExportDjcraftStem { bars } => Command::ExportDjcraftStem { bars },
+        CliSub::ResetFactory => Command::ResetFactoryPatches,
+    };
+
+    match cmd.dispatch(&mut engine) {
+        Ok(val) => {
+            let _ = engine.save_db(&db_path);
+            let out = serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string());
+            println!("{out}");
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+pub fn handle_mcp_request(req: &Value, engine: &mut SynthEngine, db_path: &Path) -> Option<Value> {
+    let method = req.get("method").and_then(Value::as_str).unwrap_or("");
+    let id = req.get("id").cloned();
+
+    if method.starts_with("notifications/") {
+        return None;
+    }
+    let req_id = id?;
+
+    match method {
+        "initialize" => Some(json!({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2026-07-28",
+                "capabilities": { "tools": { "listChanged": false } },
+                "serverInfo": {
+                    "name": "synthcraft-mcp",
+                    "version": APP_VERSION
+                }
+            }
+        })),
+        "tools/list" => Some(json!({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "tools": mcp_tools_schema()
+            }
+        })),
+        "tools/call" => {
+            let params = req.get("params").cloned().unwrap_or_else(|| json!({}));
+            let name = params.get("name").and_then(Value::as_str).unwrap_or("");
+            let args = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
+
+            let cmd_res = match name {
+                "synth_status" => Command::Status.dispatch(engine),
+                "synth_summary" => Command::Summary.dispatch(engine),
+                "list_patches" => Command::ListPatches.dispatch(engine),
+                "load_patch" => {
+                    let patch_id = args
+                        .get("patch_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("vienna_acid_303")
+                        .to_string();
+                    Command::LoadPatch { patch_id }.dispatch(engine)
+                }
+                "update_oscillators" => {
+                    let vco1_wave = args
+                        .get("vco1_wave")
+                        .and_then(Value::as_str)
+                        .unwrap_or("saw")
+                        .to_string();
+                    let vco2_wave = args
+                        .get("vco2_wave")
+                        .and_then(Value::as_str)
+                        .unwrap_or("sub_octave")
+                        .to_string();
+                    let detune_cents = args
+                        .get("detune_cents")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(12.0) as f32;
+                    let mix = args.get("mix").and_then(Value::as_f64).unwrap_or(0.35) as f32;
+                    let fm_index =
+                        args.get("fm_index").and_then(Value::as_f64).unwrap_or(0.2) as f32;
+                    Command::UpdateOscillators {
+                        vco1_wave,
+                        vco2_wave,
+                        detune_cents,
+                        mix,
+                        fm_index,
+                    }
+                    .dispatch(engine)
+                }
+                "update_filter" => {
+                    let mode = args
+                        .get("mode")
+                        .and_then(Value::as_str)
+                        .unwrap_or("acid_resonant")
+                        .to_string();
+                    let cutoff_hz = args
+                        .get("cutoff_hz")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(850.0) as f32;
+                    let resonance_q = args
+                        .get("resonance_q")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(6.5) as f32;
+                    let env_mod_depth = args
+                        .get("env_mod_depth")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.8) as f32;
+                    Command::UpdateFilter {
+                        mode,
+                        cutoff_hz,
+                        resonance_q,
+                        env_mod_depth,
+                    }
+                    .dispatch(engine)
+                }
+                "update_envelope_lfo" => {
+                    let attack_ms =
+                        args.get("attack_ms").and_then(Value::as_f64).unwrap_or(5.0) as f32;
+                    let decay_ms = args
+                        .get("decay_ms")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(200.0) as f32;
+                    let sustain_level = args
+                        .get("sustain_level")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.3) as f32;
+                    let release_ms = args
+                        .get("release_ms")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(120.0) as f32;
+                    let lfo_rate_hz = args
+                        .get("lfo_rate_hz")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(2.0) as f32;
+                    let lfo_depth = args
+                        .get("lfo_depth")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.25) as f32;
+                    Command::UpdateEnvelopeLfo {
+                        attack_ms,
+                        decay_ms,
+                        sustain_level,
+                        release_ms,
+                        lfo_rate_hz,
+                        lfo_depth,
+                    }
+                    .dispatch(engine)
+                }
+                "set_sequencer_step" => {
+                    let step_index =
+                        args.get("step_index").and_then(Value::as_u64).unwrap_or(0) as usize;
+                    let midi_note =
+                        args.get("midi_note").and_then(Value::as_u64).unwrap_or(45) as u8;
+                    let accent = args.get("accent").and_then(Value::as_bool).unwrap_or(false);
+                    let slide = args.get("slide").and_then(Value::as_bool).unwrap_or(false);
+                    let active = args.get("active").and_then(Value::as_bool).unwrap_or(true);
+                    Command::SetSequencerStep {
+                        step_index,
+                        midi_note,
+                        accent,
+                        slide,
+                        active,
+                    }
+                    .dispatch(engine)
+                }
+                "synthesize_preview" => {
+                    let duration_ms = args
+                        .get("duration_ms")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(250) as u32;
+                    Command::SynthesizePreview { duration_ms }.dispatch(engine)
+                }
+                "analyze_spectrum" => {
+                    let duration_ms = args
+                        .get("duration_ms")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(300) as u32;
+                    Command::AnalyzeSpectrum { duration_ms }.dispatch(engine)
+                }
+                "render_wav_file" => {
+                    let output_path = args
+                        .get("output_path")
+                        .and_then(Value::as_str)
+                        .unwrap_or("synthcraft_out.wav")
+                        .to_string();
+                    let duration_ms = args
+                        .get("duration_ms")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(2000) as u32;
+                    Command::RenderWavFile {
+                        output_path,
+                        duration_ms,
+                    }
+                    .dispatch(engine)
+                }
+                "export_clap_manifest" => Command::ExportClapManifest.dispatch(engine),
+                "export_djcraft_stem" => {
+                    let bars = args.get("bars").and_then(Value::as_u64).unwrap_or(4) as usize;
+                    Command::ExportDjcraftStem { bars }.dispatch(engine)
+                }
+                "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
+                other => Err(synthcraft_core::SynthError::Validation(format!(
+                    "Unknown tool '{other}'"
+                ))),
+            };
+
+            match cmd_res {
+                Ok(val) => {
+                    let _ = engine.save_db(db_path);
+                    let text = serde_json::to_string_pretty(&val).unwrap_or_default();
+                    Some(json!({
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "content": [{ "type": "text", "text": text }],
+                            "isError": false
+                        }
+                    }))
+                }
+                Err(e) => Some(json!({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{ "type": "text", "text": e.to_string() }],
+                        "isError": true
+                    }
+                })),
+            }
+        }
+        _ => Some(json!({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": { "code": -32601, "message": format!("Method not found: {method}") }
+        })),
+    }
+}
+
+fn mcp_tools_schema() -> Value {
+    json!([
+        { "name": "synth_status", "description": "Get SynthCraft status, active patch, BPM, Camelot key, sample rate, and CLAP plugin ID.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "synth_summary", "description": "Return full active patch parameters and 16-step sequencer state.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "list_patches", "description": "List all 6 factory and user patches in the SynthCraft library.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "load_patch", "description": "Select and activate a patch by ID (e.g. vienna_acid_303, goliath_reese_sub, danube_dub_chord, stephansdom_bell_fm, djcraft_riser_sweep, soundcraft_warm_pad).", "inputSchema": { "type": "object", "properties": { "patch_id": { "type": "string" } }, "required": ["patch_id"] } },
+        { "name": "update_oscillators", "description": "Update VCO1 and VCO2 waveforms (sine, saw, square, triangle, pulse_pwm, supersaw, white_noise, sub_octave), detune cents, mix, and FM index.", "inputSchema": { "type": "object", "properties": { "vco1_wave": { "type": "string" }, "vco2_wave": { "type": "string" }, "detune_cents": { "type": "number" }, "mix": { "type": "number" }, "fm_index": { "type": "number" } }, "required": ["vco1_wave", "vco2_wave"] } },
+        { "name": "update_filter", "description": "Configure the 4-pole ladder filter mode (lowpass_24db, bandpass_12db, highpass_12db, acid_resonant), cutoff_hz, resonance_q, and env_mod_depth.", "inputSchema": { "type": "object", "properties": { "mode": { "type": "string" }, "cutoff_hz": { "type": "number" }, "resonance_q": { "type": "number" }, "env_mod_depth": { "type": "number" } }, "required": ["mode", "cutoff_hz", "resonance_q"] } },
+        { "name": "update_envelope_lfo", "description": "Update ADSR envelope (attack_ms, decay_ms, sustain_level, release_ms) and LFO (lfo_rate_hz, lfo_depth).", "inputSchema": { "type": "object", "properties": { "attack_ms": { "type": "number" }, "decay_ms": { "type": "number" }, "sustain_level": { "type": "number" }, "release_ms": { "type": "number" }, "lfo_rate_hz": { "type": "number" }, "lfo_depth": { "type": "number" } } } },
+        { "name": "set_sequencer_step", "description": "Update a step (0..15) in the 16-step acid sequencer (midi_note, accent, slide, active).", "inputSchema": { "type": "object", "properties": { "step_index": { "type": "integer" }, "midi_note": { "type": "integer" }, "accent": { "type": "boolean" }, "slide": { "type": "boolean" }, "active": { "type": "boolean" } }, "required": ["step_index", "midi_note"] } },
+        { "name": "synthesize_preview", "description": "Synthesize audio for duration_ms and return sample metadata plus the first 64 PCM samples.", "inputSchema": { "type": "object", "properties": { "duration_ms": { "type": "integer" } } } },
+        { "name": "analyze_spectrum", "description": "Compute 32-band DFT harmonic spectrum, 128-sample oscilloscope buffer, RMS/Peak dBFS, crest factor, and fundamental pitch Hz.", "inputSchema": { "type": "object", "properties": { "duration_ms": { "type": "integer" } } } },
+        { "name": "render_wav_file", "description": "Render the active patch to a 16-bit RIFF PCM .wav file on disk for SoundCraft or DJCraft.", "inputSchema": { "type": "object", "properties": { "output_path": { "type": "string" }, "duration_ms": { "type": "integer" } }, "required": ["output_path"] } },
+        { "name": "export_clap_manifest", "description": "Export CLAP 1.2.2 plugin descriptor (dev.sandraschi.synthcraft) and polyphonic parameter automation table for SoundCraft.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "export_djcraft_stem", "description": "Export BPM-locked, Camelot-keyed loop/stem metadata and cue points for DJCraft.", "inputSchema": { "type": "object", "properties": { "bars": { "type": "integer" } } } },
+        { "name": "reset_factory_patches", "description": "Reset all 6 factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
+    ])
+}
+
+fn run_mcp_stdio(engine: &mut SynthEngine, db_path: &Path) {
+    let stdin = io::stdin();
+    let mut stdout = io::stdout();
+    for line in stdin.lock().lines() {
+        let Ok(raw) = line else { break };
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(req) = serde_json::from_str::<Value>(trimmed) else {
+            continue;
+        };
+        if let Some(resp) = handle_mcp_request(&req, engine, db_path) {
+            if let Ok(s) = serde_json::to_string(&resp) {
+                let _ = writeln!(stdout, "{s}");
+                let _ = stdout.flush();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_db() -> PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("synthcraft_mcp_test_{}.db", std::process::id()));
+        p
+    }
+
+    #[test]
+    fn mcp_initialize_returns_2026_07_28_and_14_tools() {
+        let mut eng = SynthEngine::default();
+        let db = temp_db();
+        let init = handle_mcp_request(
+            &json!({"jsonrpc":"2.0","id":1,"method":"initialize"}),
+            &mut eng,
+            &db,
+        )
+        .unwrap_or_default();
+        assert_eq!(init["result"]["protocolVersion"], "2026-07-28");
+
+        let list = handle_mcp_request(
+            &json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+            &mut eng,
+            &db,
+        )
+        .unwrap_or_default();
+        let tools = list["result"]["tools"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or(0);
+        assert_eq!(tools, 14);
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn mcp_tools_call_executes_spectrum_clap_and_djcraft_stem() {
+        let mut eng = SynthEngine::default();
+        let db = temp_db();
+
+        let spec = handle_mcp_request(
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "analyze_spectrum",
+                    "arguments": { "duration_ms": 150 }
+                }
+            }),
+            &mut eng,
+            &db,
+        )
+        .unwrap_or_default();
+        assert_eq!(spec["result"]["isError"], false);
+
+        let clap = handle_mcp_request(
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {
+                    "name": "export_clap_manifest",
+                    "arguments": {}
+                }
+            }),
+            &mut eng,
+            &db,
+        )
+        .unwrap_or_default();
+        assert_eq!(clap["result"]["isError"], false);
+
+        let stem = handle_mcp_request(
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": {
+                    "name": "export_djcraft_stem",
+                    "arguments": { "bars": 4 }
+                }
+            }),
+            &mut eng,
+            &db,
+        )
+        .unwrap_or_default();
+        assert_eq!(stem["result"]["isError"], false);
+        let _ = std::fs::remove_file(&db);
+    }
+}

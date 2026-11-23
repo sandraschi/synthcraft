@@ -1,0 +1,21 @@
+[package]
+name = "synthcraft-mcp"
+description = "L2 CLI and MCP 2026-07-28 stdio server for SynthCraft"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "synthcraft-mcp"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+synthcraft-core = { path = "../synthcraft-core" }
+
+[lints]
+workspace = true
