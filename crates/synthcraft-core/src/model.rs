@@ -4,6 +4,7 @@
 //! and BPM/Camelot Stem & Riser Exporter (for DJCraft).
 
 use crate::error::SynthError;
+use crate::rompler::{ExtremeDspMode, KorgM1Program};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::f32::consts::PI;
@@ -158,7 +159,23 @@ pub struct SynthPatch {
     pub lfo_depth: f32,
     pub drive_saturation: f32,
     pub master_gain: f32,
+    #[serde(default)]
+    pub m1_program: Option<KorgM1Program>,
+    #[serde(default = "default_half")]
+    pub m1_layer_mix: f32,
+    #[serde(default = "default_extreme_off")]
+    pub extreme_dsp: ExtremeDspMode,
+    #[serde(default = "default_half")]
+    pub extreme_morph: f32,
     pub steps: Vec<SequencerStep>,
+}
+
+fn default_half() -> f32 {
+    0.55
+}
+
+fn default_extreme_off() -> ExtremeDspMode {
+    ExtremeDspMode::Off
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -277,7 +294,21 @@ pub fn synthesize_audio_buffer(patch: &SynthPatch, sample_rate: u32, duration_ms
         phase2 = (phase2 + (current_freq * detune_ratio) / sr).rem_euclid(1.0);
 
         let mix = patch.vco_mix.clamp(0.0, 1.0);
-        let raw_osc = s1 * (1.0 - mix) + s2 * mix;
+        let mut raw_osc = s1 * (1.0 - mix) + s2 * mix;
+
+        let step_time_sec = pos_in_step / sr;
+        if patch.extreme_dsp != ExtremeDspMode::Off {
+            let xdsp =
+                patch
+                    .extreme_dsp
+                    .sample_dsp(current_freq, step_time_sec, patch.extreme_morph);
+            raw_osc = raw_osc * 0.45 + xdsp * 0.55;
+        }
+        if let Some(m1) = patch.m1_program {
+            let m1_pcm = m1.sample_pcm(current_freq, step_time_sec);
+            let m1_mix = patch.m1_layer_mix.clamp(0.0, 1.0);
+            raw_osc = raw_osc * (1.0 - m1_mix) + m1_pcm * m1_mix;
+        }
 
         // 4-Pole Resonant State-Variable / Ladder VCF approximation
         let mod_cutoff =

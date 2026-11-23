@@ -1,4 +1,4 @@
-//! Hierarchical `SubApp` sidebar registry for SynthCraft's 6 workbenches.
+//! Hierarchical `SubApp` sidebar registry for SynthCraft's 9 workbenches (17 subpages).
 
 use crate::app::{AppLocale, Page};
 
@@ -53,16 +53,53 @@ const RACK_SUBS: &[SubPage] = &[
     SubPage {
         page: Page::ModularRack,
         sub: 0,
-        en: "Dual VCO & Ladder VCF",
-        de: "Doppel-VCO & Kaskadenfilter",
+        en: "VCV 3U Eurorack & Patch Cables",
+        de: "VCV 3U Eurorack & Patch-Kabel",
     },
     SubPage {
         page: Page::ModularRack,
         sub: 1,
-        en: "Patch Library & Presets",
-        de: "Patch-Bibliothek & Presets",
+        en: "Factory Patch Bank Overview",
+        de: "Factory-Patch-Bank",
     },
 ];
+
+const M1_DSP_SUBS: &[SubPage] = &[
+    SubPage {
+        page: Page::M1ExtremeDsp,
+        sub: 0,
+        en: "1990 Korg M1 PCM Rompler",
+        de: "1990 Korg M1 PCM-Rompler",
+    },
+    SubPage {
+        page: Page::M1ExtremeDsp,
+        sub: 1,
+        en: "Extreme Modern DSP Engine",
+        de: "Extreme-DSP-Synthese",
+    },
+];
+
+const MIDI_SUBS: &[SubPage] = &[
+    SubPage {
+        page: Page::MidiDepot,
+        sub: 0,
+        en: "MIDI Keyboard & 25-Key Piano",
+        de: "MIDI-Keyboard & 25-Tasten-Piano",
+    },
+    SubPage {
+        page: Page::MidiDepot,
+        sub: 1,
+        en: "MIDI Pattern Depot & .MID Export",
+        de: "MIDI-Pattern-Depot & .MID-Export",
+    },
+];
+
+const DEMO_SUBS: &[SubPage] = &[SubPage {
+    page: Page::DemoShowcase,
+    sub: 0,
+    en: "1-Click M1 / Acid / Buchla Demos",
+    de: "1-Klick M1 / Acid / Buchla Demos",
+}];
 
 const SEQ_SUBS: &[SubPage] = &[
     SubPage {
@@ -139,41 +176,59 @@ const ASSISTANT_SUBS: &[SubPage] = &[
     },
 ];
 
-static WORKBENCHES: [CraftWorkbench; 6] = [
+static WORKBENCHES: [CraftWorkbench; 9] = [
     CraftWorkbench {
         id: "modular_rack",
-        en: "1. Modular Rack & VCO/VCF",
-        de: "1. Modular-Rack & VCO/VCF",
+        en: "1. VCV 2 Eurorack & VCO/VCF",
+        de: "1. VCV 2 Eurorack & VCO/VCF",
         subpages: RACK_SUBS,
     },
     CraftWorkbench {
+        id: "m1_extreme_dsp",
+        en: "2. Korg M1 (1990) & Extreme DSP",
+        de: "2. Korg M1 (1990) & Extreme-DSP",
+        subpages: M1_DSP_SUBS,
+    },
+    CraftWorkbench {
+        id: "midi_depot",
+        en: "3. MIDI Keyboard & MIDI Depot",
+        de: "3. MIDI-Keyboard & MIDI-Depot",
+        subpages: MIDI_SUBS,
+    },
+    CraftWorkbench {
+        id: "demo_showcase",
+        en: "4. Demo Showcase & Audition",
+        de: "4. Demo-Showcase & Audition",
+        subpages: DEMO_SUBS,
+    },
+    CraftWorkbench {
         id: "sequencer_env",
-        en: "2. Sequencer & ADSR/LFO",
-        de: "2. Sequenzer & ADSR/LFO",
+        en: "5. Sequencer & ADSR/LFO",
+        de: "5. Sequenzer & ADSR/LFO",
         subpages: SEQ_SUBS,
     },
     CraftWorkbench {
         id: "scope_spectrum",
-        en: "3. Oscilloscope & Spectrum",
-        de: "3. Oszilloskop & Spektrum",
+        en: "6. Oscilloscope & Spectrum",
+        de: "6. Oszilloskop & Spektrum",
         subpages: SCOPE_SUBS,
     },
     CraftWorkbench {
         id: "clap_soundcraft",
-        en: "4. CLAP & SoundCraft Bridge",
-        de: "4. CLAP & SoundCraft-Bruecke",
+        en: "7. CLAP & SoundCraft Bridge",
+        de: "7. CLAP & SoundCraft-Bruecke",
         subpages: CLAP_SUBS,
     },
     CraftWorkbench {
         id: "djcraft_forge",
-        en: "5. DJCraft Stem & WAV Forge",
-        de: "5. DJCraft Stem & WAV-Schmiede",
+        en: "8. DJCraft Stem & WAV Forge",
+        de: "8. DJCraft Stem & WAV-Schmiede",
         subpages: DJ_SUBS,
     },
     CraftWorkbench {
         id: "assistant",
-        en: "6. Assistant & Help",
-        de: "6. Assistent & Hilfe",
+        en: "9. Assistant & Help",
+        de: "9. Assistent & Hilfe",
         subpages: ASSISTANT_SUBS,
     },
 ];

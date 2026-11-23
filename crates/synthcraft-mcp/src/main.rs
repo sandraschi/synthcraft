@@ -121,6 +121,37 @@ pub enum CliSub {
         #[arg(long, default_value_t = 4)]
         bars: usize,
     },
+    /// Load a 1990 Korg M1 AI2 PCM sample program (m1_00_universe, m1_01_piano16, m1_17_organ2, ...)
+    LoadM1 {
+        #[arg(long, default_value = "m1_01_piano16")]
+        program: String,
+        #[arg(long, default_value_t = 0.65)]
+        mix: f32,
+    },
+    /// Set Extreme Modern DSP mode (karplus_strong_pluck, granular_cloud, wavetable_morph, west_coast_wavefolder, phase_distortion_cz, modal_struck_bar)
+    SetExtremeDsp {
+        #[arg(long, default_value = "karplus_strong_pluck")]
+        mode: String,
+        #[arg(long, default_value_t = 0.55)]
+        morph: f32,
+    },
+    /// Load a MIDI pattern from the built-in MIDI Depot
+    LoadMidiClip {
+        #[arg(long, default_value = "90s_house_m1_piano")]
+        clip_id: String,
+    },
+    /// Export a MIDI Depot clip as a Standard MIDI File (.mid, 480 PPQN)
+    ExportMidi {
+        #[arg(long, default_value = "90s_house_m1_piano")]
+        clip_id: String,
+        #[arg(long, default_value = "90s_house_m1_piano.mid")]
+        path: String,
+    },
+    /// Run a 1-click Demo Showcase preset and return spectral telemetry
+    RunDemo {
+        #[arg(long, default_value = "demo_1990_m1_piano")]
+        demo_id: String,
+    },
     /// Reset all patches to factory defaults
     ResetFactory,
 }
@@ -200,6 +231,14 @@ fn main() {
         },
         CliSub::ExportClap => Command::ExportClapManifest,
         CliSub::ExportDjcraftStem { bars } => Command::ExportDjcraftStem { bars },
+        CliSub::LoadM1 { program, mix } => Command::LoadKorgM1Program { program, mix },
+        CliSub::SetExtremeDsp { mode, morph } => Command::SetExtremeDsp { mode, morph },
+        CliSub::LoadMidiClip { clip_id } => Command::LoadMidiDepotClip { clip_id },
+        CliSub::ExportMidi { clip_id, path } => Command::ExportMidiFile {
+            clip_id,
+            output_path: path,
+        },
+        CliSub::RunDemo { demo_id } => Command::RunDemoShowcase { demo_id },
         CliSub::ResetFactory => Command::ResetFactoryPatches,
     };
 
@@ -403,6 +442,57 @@ pub fn handle_mcp_request(req: &Value, engine: &mut SynthEngine, db_path: &Path)
                     let bars = args.get("bars").and_then(Value::as_u64).unwrap_or(4) as usize;
                     Command::ExportDjcraftStem { bars }.dispatch(engine)
                 }
+                "load_korg_m1_program" => {
+                    let program = args
+                        .get("program")
+                        .and_then(Value::as_str)
+                        .unwrap_or("m1_01_piano16")
+                        .to_string();
+                    let mix = args.get("mix").and_then(Value::as_f64).unwrap_or(0.65) as f32;
+                    Command::LoadKorgM1Program { program, mix }.dispatch(engine)
+                }
+                "set_extreme_dsp" => {
+                    let mode = args
+                        .get("mode")
+                        .and_then(Value::as_str)
+                        .unwrap_or("karplus_strong_pluck")
+                        .to_string();
+                    let morph = args.get("morph").and_then(Value::as_f64).unwrap_or(0.55) as f32;
+                    Command::SetExtremeDsp { mode, morph }.dispatch(engine)
+                }
+                "load_midi_depot_clip" => {
+                    let clip_id = args
+                        .get("clip_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("90s_house_m1_piano")
+                        .to_string();
+                    Command::LoadMidiDepotClip { clip_id }.dispatch(engine)
+                }
+                "export_midi_file" => {
+                    let clip_id = args
+                        .get("clip_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("90s_house_m1_piano")
+                        .to_string();
+                    let output_path = args
+                        .get("output_path")
+                        .and_then(Value::as_str)
+                        .unwrap_or("synthcraft_clip.mid")
+                        .to_string();
+                    Command::ExportMidiFile {
+                        clip_id,
+                        output_path,
+                    }
+                    .dispatch(engine)
+                }
+                "run_demo_showcase" => {
+                    let demo_id = args
+                        .get("demo_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("demo_1990_m1_piano")
+                        .to_string();
+                    Command::RunDemoShowcase { demo_id }.dispatch(engine)
+                }
                 "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
                 other => Err(synthcraft_core::SynthError::Validation(format!(
                     "Unknown tool '{other}'"
@@ -455,6 +545,11 @@ fn mcp_tools_schema() -> Value {
         { "name": "render_wav_file", "description": "Render the active patch to a 16-bit RIFF PCM .wav file on disk for SoundCraft or DJCraft.", "inputSchema": { "type": "object", "properties": { "output_path": { "type": "string" }, "duration_ms": { "type": "integer" } }, "required": ["output_path"] } },
         { "name": "export_clap_manifest", "description": "Export CLAP 1.2.2 plugin descriptor (dev.sandraschi.synthcraft) and polyphonic parameter automation table for SoundCraft.", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "export_djcraft_stem", "description": "Export BPM-locked, Camelot-keyed loop/stem metadata and cue points for DJCraft.", "inputSchema": { "type": "object", "properties": { "bars": { "type": "integer" } } } },
+        { "name": "load_korg_m1_program", "description": "Layer a 1990 Korg M1 AI2 PCM sample program (m1_00_universe, m1_01_piano16, m1_11_fretless, m1_12_slapbass, m1_17_organ2, m1_24_panflute, m1_36_choir, m1_48_orchhit, or off).", "inputSchema": { "type": "object", "properties": { "program": { "type": "string" }, "mix": { "type": "number" } }, "required": ["program"] } },
+        { "name": "set_extreme_dsp", "description": "Activate an Extreme Modern DSP generator (off, karplus_strong_pluck, granular_cloud, wavetable_morph, west_coast_wavefolder, phase_distortion_cz, modal_struck_bar).", "inputSchema": { "type": "object", "properties": { "mode": { "type": "string" }, "morph": { "type": "number" } }, "required": ["mode"] } },
+        { "name": "load_midi_depot_clip", "description": "Load one of the 8 built-in MIDI Depot patterns into the 16-step sequencer.", "inputSchema": { "type": "object", "properties": { "clip_id": { "type": "string" } }, "required": ["clip_id"] } },
+        { "name": "export_midi_file", "description": "Export a MIDI Depot clip as a Standard MIDI File (.mid, SMF Format 0, 480 PPQN).", "inputSchema": { "type": "object", "properties": { "clip_id": { "type": "string" }, "output_path": { "type": "string" } }, "required": ["clip_id", "output_path"] } },
+        { "name": "run_demo_showcase", "description": "Configure and audition one of the 6 curated 1-click Demo Showcases (demo_1990_m1_piano, demo_show_me_love_organ, demo_m1_universe_granular, demo_buchla_wavefolder, demo_karplus_panflute, demo_modal_glass_choir).", "inputSchema": { "type": "object", "properties": { "demo_id": { "type": "string" } }, "required": ["demo_id"] } },
         { "name": "reset_factory_patches", "description": "Reset all 6 factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
     ])
 }
@@ -512,7 +607,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 14);
+        assert_eq!(tools, 19);
         let _ = std::fs::remove_file(&db);
     }
 

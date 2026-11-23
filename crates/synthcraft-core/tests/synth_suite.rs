@@ -1,6 +1,9 @@
 //! Integration test suite for SynthCraft L1 core.
 
-use synthcraft_core::{midi_to_freq_hz, Command, FilterMode, SynthEngine, WaveformKind};
+use synthcraft_core::{
+    export_midi_smf_file, midi_to_freq_hz, Command, ExtremeDspMode, FilterMode, KorgM1Program,
+    SynthEngine, WaveformKind,
+};
 
 #[test]
 fn midi_a4_is_440_hz_and_a3_is_220_hz() {
@@ -146,4 +149,59 @@ fn reset_factory_patches_restores_default_patch() {
         .dispatch(&mut eng)
         .unwrap_or_default();
     assert_eq!(res["active_patch_id"], "vienna_acid_303");
+}
+
+#[test]
+fn all_eight_korg_m1_1990_programs_parse_and_sample_pcm() {
+    for prog in KorgM1Program::all() {
+        assert_eq!(KorgM1Program::parse(prog.as_str()), Some(*prog));
+        let s = prog.sample_pcm(220.0, 0.015);
+        assert!((-1.0..=1.0).contains(&s));
+    }
+}
+
+#[test]
+fn all_extreme_dsp_modes_parse_and_synthesize_bounded_samples() {
+    for mode in ExtremeDspMode::all() {
+        assert_eq!(ExtremeDspMode::parse(mode.as_str()), Some(*mode));
+        let s = mode.sample_dsp(220.0, 0.025, 0.65);
+        assert!((-1.0..=1.0).contains(&s));
+    }
+}
+
+#[test]
+fn midi_depot_loads_into_sequencer_and_exports_valid_smf_mid_header() {
+    let mut eng = SynthEngine::factory_seed();
+    let res = Command::LoadMidiDepotClip {
+        clip_id: "90s_house_m1_piano".into(),
+    }
+    .dispatch(&mut eng);
+    assert!(res.is_ok());
+    assert_eq!(
+        eng.active_patch().m1_program,
+        Some(KorgM1Program::Piano16_01)
+    );
+
+    let mut path = std::env::temp_dir();
+    path.push(format!("synthcraft_test_{}.mid", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let clip = &eng.midi_depot[0];
+    let written = export_midi_smf_file(clip, &path);
+    assert!(written.is_ok());
+    let bytes = std::fs::read(&path).unwrap_or_default();
+    let _ = std::fs::remove_file(&path);
+    assert!(bytes.len() > 22);
+    assert_eq!(&bytes[0..4], b"MThd");
+    assert_eq!(&bytes[14..18], b"MTrk");
+}
+
+#[test]
+fn all_six_demo_showcases_execute_and_produce_valid_spectra() {
+    let mut eng = SynthEngine::factory_seed();
+    let ids: Vec<String> = eng.demos.iter().map(|d| d.id.clone()).collect();
+    assert_eq!(ids.len(), 6);
+    for id in ids {
+        let res = Command::RunDemoShowcase { demo_id: id }.dispatch(&mut eng);
+        assert!(res.is_ok());
+    }
 }

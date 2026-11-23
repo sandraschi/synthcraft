@@ -28,6 +28,9 @@ impl AppLocale {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
     ModularRack,
+    M1ExtremeDsp,
+    MidiDepot,
+    DemoShowcase,
     SequencerEnv,
     ScopeSpectrum,
     ClapSoundcraft,
@@ -111,6 +114,10 @@ impl SynthCraftApp {
     pub fn goto(&mut self, page: Page, sub: usize) {
         self.page = page;
         self.subpage = sub;
+    }
+
+    pub fn persist_state(&mut self) {
+        self.persist();
     }
 
     fn persist(&mut self) {
@@ -340,6 +347,9 @@ impl SynthCraftApp {
     pub fn render_page(&mut self, ui: &mut egui::Ui) {
         match self.page {
             Page::ModularRack => self.render_modular_rack(ui),
+            Page::M1ExtremeDsp => crate::rack_ui::render_m1_and_extreme_dsp(self, ui),
+            Page::MidiDepot => crate::rack_ui::render_midi_and_depot(self, ui),
+            Page::DemoShowcase => crate::rack_ui::render_demo_showcase(self, ui),
             Page::SequencerEnv => self.render_sequencer_env(ui),
             Page::ScopeSpectrum => self.render_scope_spectrum(ui),
             Page::ClapSoundcraft => self.render_clap_soundcraft(ui),
@@ -350,7 +360,7 @@ impl SynthCraftApp {
     }
 
     fn render_modular_rack(&mut self, ui: &mut egui::Ui) {
-        ui.heading("1. Modular VCO & 4-Pole Resonant Ladder VCF Rack");
+        ui.heading("1. VCV Rack 2-Style 3U Eurorack & Dual VCO/VCF Bay");
         ui.horizontal_wrapped(|ui| {
             ui.label("Factory Patches:");
             let patch_list: Vec<(String, String)> = self
@@ -370,6 +380,11 @@ impl SynthCraftApp {
             }
         });
         ui.separator();
+
+        if self.subpage == 0 {
+            crate::rack_ui::render_vcv_eurorack_canvas(self, ui);
+            ui.add_space(6.0);
+        }
 
         if self.subpage == 1 {
             ui.group(|ui| {
@@ -956,9 +971,9 @@ mod tests {
     #[test]
     fn subapp_registry_exposes_all_six_workbenches() {
         let reg = subapps::registry();
-        assert_eq!(reg.len(), 6);
+        assert_eq!(reg.len(), 9);
         let total_subpages: usize = reg.iter().map(|w| w.subpages().len()).sum();
-        assert_eq!(total_subpages, 12);
+        assert_eq!(total_subpages, 17);
     }
 
     #[test]

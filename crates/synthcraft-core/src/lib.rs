@@ -8,6 +8,7 @@
 pub mod db;
 pub mod error;
 pub mod model;
+pub mod rompler;
 
 pub use db::{default_db_path, load_from_db, save_to_db};
 pub use error::SynthError;
@@ -15,6 +16,10 @@ pub use model::{
     analyze_patch_spectrum, export_clap_descriptor, export_djcraft_stem_manifest, midi_to_freq_hz,
     synthesize_audio_buffer, write_wav_file, ClapParameterSpec, FilterMode, SequencerStep,
     SpectrumAnalysisReport, SynthPatch, WaveformKind,
+};
+pub use rompler::{
+    builtin_demo_showcases, builtin_midi_depot, default_rack_cables, export_midi_smf_file,
+    DemoShowcaseItem, ExtremeDspMode, KorgM1Program, MidiDepotClip, MidiHardwareConfig, RackCable,
 };
 
 use serde::{Deserialize, Serialize};
@@ -28,6 +33,14 @@ pub struct SynthEngine {
     pub active_patch_id: String,
     pub sample_rate_hz: u32,
     pub patches: Vec<SynthPatch>,
+    #[serde(default = "default_rack_cables")]
+    pub rack_cables: Vec<RackCable>,
+    #[serde(default = "builtin_midi_depot")]
+    pub midi_depot: Vec<MidiDepotClip>,
+    #[serde(default = "builtin_demo_showcases")]
+    pub demos: Vec<DemoShowcaseItem>,
+    #[serde(default)]
+    pub midi_hw: MidiHardwareConfig,
 }
 
 impl Default for SynthEngine {
@@ -92,6 +105,10 @@ impl SynthEngine {
                 lfo_depth: 0.18,
                 drive_saturation: 1.4,
                 master_gain: 0.85,
+                m1_program: None,
+                m1_layer_mix: 0.50,
+                extreme_dsp: ExtremeDspMode::Off,
+                extreme_morph: 0.50,
                 steps: mk_steps(&[
                     45, 45, 57, 45, 48, 45, 55, 52, 45, 45, 60, 45, 50, 52, 55, 57,
                 ]),
@@ -120,6 +137,10 @@ impl SynthEngine {
                 lfo_depth: 0.42,
                 drive_saturation: 1.1,
                 master_gain: 0.88,
+                m1_program: Some(KorgM1Program::OrchestraHit48),
+                m1_layer_mix: 0.25,
+                extreme_dsp: ExtremeDspMode::WavetableMorph,
+                extreme_morph: 0.65,
                 steps: mk_steps(&[
                     41, 41, 41, 41, 44, 44, 44, 44, 39, 39, 39, 39, 36, 36, 39, 41,
                 ]),
@@ -148,6 +169,10 @@ impl SynthEngine {
                 lfo_depth: 0.55,
                 drive_saturation: 0.65,
                 master_gain: 0.80,
+                m1_program: Some(KorgM1Program::Organ2_17),
+                m1_layer_mix: 0.45,
+                extreme_dsp: ExtremeDspMode::Off,
+                extreme_morph: 0.40,
                 steps: mk_steps(&[
                     51, 51, 58, 51, 54, 51, 61, 58, 51, 51, 58, 54, 51, 54, 58, 63,
                 ]),
@@ -176,6 +201,10 @@ impl SynthEngine {
                 lfo_depth: 0.12,
                 drive_saturation: 0.25,
                 master_gain: 0.82,
+                m1_program: Some(KorgM1Program::Piano16_01),
+                m1_layer_mix: 0.55,
+                extreme_dsp: ExtremeDspMode::KarplusStrongPluck,
+                extreme_morph: 0.50,
                 steps: mk_steps(&[
                     64, 67, 71, 76, 74, 71, 67, 64, 66, 69, 71, 74, 71, 69, 66, 64,
                 ]),
@@ -204,6 +233,10 @@ impl SynthEngine {
                 lfo_depth: 0.75,
                 drive_saturation: 0.90,
                 master_gain: 0.78,
+                m1_program: None,
+                m1_layer_mix: 0.0,
+                extreme_dsp: ExtremeDspMode::PhaseDistortionCz,
+                extreme_morph: 0.70,
                 steps: mk_steps(&[
                     57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
                 ]),
@@ -232,6 +265,10 @@ impl SynthEngine {
                 lfo_depth: 0.30,
                 drive_saturation: 0.35,
                 master_gain: 0.80,
+                m1_program: Some(KorgM1Program::Universe00),
+                m1_layer_mix: 0.65,
+                extreme_dsp: ExtremeDspMode::GranularCloud,
+                extreme_morph: 0.55,
                 steps: mk_steps(&[
                     57, 57, 61, 61, 64, 64, 69, 69, 68, 68, 64, 64, 61, 61, 57, 57,
                 ]),
@@ -242,6 +279,10 @@ impl SynthEngine {
             active_patch_id: "vienna_acid_303".into(),
             sample_rate_hz: 48000,
             patches,
+            rack_cables: default_rack_cables(),
+            midi_depot: builtin_midi_depot(),
+            demos: builtin_demo_showcases(),
+            midi_hw: MidiHardwareConfig::default(),
         }
     }
 
@@ -320,6 +361,24 @@ pub enum Command {
     ExportClapManifest,
     ExportDjcraftStem {
         bars: usize,
+    },
+    LoadKorgM1Program {
+        program: String,
+        mix: f32,
+    },
+    SetExtremeDsp {
+        mode: String,
+        morph: f32,
+    },
+    LoadMidiDepotClip {
+        clip_id: String,
+    },
+    ExportMidiFile {
+        clip_id: String,
+        output_path: String,
+    },
+    RunDemoShowcase {
+        demo_id: String,
     },
     ResetFactoryPatches,
 }
@@ -485,6 +544,110 @@ impl Command {
             Self::ExportClapManifest => Ok(export_clap_descriptor(engine.active_patch())),
             Self::ExportDjcraftStem { bars } => {
                 Ok(export_djcraft_stem_manifest(engine.active_patch(), *bars))
+            }
+            Self::LoadKorgM1Program { program, mix } => {
+                let p = engine.active_patch_mut();
+                if program.trim().eq_ignore_ascii_case("off")
+                    || program.trim().eq_ignore_ascii_case("none")
+                {
+                    p.m1_program = None;
+                } else {
+                    let m1 = KorgM1Program::parse(program).ok_or_else(|| {
+                        SynthError::Validation(format!(
+                            "Unknown Korg M1 1990 program '{program}'. Expected m1_00_universe, m1_01_piano16, m1_11_fretless, m1_12_slapbass, m1_17_organ2, m1_24_panflute, m1_36_choir, or m1_48_orchhit."
+                        ))
+                    })?;
+                    p.m1_program = Some(m1);
+                }
+                p.m1_layer_mix = mix.clamp(0.0, 1.0);
+                Ok(json!({
+                    "m1_program": p.m1_program.map(KorgM1Program::as_str),
+                    "m1_layer_mix": p.m1_layer_mix,
+                }))
+            }
+            Self::SetExtremeDsp { mode, morph } => {
+                let x = ExtremeDspMode::parse(mode).ok_or_else(|| {
+                    SynthError::Validation(format!("Unknown Extreme DSP mode '{mode}'"))
+                })?;
+                let p = engine.active_patch_mut();
+                p.extreme_dsp = x;
+                p.extreme_morph = morph.clamp(0.0, 1.0);
+                Ok(json!({
+                    "extreme_dsp": p.extreme_dsp.as_str(),
+                    "extreme_morph": p.extreme_morph,
+                }))
+            }
+            Self::LoadMidiDepotClip { clip_id } => {
+                let clip = engine
+                    .midi_depot
+                    .iter()
+                    .find(|c| c.id == *clip_id)
+                    .cloned()
+                    .ok_or_else(|| SynthError::NotFound(clip_id.clone()))?;
+                let p = engine.active_patch_mut();
+                p.bpm = clip.bpm;
+                p.camelot_key = clip.camelot_key.clone();
+                if let Some(ref m1_str) = clip.recommended_m1 {
+                    p.m1_program = KorgM1Program::parse(m1_str);
+                }
+                if let Some(xd) = ExtremeDspMode::parse(&clip.recommended_extreme_dsp) {
+                    p.extreme_dsp = xd;
+                }
+                for (i, &note) in clip.notes.iter().enumerate() {
+                    if let Some(step) = p.steps.get_mut(i) {
+                        step.midi_note = note;
+                        step.active = true;
+                    }
+                }
+                Ok(json!({
+                    "loaded_midi_clip": clip.id,
+                    "title": clip.title,
+                    "bpm": p.bpm,
+                    "camelot_key": p.camelot_key,
+                }))
+            }
+            Self::ExportMidiFile {
+                clip_id,
+                output_path,
+            } => {
+                let clip = engine
+                    .midi_depot
+                    .iter()
+                    .find(|c| c.id == *clip_id)
+                    .ok_or_else(|| SynthError::NotFound(clip_id.clone()))?;
+                let path = PathBuf::from(output_path);
+                let bytes = export_midi_smf_file(clip, &path)?;
+                Ok(json!({
+                    "written_mid": path.display().to_string(),
+                    "clip_id": clip_id,
+                    "bytes": bytes,
+                }))
+            }
+            Self::RunDemoShowcase { demo_id } => {
+                let demo = engine
+                    .demos
+                    .iter()
+                    .find(|d| d.id == *demo_id)
+                    .cloned()
+                    .ok_or_else(|| SynthError::NotFound(demo_id.clone()))?;
+                let _ = engine.select_patch(&demo.patch_id)?;
+                let _ = Self::LoadMidiDepotClip {
+                    clip_id: demo.midi_clip_id.clone(),
+                }
+                .dispatch(engine)?;
+                {
+                    let p = engine.active_patch_mut();
+                    p.m1_program = demo.m1_program;
+                    p.extreme_dsp = demo.extreme_dsp;
+                    p.bpm = demo.bpm;
+                }
+                let rep = analyze_patch_spectrum(engine.active_patch(), engine.sample_rate_hz, 200);
+                Ok(json!({
+                    "demo": demo,
+                    "rms_dbfs": rep.rms_dbfs,
+                    "peak_dbfs": rep.peak_dbfs,
+                    "estimated_pitch_hz": rep.estimated_pitch_hz,
+                }))
             }
             Self::ResetFactoryPatches => {
                 *engine = SynthEngine::factory_seed();

@@ -119,5 +119,9 @@ pub fn load_from_db(path: &Path) -> Result<Option<SynthEngine>, SynthError> {
         active_patch_id,
         sample_rate_hz,
         patches,
+        rack_cables: crate::rompler::default_rack_cables(),
+        midi_depot: crate::rompler::builtin_midi_depot(),
+        demos: crate::rompler::builtin_demo_showcases(),
+        midi_hw: crate::rompler::MidiHardwareConfig::default(),
     }))
 }
