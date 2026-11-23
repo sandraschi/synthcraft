@@ -12,31 +12,33 @@ pub fn render_help_tab_content(app: &SynthCraftApp, ui: &mut egui::Ui) {
             ui.label(HELP_MD);
         }
         HelpTab::ModularRack => {
-            ui.heading("Workbenches 1 & 2: VCV Rack 2-Style 3U Eurorack, 1990 Korg M1 Rompler & Extreme DSP");
+            ui.heading(
+                "Workbenches 1 & 2: 3U Eurorack, 1990 PCM workstation Rompler & Extreme DSP",
+            );
             ui.label(
-                "SynthCraft combines a visual VCV Rack 2-style 3U Eurorack bay (with drooping catenary patch cables) alongside a 1990 Korg M1 AI2 PCM sample player and 6 Extreme Modern DSP algorithms.",
+                "SynthCraft combines a visual 3U Eurorack bay (with drooping catenary patch cables) alongside a 1990-style PCM sample player and 6 Extreme Modern DSP algorithms.",
             );
             ui.add_space(6.0);
 
             ui.group(|ui| {
-                ui.strong("1. 1990 Korg M1 AI2 PCM Sample ROM Bank (32 kHz 16-Bit DAC)");
+                ui.strong("1. 1990-style PCM program bank (32 kHz 16-Bit DAC)");
                 egui::Grid::new("help_m1_rom_grid")
                     .striped(true)
                     .show(ui, |ui| {
                         ui.strong("Program ID");
-                        ui.strong("1990 Korg M1 Factory Program");
+                        ui.strong("1990-style PCM Program");
                         ui.strong("AI2 PCM Transient & Harmonic Architecture");
                         ui.end_row();
 
                         for (id, name, desc) in [
-                            ("m1_00_universe", "Prog 00: Universe", "Lorelei bell attack transient + detuned choir formant pad"),
+                            ("m1_00_universe", "Prog 00: Universe", "glass bell attack transient + detuned choir formant pad"),
                             ("m1_01_piano16", "Prog 01: Piano 16'", "Iconic 1990 Ibiza house/rave piano: bright hammer strike + stretched piano loop"),
-                            ("m1_17_organ2", "Prog 17: Organ 2", "Robin S 'Show Me Love' percussive 3rd-harmonic (8'+4'+2 2/3') drawbar organ bass + 8ms key-click"),
+                            ("m1_17_organ2", "Prog 17: Organ 2", "Percussive 3rd-harmonic (8'+4'+2 2/3') drawbar organ bass + 8ms key-click"),
                             ("m1_11_fretless", "Prog 11: Fretless Bass", "Pitch-envelope attack scoop + warm mwah harmonics"),
                             ("m1_12_slapbass", "Prog 12: Slap Bass", "Metallic thumb-pop transient + slap funk decay"),
                             ("m1_24_panflute", "Prog 24: Pan Flute", "Breathy chiff noise burst + odd-harmonic bamboo pipe with 5.2 Hz vibrato"),
                             ("m1_36_choir", "Prog 36: Ooh/Aah Choir", "3-formant vocal filter bank (F1=720 Hz, F2=1240 Hz, F3=2600 Hz)"),
-                            ("m1_48_orchhit", "Prog 48: Orchestra Hit", "Stacked minor-triad staccato Fairlight/M1 orchestra stab"),
+                            ("m1_48_orchhit", "Prog 48: Orchestra Hit", "Stacked minor-triad staccato orchestra stab"),
                         ] {
                             ui.monospace(id);
                             ui.label(name);
@@ -52,8 +54,8 @@ pub fn render_help_tab_content(app: &SynthCraftApp, ui: &mut egui::Ui) {
                 ui.label("- karplus_strong_pluck: Waveguide physical string modeling with frequency-dependent harmonic dispersion damping.");
                 ui.label("- granular_cloud: 4 overlapping Hann-windowed microsound grains with +1 octave and +5th shimmer.");
                 ui.label("- wavetable_morph: Continuous 3D wavetable interpolation (Sine -> Vocal Formant -> Digital Fold -> HyperSaw).");
-                ui.label("- west_coast_wavefolder: Buchla 259 5-stage trigonometric wavefolder paired with an organic vactrol Low-Pass Gate (LPG).");
-                ui.label("- phase_distortion_cz: Casio CZ non-linear phase-angle knee warping with hard-synced resonant window.");
+                ui.label("- west_coast_wavefolder: 5-stage trigonometric wavefolder paired with an organic vactrol Low-Pass Gate (LPG).");
+                ui.label("- phase_distortion_cz: non-linear phase-angle knee warping with hard-synced resonant window.");
                 ui.label("- modal_struck_bar: Euler-Bernoulli uniform bar eigenmodes (f_0 * [1.0, 2.756, 5.404, 8.933]) for metallic/glass percussion.");
             });
         }
@@ -63,7 +65,7 @@ pub fn render_help_tab_content(app: &SynthCraftApp, ui: &mut egui::Ui) {
 
             ui.group(|ui| {
                 ui.strong("1. How to Connect Your Physical USB or 5-Pin DIN MIDI Keyboard");
-                ui.label("Step 1 (Direct USB / WinMM Studio Mode): Plug your USB MIDI controller (Arturia KeyStep/MiniLab, Akai MPK Mini, Korg M1/nanoKEY, NI Komplete Kontrol, Novation Launchkey) into Goliath. Open Workbench 3 ('MIDI Keyboard & MIDI Depot') and select your device in the 'MIDI Input Device' dropdown (default: 'USB MIDI Keyboard (WinMM Auto-Detect / Omni)').");
+                ui.label("Step 1 (Direct USB / WinMM Studio Mode): Plug your USB MIDI controller (Arturia KeyStep/MiniLab, Akai MPK Mini, PCM workstation/nanoKEY, NI Komplete Kontrol, Novation Launchkey) into Goliath. Open Workbench 3 ('MIDI Keyboard & MIDI Depot') and select your device in the 'MIDI Input Device' dropdown (default: 'USB MIDI Keyboard (WinMM Auto-Detect / Omni)').");
                 ui.label("Step 2 (MIDI Channel & CC Mapping): Leave MIDI Channel on '0 (Omni)' to receive on all 16 channels, or lock to '1..16'. Your hardware knobs map automatically:");
                 ui.monospace(
                     "Mod Wheel (CC#01) -> LFO Filter Modulation Depth (CLAP 0x100A)\nBrightness (CC#74) -> 4-Pole Ladder VCF Cutoff Frequency Hz (CLAP 0x1004)\nTimbre     (CC#71) -> VCF Resonance Q (CLAP 0x1005)\nAttack     (CC#73) -> ADSR Attack Time ms (CLAP 0x1007)\nFX Depth   (CC#91) -> Extreme DSP Morph / Harmonics Macro",
@@ -75,7 +77,7 @@ pub fn render_help_tab_content(app: &SynthCraftApp, ui: &mut egui::Ui) {
             ui.add_space(6.0);
             ui.group(|ui| {
                 ui.strong("2. Built-In MIDI Pattern Depot & Standard MIDI File (.MID) Exporter");
-                ui.label("Switch to 'MIDI Pattern Depot & .MID Export' under Workbench 3 to load 8 iconic patterns (1990 Ibiza Rave M1 Piano, Robin S Show Me Love M1 Organ 2, Vienna 303 Acid, M1 Universe Pad, Buchla Polyrhythm, Karplus Harp, Modal Marimba, Neuro Reese) or export 480-PPQN Standard MIDI Files (.mid) to disk.");
+                ui.label("Switch to 'MIDI Pattern Depot & .MID Export' under Workbench 3 to load 8 iconic patterns (1990 Ibiza Rave Piano, Club Organ 2 Bass, Vienna 303 Acid, Universe Pad, Wavefolder Polyrhythm, Karplus Harp, Modal Marimba, Neuro Reese) or export 480-PPQN Standard MIDI Files (.mid) to disk.");
             });
         }
         HelpTab::ClapDjcraft => {
@@ -115,14 +117,14 @@ pub fn render_help_tab_content(app: &SynthCraftApp, ui: &mut egui::Ui) {
 
                         for (tool, cli, desc) in [
                             ("synth_status", "status", "Engine version, active patch, BPM, Camelot key, and CLAP plugin ID"),
-                            ("synth_summary", "summary", "Full active patch parameters, M1 ROM, Extreme DSP, and 16-step sequence"),
+                            ("synth_summary", "summary", "Full active patch parameters, PCM, Extreme DSP, and 16-step sequence"),
                             ("list_patches", "list-patches", "List all 6 factory and custom patches"),
                             ("load_patch", "load-patch", "Activate a patch by ID (e.g. vienna_acid_303)"),
                             ("update_oscillators", "update-oscillators", "Set VCO1/VCO2 waveforms, detune cents, mix, and FM index"),
                             ("update_filter", "update-filter", "Set 4-pole VCF mode, cutoff Hz, resonance Q, and env mod depth"),
                             ("update_envelope_lfo", "update-envelope-lfo", "Set ADSR (attack, decay, sustain, release) and LFO rate/depth"),
                             ("set_sequencer_step", "set-step", "Edit step 0..15 (midi_note, accent, slide, active)"),
-                            ("load_korg_m1_program", "load-m1", "Select a 1990 Korg M1 PCM program (m1_00_universe, m1_01_piano16, m1_17_organ2, ...) and mix"),
+                            ("load_pcm_program", "load-m1", "Select a 1990 PCM workstation PCM program (m1_00_universe, m1_01_piano16, m1_17_organ2, ...) and mix"),
                             ("set_extreme_dsp", "set-extreme-dsp", "Select an Extreme DSP mode (karplus_strong_pluck, granular_cloud, west_coast_wavefolder, ...)"),
                             ("load_midi_depot_clip", "load-midi-clip", "Load one of the 8 built-in MIDI Depot patterns into the sequencer"),
                             ("export_midi_file", "export-midi", "Export a MIDI Depot clip as a Standard MIDI File (.mid, 480 PPQN)"),
@@ -151,7 +153,7 @@ pub fn render_help_tab_content(app: &SynthCraftApp, ui: &mut egui::Ui) {
                 ui.label(format!("Application Version: v{APP_VERSION}"));
                 ui.label(format!("Active SQLite Database Path: {}", app.db_path.display()));
                 ui.monospace(
-                    "L1: crates/synthcraft-core  (VCO/VCF, 1990 Korg M1 AI2 PCM, Extreme DSP, SMF .mid & RIFF .wav writers)\nL2: crates/synthcraft-mcp   (clap 4.5 CLI + MCP 2026-07-28 JSON-RPC 2.0 stdio server, 19 tools)\nL3: crates/synthcraft-app   (eframe/egui 0.37 VCV 2 Eurorack studio + egui_kittest harness)",
+                    "L1: crates/synthcraft-core  (VCO/VCF, 1990-style PCM, Extreme DSP, SMF .mid & RIFF .wav writers)\nL2: crates/synthcraft-mcp   (clap 4.5 CLI + MCP 2026-07-28 JSON-RPC 2.0 stdio server, 19 tools)\nL3: crates/synthcraft-app   (eframe/egui 0.37 VCV 2 Eurorack studio + egui_kittest harness)",
                 );
             });
 

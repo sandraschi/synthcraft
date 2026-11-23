@@ -1,10 +1,10 @@
 //! Domain models for Modular Audio Synthesis: Dual VCOs, 4-Pole Resonant Ladder VCF,
-//! ADSR Envelope, Tempo-Synced LFO, 16-Step TB-303 Acid Sequencer, 32-Band DFT Spectrum
+//! ADSR Envelope, Tempo-Synced LFO, 16-Step Acid Sequencer, 32-Band DFT Spectrum
 //! Analyzer, RIFF PCM `.wav` Renderer, CLAP 1.2.2 Plugin Bridge (for SoundCraft),
 //! and BPM/Camelot Stem & Riser Exporter (for DJCraft).
 
 use crate::error::SynthError;
-use crate::rompler::{ExtremeDspMode, KorgM1Program};
+use crate::rompler::{ExtremeDspMode, PcmProgram};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::f32::consts::PI;
@@ -164,7 +164,7 @@ pub struct SynthPatch {
     pub drive_saturation: f32,
     pub master_gain: f32,
     #[serde(default)]
-    pub m1_program: Option<KorgM1Program>,
+    pub m1_program: Option<PcmProgram>,
     #[serde(default = "default_half")]
     pub m1_layer_mix: f32,
     #[serde(default = "default_extreme_off")]

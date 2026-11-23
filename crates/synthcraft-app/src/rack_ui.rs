@@ -1,4 +1,4 @@
-//! VCV Rack 2-Style 3U Eurorack & Patch-Cable Canvas, 1990 Korg M1 AI2 PCM Rompler,
+//! 3U Eurorack & Patch-Cable Canvas, 1990-style PCM Rompler,
 //! Extreme Modern DSP Workbench, Interactive 25-Key MIDI Keyboard, MIDI Depot,
 //! and 1-Click Demo Showcase.
 
@@ -10,10 +10,10 @@ use std::f32::consts::PI;
 use std::path::PathBuf;
 use synthcraft_core::{
     analyze_patch_spectrum, export_midi_smf_file, midi_to_freq_hz, write_wav_file, Command,
-    ExtremeDspMode, KorgM1Program,
+    ExtremeDspMode, PcmProgram,
 };
 
-/// Render the VCV Rack 2-style 3U Eurorack module & draped patch-cable canvas.
+/// Render the 3U Eurorack module & draped patch-cable canvas.
 pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     let pal = app.skin.palette();
     let green = pal.arc_primary;
@@ -22,7 +22,7 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     let purple = Color32::from_rgb(168, 85, 247);
     let red = Color32::from_rgb(239, 68, 68);
 
-    ui.strong("VCV Rack 2-Style 3U Eurorack Modular Bay (Live Catenary Patch Cables)");
+    ui.strong("3U Eurorack Modular Bay (Live Catenary Patch Cables)");
     let avail_w = ui.available_width().max(720.0);
     let rack_h = 275.0;
     let (rect, _) = ui.allocate_exact_size(Vec2::new(avail_w, rack_h), Sense::hover());
@@ -38,7 +38,7 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
 
     // 2. Six 3U Eurorack Modules across the bay
     let ap = app.engine.active_patch().clone();
-    let m1_name = ap.m1_program.map(KorgM1Program::as_str).unwrap_or("OFF");
+    let m1_name = ap.m1_program.map(PcmProgram::as_str).unwrap_or("OFF");
     let modules = [
         (
             "VCO-1",
@@ -62,7 +62,7 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             vec![("SYNC IN", false), ("DSP OUT", true)],
         ),
         (
-            "KORG-M1-PCM",
+            "PCM-WORKSTATION",
             m1_name.to_uppercase(),
             vec![("ROM MIX", ap.m1_layer_mix), ("32kHz DAC", 0.85)],
             vec![("GATE IN", false), ("AI2 ROM OUT", true)],
@@ -242,12 +242,12 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     }
 }
 
-/// Render Workbench 4: 1990 Korg M1 AI2 PCM Workstation Rompler & Extreme Modern DSP Generators.
+/// Render Workbench 4: 1990-style PCM workstation programs & Extreme Modern DSP Generators.
 pub fn render_m1_and_extreme_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     let pal = app.skin.palette();
-    ui.heading("4. Korg M1 (1990) AI2 PCM Rompler & Extreme Modern DSP Forge");
+    ui.heading("4. 1990-style PCM Programs & Extreme Modern DSP Forge");
     ui.label(
-        "Layer authentic 1990 Korg M1 16-bit 32 kHz AI2 PCM multi-samples with modern physical modeling, granular clouds, and West-Coast wavefolding.",
+        "Layer 1990-style PCM workstation 16-bit 32 kHz AI2 PCM multi-samples with modern physical modeling, granular clouds, and West-Coast wavefolding.",
     );
     ui.separator();
 
@@ -256,16 +256,16 @@ pub fn render_m1_and_extreme_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
         let p = app.engine.active_patch_mut();
         ui.columns(2, |cols| {
             cols[0].group(|ui| {
-                ui.strong("1990 Korg M1 AI2 PCM Sample ROM Bank (MB87404 32 kHz DAC)");
+                ui.strong("1990-style PCM program bank (synthesized, 32 kHz character)");
                 let is_off = p.m1_program.is_none();
                 if ui
-                    .selectable_label(is_off, "M1 Layer Off (Pure Synth Only)")
+                    .selectable_label(is_off, "PCM Layer Off (Pure Synth Only)")
                     .clicked()
                 {
                     p.m1_program = None;
                     changed = true;
                 }
-                for prog in KorgM1Program::all() {
+                for prog in PcmProgram::all() {
                     let active = p.m1_program == Some(*prog);
                     if ui.selectable_label(active, prog.display_name()).clicked() {
                         p.m1_program = Some(*prog);
@@ -275,7 +275,7 @@ pub fn render_m1_and_extreme_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     changed |=
-                        vertical_fader(ui, &pal, "M1 ROM MIX", &mut p.m1_layer_mix, 0.0, 1.0, "%");
+                        vertical_fader(ui, &pal, "PCM MIX", &mut p.m1_layer_mix, 0.0, 1.0, "%");
                     changed |=
                         rotary_knob(ui, &pal, "CUTOFF", &mut p.cutoff_hz, 40.0, 12000.0, "Hz");
                     changed |= rotary_knob(ui, &pal, "MASTER", &mut p.master_gain, 0.05, 1.0, "%");
@@ -283,7 +283,7 @@ pub fn render_m1_and_extreme_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             });
 
             cols[1].group(|ui| {
-                ui.strong("Extreme Modern DSP Generators (Physical / Granular / Buchla / CZ)");
+                ui.strong("Extreme Modern DSP Generators (Physical / Granular / West-Coast / Phase-Distortion)");
                 for mode in ExtremeDspMode::all() {
                     let active = p.extreme_dsp == *mode;
                     if ui.selectable_label(active, mode.display_name()).clicked() {
@@ -514,9 +514,9 @@ pub fn render_demo_showcase(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     let green = Color32::from_rgb(34, 197, 94);
     let cyan = Color32::from_rgb(56, 189, 248);
 
-    ui.heading("Demo Showcase: 1-Click Korg M1 (1990), Extreme DSP & Acid Audition");
+    ui.heading("Demo Showcase: 1-Click 1990-style PCM, Extreme DSP & Acid Audition");
     ui.label(
-        "Click any showcase card below to configure the Eurorack VCO/VCF, 1990 Korg M1 PCM ROM, Extreme DSP engine, and 16-step MIDI sequence in one click.",
+        "Click any showcase card below to configure the Eurorack VCO/VCF, 1990 PCM workstation PCM ROM, Extreme DSP engine, and 16-step MIDI sequence in one click.",
     );
     ui.separator();
 
@@ -531,7 +531,7 @@ pub fn render_demo_showcase(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 ui.monospace(format!(
                     "| {:.0} BPM | M1: {} | Extreme DSP: {} | MIDI: {}",
                     d.bpm,
-                    d.m1_program.map(KorgM1Program::as_str).unwrap_or("off"),
+                    d.m1_program.map(PcmProgram::as_str).unwrap_or("off"),
                     d.extreme_dsp.as_str(),
                     d.midi_clip_id
                 ));
@@ -585,12 +585,12 @@ pub fn render_demo_showcase(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     ui.colored_label(
         green,
         format!(
-            "Active Demo Telemetry: Patch '{}' | M1 ROM: {} | Extreme DSP: {} | RMS {:.2} dBFS | Peak {:.2} dBFS | Pitch {:.1} Hz",
+            "Active Demo Telemetry: Patch '{}' | PCM: {} | Extreme DSP: {} | RMS {:.2} dBFS | Peak {:.2} dBFS | Pitch {:.1} Hz",
             app.engine.active_patch().name,
             app.engine
                 .active_patch()
                 .m1_program
-                .map(KorgM1Program::display_name)
+                .map(PcmProgram::display_name)
                 .unwrap_or("None"),
             app.engine.active_patch().extreme_dsp.display_name(),
             rep.rms_dbfs,

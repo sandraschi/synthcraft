@@ -1,4 +1,4 @@
-//! Korg M1 (1988-1990) AI2 PCM Workstation Rompler, Extreme Modern DSP Generators,
+//! 1990-style PCM Workstation Programs, Extreme Modern DSP Generators,
 //! Hardware MIDI Controller Mapping, MIDI Pattern Depot, and Demo Showcase Presets.
 
 use crate::error::SynthError;
@@ -6,19 +6,19 @@ use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
 use std::path::Path;
 
-/// Iconic 1990 Korg M1 Factory PCM Programs (AI2 Synthesis: 16-bit 32 kHz PCM Attack Transient + Looped Wave).
+/// Iconic 1990 PCM workstation Factory PCM Programs (AI2 Synthesis: 16-bit 32 kHz PCM Attack Transient + Looped Wave).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum KorgM1Program {
-    /// Prog 00: M1 Universe (Choir + Lorelei Bell Pad + Ensemble Chorus)
+pub enum PcmProgram {
+    /// Prog 00: Universe (Choir + Glass Bell Pad + Ensemble Chorus)
     Universe00,
-    /// Prog 01: M1 Piano 16' (1990 House / Rave Bright Hammer Piano)
+    /// Prog 01: Piano 16' (1990 House / Rave Bright Hammer Piano)
     Piano16_01,
     /// Prog 11: M1 Fretless Bass (Mwah Pitch-Envelope Fretless)
     Fretless11,
     /// Prog 12: M1 Slap Bass (Thumb Pop Transient + Funk Decay)
     SlapBass12,
-    /// Prog 17: M1 Organ 2 (90s House 'Show Me Love' Percussive 3rd-Harmonic Drawbar Organ)
+    /// Prog 17: Organ 2 (90s house percussive 3rd-harmonic drawbar organ)
     Organ2_17,
     /// Prog 24: M1 Pan Flute (Chiff Breath Attack + Bamboo Overtones)
     PanFlute24,
@@ -28,7 +28,7 @@ pub enum KorgM1Program {
     OrchestraHit48,
 }
 
-impl KorgM1Program {
+impl PcmProgram {
     pub fn all() -> &'static [Self] {
         &[
             Self::Universe00,
@@ -57,14 +57,14 @@ impl KorgM1Program {
 
     pub fn display_name(self) -> &'static str {
         match self {
-            Self::Universe00 => "Prog 00: Universe (Choir + Lorelei Bell)",
+            Self::Universe00 => "Prog 00: Universe (Choir + Glass Bell)",
             Self::Piano16_01 => "Prog 01: Piano 16' (1990 House/Rave Piano)",
             Self::Fretless11 => "Prog 11: Fretless Bass (Mwah Scoop)",
             Self::SlapBass12 => "Prog 12: Slap Bass (Thumb Pop PCM)",
-            Self::Organ2_17 => "Prog 17: Organ 2 (90s House 'Show Me Love')",
+            Self::Organ2_17 => "Prog 17: Organ 2 (90s house organ)",
             Self::PanFlute24 => "Prog 24: Pan Flute (Breathy Chiff Attack)",
             Self::OohAahChoir36 => "Prog 36: Ooh/Aah Choir (Formant Vocal)",
-            Self::OrchestraHit48 => "Prog 48: Orchestra Hit (Fairlight/M1 Stab)",
+            Self::OrchestraHit48 => "Prog 48: Orchestra Hit (Stab)",
         }
     }
 
@@ -85,7 +85,7 @@ impl KorgM1Program {
     /// One 16-bit, 32 kHz-quantised sample of this additive voice. `phase_cycles` is the
     /// integrated oscillator phase (continuous through glide and bend); `time_sec` is time since note-on.
     pub fn sample_pcm(self, phase_cycles: f32, time_sec: f32) -> f32 {
-        // Quantize time to 32,000 Hz DAC clock like the original 1988 Korg M1 MB87404 chip
+        // Quantize time to 32,000 Hz DAC clock like the original 1988 PCM workstation DAC chip
         let t = (time_sec * 32000.0).floor() / 32000.0;
         let w = 2.0 * PI * phase_cycles;
 
@@ -101,14 +101,14 @@ impl KorgM1Program {
                 hammer + body
             }
             Self::Organ2_17 => {
-                // 90s House M1 Organ 2: Fundamental (8') + Octave (4') + Loud 12th/Nazat (2 2/3' = 3*f0) + 8ms key-click
+                // 90s House Organ 2: Fundamental (8') + Octave (4') + Loud 12th/Nazat (2 2/3' = 3*f0) + 8ms key-click
                 let click = (-t * 180.0).exp() * (w * 9.5).sin() * 0.40;
                 let env = (-t * 5.2).exp() * 0.65 + 0.35;
                 let drawbars = (w).sin() * 0.50 + (w * 2.0).sin() * 0.25 + (w * 2.998).sin() * 0.48;
                 (click + drawbars * env).tanh()
             }
             Self::Universe00 => {
-                // Lorelei bell transient + slow choir formant pad
+                // glass bell transient + slow choir formant pad
                 let bell = (-t * 7.0).exp() * (w * 3.5 + (w * 1.414).sin() * 1.8).sin() * 0.35;
                 let pad_env = 1.0 - (-t * 3.5).exp();
                 let choir =
@@ -170,9 +170,9 @@ pub enum ExtremeDspMode {
     GranularCloud,
     /// 3D Wavetable Morpher (Sine -> Formant -> Digital Fold -> HyperSaw)
     WavetableMorph,
-    /// Buchla 259 West-Coast Multi-Stage Trigonometric Wavefolder + LPG
+    /// West-coast multi-stage Trigonometric Wavefolder + LPG
     WestCoastWavefolder,
-    /// Casio CZ Phase Distortion (Non-Linear Phase Angle Warping)
+    /// Phase Distortion (Non-Linear Phase Angle Warping)
     PhaseDistortionCz,
     /// Modal Physical Modeling Struck Metal / Glass Bar (Euler-Bernoulli Eigenmodes)
     ModalStruckBar,
@@ -209,8 +209,8 @@ impl ExtremeDspMode {
             Self::KarplusStrongPluck => "Karplus-Strong Waveguide Plucked String",
             Self::GranularCloud => "Granular Microsound Shimmer Cloud",
             Self::WavetableMorph => "3D Wavetable Morpher (Serum/Vital Style)",
-            Self::WestCoastWavefolder => "Buchla 259 West-Coast Wavefolder + LPG",
-            Self::PhaseDistortionCz => "Casio CZ Non-Linear Phase Distortion",
+            Self::WestCoastWavefolder => "West-Coast Wavefolder + LPG",
+            Self::PhaseDistortionCz => "Non-Linear Phase Distortion",
             Self::ModalStruckBar => "Modal Physical Struck Metal/Glass Bar",
         }
     }
@@ -282,7 +282,7 @@ impl ExtremeDspMode {
                 out.clamp(-1.0, 1.0)
             }
             Self::WestCoastWavefolder => {
-                // Buchla 259 5-stage trigonometric wavefolder + vactrol LPG decay
+                // 5-stage trigonometric wavefolder + vactrol LPG decay
                 let folds = 1.5 + m * 7.5;
                 let carrier = (w).sin() + 0.25 * (w * 2.0).sin();
                 let folded = (carrier * folds).sin() - 0.3 * (carrier * folds * 1.7).cos();
@@ -318,7 +318,7 @@ impl ExtremeDspMode {
     }
 }
 
-/// Virtual Eurorack / VCV Rack 2-style patch cable connecting two 3U module jacks.
+/// Virtual Eurorack / patch cable connecting two 3U module jacks.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RackCable {
     pub id: String,
@@ -343,14 +343,14 @@ pub struct MidiDepotClip {
     pub notes: Vec<u8>,
 }
 
-/// Curated 1-Click Demo Showcase item combining SynthPatch + Korg M1 + Extreme DSP + MIDI Clip.
+/// Curated 1-Click Demo Showcase item combining SynthPatch + PCM workstation + Extreme DSP + MIDI Clip.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DemoShowcaseItem {
     pub id: String,
     pub title: String,
     pub description: String,
     pub patch_id: String,
-    pub m1_program: Option<KorgM1Program>,
+    pub m1_program: Option<PcmProgram>,
     pub extreme_dsp: ExtremeDspMode,
     pub midi_clip_id: String,
     pub bpm: f32,
@@ -376,7 +376,7 @@ impl Default for MidiHardwareConfig {
                 "USB MIDI Keyboard (WinMM Auto-Detect / Omni)".into(),
                 "Arturia KeyStep 37 / MiniLab 3 (USB MIDI)".into(),
                 "Akai MPK Mini Mk3 (USB MIDI)".into(),
-                "Korg M1 / nanoKEY Studio (MIDI IN)".into(),
+                "USB MIDI keyboard (MIDI IN)".into(),
                 "Novation Launchkey / Native Instruments Komplete Kontrol".into(),
                 "Virtual On-Screen 25-Key Studio Keyboard".into(),
             ],
@@ -418,7 +418,7 @@ pub fn default_rack_cables() -> Vec<RackCable> {
         },
         RackCable {
             id: "cab_m1_vcf".into(),
-            from_module: "KORG-M1-PCM".into(),
+            from_module: "PCM-WORKSTATION".into(),
             from_jack: "AI2 ROM OUT".into(),
             to_module: "VCF-LADDER".into(),
             to_jack: "AUX IN".into(),
@@ -459,7 +459,7 @@ pub fn builtin_midi_depot() -> Vec<MidiDepotClip> {
     vec![
         MidiDepotClip {
             id: "90s_house_m1_piano".into(),
-            title: "1990 Ibiza Rave M1 Piano 16' Anthem".into(),
+            title: "1990 Ibiza Rave Piano 16' Anthem".into(),
             genre: "90s House / Rave".into(),
             bpm: 126.0,
             camelot_key: "8A Am".into(),
@@ -470,15 +470,15 @@ pub fn builtin_midi_depot() -> Vec<MidiDepotClip> {
             ],
         },
         MidiDepotClip {
-            id: "show_me_love_m1_organ".into(),
-            title: "Robin S 'Show Me Love' M1 Organ 2 Bass".into(),
+            id: "club_organ_bass".into(),
+            title: "Club Organ 2 Bass".into(),
             genre: "Classic 90s Club House".into(),
             bpm: 124.0,
             camelot_key: "4A Fm".into(),
             recommended_m1: Some("m1_17_organ2".into()),
             recommended_extreme_dsp: "off".into(),
             notes: vec![
-                41, 41, 44, 46, 48, 46, 44, 41, 39, 39, 41, 44, 46, 44, 41, 39,
+                41, 41, 48, 41, 44, 41, 51, 48, 41, 41, 53, 41, 46, 48, 44, 41,
             ],
         },
         MidiDepotClip {
@@ -495,7 +495,7 @@ pub fn builtin_midi_depot() -> Vec<MidiDepotClip> {
         },
         MidiDepotClip {
             id: "m1_universe_cosmic_pad".into(),
-            title: "Korg M1 '00 Universe' Cosmic Lorelei Sequence".into(),
+            title: "PCM workstation '00 Universe' Cosmic Glass Sequence".into(),
             genre: "90s Ambient / Electronica".into(),
             bpm: 108.0,
             camelot_key: "9A Em".into(),
@@ -507,7 +507,7 @@ pub fn builtin_midi_depot() -> Vec<MidiDepotClip> {
         },
         MidiDepotClip {
             id: "buchla_westcoast_bongo".into(),
-            title: "Buchla 259 West-Coast Wavefolder Polyrhythm".into(),
+            title: "West-Coast Wavefolder Polyrhythm".into(),
             genre: "West-Coast Modular".into(),
             bpm: 128.0,
             camelot_key: "2A D#m".into(),
@@ -560,37 +560,37 @@ pub fn builtin_demo_showcases() -> Vec<DemoShowcaseItem> {
     vec![
         DemoShowcaseItem {
             id: "demo_1990_m1_piano".into(),
-            title: "1990 Korg M1 '01 Piano 16' Ibiza Rave Anthem".into(),
-            description: "The legendary 1990 Korg M1 Piano 16' PCM attack + house chord progression at 126 BPM.".into(),
+            title: "1990 PCM workstation '01 Piano 16' Ibiza Rave Anthem".into(),
+            description: "The legendary 1990 PCM workstation Piano 16' PCM attack + house chord progression at 126 BPM.".into(),
             patch_id: "vienna_acid_303".into(),
-            m1_program: Some(KorgM1Program::Piano16_01),
+            m1_program: Some(PcmProgram::Piano16_01),
             extreme_dsp: ExtremeDspMode::Off,
             midi_clip_id: "90s_house_m1_piano".into(),
             bpm: 126.0,
         },
         DemoShowcaseItem {
-            id: "demo_show_me_love_organ".into(),
-            title: "1990 Korg M1 '17 Organ 2' Club Bassline".into(),
-            description: "Percussive 3rd-harmonic M1 Organ 2 drawbar bass with 8ms key-click transient.".into(),
+            id: "demo_club_organ_bass".into(),
+            title: "1990 PCM workstation '17 Organ 2' Club Bassline".into(),
+            description: "Percussive 3rd-harmonic Organ 2 drawbar bass with 8ms key-click transient.".into(),
             patch_id: "danube_dub_chord".into(),
-            m1_program: Some(KorgM1Program::Organ2_17),
+            m1_program: Some(PcmProgram::Organ2_17),
             extreme_dsp: ExtremeDspMode::Off,
-            midi_clip_id: "show_me_love_m1_organ".into(),
+            midi_clip_id: "club_organ_bass".into(),
             bpm: 124.0,
         },
         DemoShowcaseItem {
             id: "demo_m1_universe_granular".into(),
-            title: "Korg M1 '00 Universe' + Granular Shimmer Cloud".into(),
-            description: "Combines the iconic M1 Lorelei choir/bell PCM with a 4-grain octave shimmer cloud.".into(),
+            title: "PCM workstation '00 Universe' + Granular Shimmer Cloud".into(),
+            description: "Combines the iconic M1 glass choir/bell PCM with a 4-grain octave shimmer cloud.".into(),
             patch_id: "soundcraft_warm_pad".into(),
-            m1_program: Some(KorgM1Program::Universe00),
+            m1_program: Some(PcmProgram::Universe00),
             extreme_dsp: ExtremeDspMode::GranularCloud,
             midi_clip_id: "m1_universe_cosmic_pad".into(),
             bpm: 108.0,
         },
         DemoShowcaseItem {
             id: "demo_buchla_wavefolder".into(),
-            title: "Buchla 259 West-Coast Wavefolder + Vactrol LPG".into(),
+            title: "West-Coast Wavefolder + Vactrol LPG".into(),
             description: "5-stage trigonometric wavefolding with organic vactrol low-pass gate decay.".into(),
             patch_id: "vienna_acid_303".into(),
             m1_program: None,
@@ -601,9 +601,9 @@ pub fn builtin_demo_showcases() -> Vec<DemoShowcaseItem> {
         DemoShowcaseItem {
             id: "demo_karplus_panflute".into(),
             title: "Karplus-Strong Plucked String + M1 Pan Flute".into(),
-            description: "Waveguide physical string model layered with the 1990 Korg M1 breathy Pan Flute.".into(),
+            description: "Waveguide physical string model layered with the 1990 PCM workstation breathy Pan Flute.".into(),
             patch_id: "stephansdom_bell_fm".into(),
-            m1_program: Some(KorgM1Program::PanFlute24),
+            m1_program: Some(PcmProgram::PanFlute24),
             extreme_dsp: ExtremeDspMode::KarplusStrongPluck,
             midi_clip_id: "karplus_acoustic_harp".into(),
             bpm: 118.0,
@@ -613,7 +613,7 @@ pub fn builtin_demo_showcases() -> Vec<DemoShowcaseItem> {
             title: "Modal Struck Glass Bar + M1 Ooh/Aah Choir".into(),
             description: "Euler-Bernoulli inharmonic bar eigenmodes layered over the M1 formant choir.".into(),
             patch_id: "stephansdom_bell_fm".into(),
-            m1_program: Some(KorgM1Program::OohAahChoir36),
+            m1_program: Some(PcmProgram::OohAahChoir36),
             extreme_dsp: ExtremeDspMode::ModalStruckBar,
             midi_clip_id: "modal_glass_marimba".into(),
             bpm: 122.0,

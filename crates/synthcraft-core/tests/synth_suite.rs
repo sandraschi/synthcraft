@@ -1,7 +1,7 @@
 //! Integration test suite for SynthCraft L1 core.
 
 use synthcraft_core::{
-    export_midi_smf_file, midi_to_freq_hz, Command, ExtremeDspMode, FilterMode, KorgM1Program,
+    export_midi_smf_file, midi_to_freq_hz, Command, ExtremeDspMode, FilterMode, PcmProgram,
     SynthEngine, WaveformKind,
 };
 
@@ -152,9 +152,9 @@ fn reset_factory_patches_restores_default_patch() {
 }
 
 #[test]
-fn all_eight_korg_m1_1990_programs_parse_and_sample_pcm() {
-    for prog in KorgM1Program::all() {
-        assert_eq!(KorgM1Program::parse(prog.as_str()), Some(*prog));
+fn all_eight_pcm_programs_parse_and_sample() {
+    for prog in PcmProgram::all() {
+        assert_eq!(PcmProgram::parse(prog.as_str()), Some(*prog));
         let s = prog.sample_pcm(3.3, 0.015);
         assert!((-1.0..=1.0).contains(&s));
     }
@@ -177,10 +177,7 @@ fn midi_depot_loads_into_sequencer_and_exports_valid_smf_mid_header() {
     }
     .dispatch(&mut eng);
     assert!(res.is_ok());
-    assert_eq!(
-        eng.active_patch().m1_program,
-        Some(KorgM1Program::Piano16_01)
-    );
+    assert_eq!(eng.active_patch().m1_program, Some(PcmProgram::Piano16_01));
 
     let mut path = std::env::temp_dir();
     path.push(format!("synthcraft_test_{}.mid", std::process::id()));
@@ -361,7 +358,7 @@ fn chords_are_polyphonic_and_voices_free_up_after_release() {
 fn engine_is_deterministic_and_the_output_has_no_dc_offset() {
     let eng = SynthEngine::factory_seed();
     let mut p = eng.active_patch().clone();
-    p.m1_program = Some(KorgM1Program::Piano16_01);
+    p.m1_program = Some(PcmProgram::Piano16_01);
     p.m1_layer_mix = 0.8;
     let a = synthcraft_core::synthesize_audio_buffer(&p, 48_000, 600);
     let b = synthcraft_core::synthesize_audio_buffer(&p, 48_000, 600);

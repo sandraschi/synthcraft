@@ -6,9 +6,9 @@ use eframe::egui;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SynthSkin {
     ObsidianVcv,
-    KorgM1Vintage,
-    RolandSilver303,
-    BuchlaWestCoast,
+    WorkstationVintage,
+    SilverAcid,
+    WestCoastGold,
     DaylightStudio,
 }
 
@@ -16,9 +16,9 @@ impl SynthSkin {
     pub fn all() -> &'static [Self] {
         &[
             Self::ObsidianVcv,
-            Self::KorgM1Vintage,
-            Self::RolandSilver303,
-            Self::BuchlaWestCoast,
+            Self::WorkstationVintage,
+            Self::SilverAcid,
+            Self::WestCoastGold,
             Self::DaylightStudio,
         ]
     }
@@ -26,9 +26,9 @@ impl SynthSkin {
     pub fn label(self) -> &'static str {
         match self {
             Self::ObsidianVcv => "Obsidian VCV",
-            Self::KorgM1Vintage => "Korg M1 (1990)",
-            Self::RolandSilver303 => "Silver 303 Acid",
-            Self::BuchlaWestCoast => "Buchla Gold",
+            Self::WorkstationVintage => "1990-style PCM",
+            Self::SilverAcid => "Silver Acid",
+            Self::WestCoastGold => "West-Coast Gold",
             Self::DaylightStudio => "Daylight AAA",
         }
     }
@@ -38,13 +38,13 @@ impl SynthSkin {
             Self::ObsidianVcv => {
                 "Anodized dark slate Eurorack faceplates with emerald & cyan LED rings"
             }
-            Self::KorgM1Vintage => {
+            Self::WorkstationVintage => {
                 "1990 charcoal workstation chassis with iconic warm amber backlit LCD & red LEDs"
             }
-            Self::RolandSilver303 => {
-                "Brushed metallic silver TB-303 / TR-909 faceplates with crimson & acid accents"
+            Self::SilverAcid => {
+                "Brushed metallic silver acid-box faceplates with crimson & acid accents"
             }
-            Self::BuchlaWestCoast => {
+            Self::WestCoastGold => {
                 "Deep navy-bronze West-Coast synthesis panels with gold & violet harmonic arcs"
             }
             Self::DaylightStudio => {
@@ -80,7 +80,7 @@ impl SynthSkin {
                 text_primary: egui::Color32::from_rgb(241, 245, 249),
                 text_muted: egui::Color32::from_rgb(148, 163, 184),
             },
-            Self::KorgM1Vintage => SkinPalette {
+            Self::WorkstationVintage => SkinPalette {
                 is_dark: true,
                 panel_bg: egui::Color32::from_rgb(20, 21, 24),
                 module_bg: egui::Color32::from_rgb(31, 33, 38),
@@ -105,7 +105,7 @@ impl SynthSkin {
                 text_primary: egui::Color32::from_rgb(245, 245, 244),
                 text_muted: egui::Color32::from_rgb(168, 162, 158),
             },
-            Self::RolandSilver303 => SkinPalette {
+            Self::SilverAcid => SkinPalette {
                 is_dark: false,
                 panel_bg: egui::Color32::from_rgb(203, 213, 225),
                 module_bg: egui::Color32::from_rgb(226, 232, 240),
@@ -130,7 +130,7 @@ impl SynthSkin {
                 text_primary: egui::Color32::from_rgb(15, 23, 42),
                 text_muted: egui::Color32::from_rgb(51, 65, 85),
             },
-            Self::BuchlaWestCoast => SkinPalette {
+            Self::WestCoastGold => SkinPalette {
                 is_dark: true,
                 panel_bg: egui::Color32::from_rgb(15, 14, 26),
                 module_bg: egui::Color32::from_rgb(26, 23, 44),
@@ -233,7 +233,7 @@ impl SynthLayout {
         match self {
             Self::WorkbenchSplit => "Workbench Studio",
             Self::EurorackBay => "VCV 3U Eurorack Bay",
-            Self::Workstation1990 => "Korg M1 Workstation",
+            Self::Workstation1990 => "PCM Workstation",
             Self::LiveCockpit => "Live Performance Cockpit",
         }
     }
@@ -518,7 +518,7 @@ pub fn vertical_fader(
     changed
 }
 
-/// Renders a backlit Korg M1 / hardware workstation LCD status screen with a 16-segment
+/// Renders a backlit PCM workstation / hardware workstation LCD status screen with a 16-segment
 /// stereo LED VU Peak Meter.
 pub fn lcd_display_banner(
     ui: &mut egui::Ui,

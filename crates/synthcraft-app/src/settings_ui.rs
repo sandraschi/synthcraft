@@ -2,7 +2,7 @@
 //! 1. Audio Engine & Low-Latency Driver (WASAPI / ASIO / CoreAudio / JACK, Sample Rate, Buffer Size, Oversampling, Polyphony, A4=440Hz Reference, Soft Clipper)
 //! 2. MIDI Hardware, Clock Sync & MPE (Ports, Channel, MPE Pitch Bend, MIDI Clock Sync, Velocity Curve, Custom CC Matrix)
 //! 3. Appearance, Hardware Skins, Layouts & Rotary Physics (Skin, Layout, UI Zoom, Cable Sag & Opacity, Knob Drag Sensitivity, VU Ballistics)
-//! 4. Korg M1 (1990) AI2 DAC & Extreme DSP Tuning (32kHz MB87404 DAC Aliasing Emulation, Linear/Sinc Interpolation, Granular Density, Wavefolder Stages, Unison Voices)
+//! 4. 1990-style PCM AI2 DAC & Extreme DSP Tuning (32kHz DAC DAC Aliasing Emulation, Linear/Sinc Interpolation, Granular Density, Wavefolder Stages, Unison Voices)
 //! 5. CLAP 1.2.2, SoundCraft & DJCraft Paths (CLAP Bundle Directory, SoundCraft IPC Port, DJCraft Stem Output Folder, Auto-Cue, Bit Depth, Loudness Normalization)
 //! 6. AI Assistant, MCP 2026-07-28 & SQLite Storage (Ollama Endpoint, Model Selector, Temperature, DB Path, Auto-Save, Factory Reset)
 
@@ -60,7 +60,7 @@ impl SettingsTab {
             Self::AudioDsp => "1. Audio & DSP Engine",
             Self::MidiMpe => "2. MIDI, Clock & MPE",
             Self::AppearanceRack => "3. Skins, Rack & Knobs",
-            Self::M1ExtremeTuning => "4. Korg M1 & Extreme DSP",
+            Self::M1ExtremeTuning => "4. PCM workstation & Extreme DSP",
             Self::ClapDjcraftPaths => "5. CLAP, SoundCraft & DJCraft",
             Self::AiMcpStorage => "6. AI Assistant, MCP & SQLite",
         }
@@ -99,7 +99,7 @@ pub struct StudioSettings {
     pub show_knob_tooltips: bool,
     pub high_contrast_borders: bool,
 
-    // 4. Korg M1 (1990) & Extreme DSP Calibration
+    // 4. 1990-style PCM & Extreme DSP Calibration
     pub m1_dac_32khz_vintage_aliasing: bool,
     pub m1_pcm_interpolation: String,
     pub m1_exciter_presence: f32,
@@ -157,7 +157,7 @@ impl Default for StudioSettings {
             high_contrast_borders: true,
 
             m1_dac_32khz_vintage_aliasing: true,
-            m1_pcm_interpolation: "4-Point Hermite Cubic + MB87404 DAC Warmth".into(),
+            m1_pcm_interpolation: "4-Point Hermite Cubic + DAC DAC Warmth".into(),
             m1_exciter_presence: 0.45,
             extreme_granular_grain_count: 24,
             extreme_wavefolder_stages: 5,
@@ -188,7 +188,7 @@ pub fn render_studio_settings(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     let active_tab = SettingsTab::from_subpage(app.subpage);
     ui.heading("Studio Settings, DSP Calibration, Hardware MIDI & Ecosystem Preferences");
     ui.label(
-        "Configure real-time audio buffers, oversampling, 1990 Korg M1 32 kHz DAC emulation, Extreme DSP unison, hardware skins, rotary physics, and SoundCraft / DJCraft bridges.",
+        "Configure real-time audio buffers, oversampling, 1990 PCM workstation 32 kHz DAC emulation, Extreme DSP unison, hardware skins, rotary physics, and SoundCraft / DJCraft bridges.",
     );
     ui.separator();
 
@@ -407,7 +407,7 @@ fn render_tab_midi_mpe(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                     for v in [
                         "Linear 1:1 Studio Reference",
                         "Exponential Studio (Dynamic)",
-                        "Logarithmic Heavy-Keys (Korg M1 Synth Action)",
+                        "Logarithmic Heavy-Keys (PCM workstation Synth Action)",
                         "Fixed Full Velocity (127 Acid / Organ Mode)",
                     ] {
                         ui.selectable_value(&mut app.settings.velocity_curve, v.into(), v);
@@ -426,8 +426,8 @@ fn render_tab_midi_mpe(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 .show_ui(ui, |ui| {
                     for t in [
                         "Ladder VCF Cutoff + Extreme DSP Morph",
-                        "LFO Vibrato Depth (Korg M1 Joystick +Y)",
-                        "Buchla Wavefolder Drive & Harmonics",
+                        "LFO Vibrato Depth (PCM workstation Joystick +Y)",
+                        "Wavefolder Drive & Harmonics",
                         "VCO-2 FM Modulation Index",
                     ] {
                         ui.selectable_value(&mut app.settings.aftertouch_target, t.into(), t);
@@ -439,7 +439,7 @@ fn render_tab_midi_mpe(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 .show_ui(ui, |ui| {
                     for t in [
                         "LFO Filter Depth + VCO-2 FM Index",
-                        "Korg M1 PCM Layer Crossfade Mix",
+                        "PCM workstation PCM Layer Crossfade Mix",
                         "Extreme DSP Morph Macro (0..100%)",
                         "4-Pole Ladder Filter Resonance Q",
                     ] {
@@ -573,10 +573,10 @@ fn render_tab_m1_extreme(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     let pal = app.skin.palette();
     ui.columns(2, |cols| {
         cols[0].group(|ui| {
-            ui.strong("1990 Korg M1 AI2 PCM Rompler & MB87404 32 kHz DAC Calibration");
+            ui.strong("1990-style PCM Rompler & DAC 32 kHz DAC Calibration");
             ui.checkbox(
                 &mut app.settings.m1_dac_32khz_vintage_aliasing,
-                "Emulate Authentic 1990 16-Bit / 32 kHz MB87404 DAC Sample-Hold Grit",
+                "Emulate Authentic 1990 16-Bit / 32 kHz DAC DAC Sample-Hold Grit",
             );
             egui::ComboBox::from_label("PCM Multi-Sample Pitch Interpolation")
                 .selected_text(&app.settings.m1_pcm_interpolation)
@@ -584,7 +584,7 @@ fn render_tab_m1_extreme(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                     for mode in [
                         "Nearest-Neighbor 1990 Hardware Step (Raw Crunch)",
                         "2-Point Linear Hardware DAC Interpolation",
-                        "4-Point Hermite Cubic + MB87404 DAC Warmth",
+                        "4-Point Hermite Cubic + DAC DAC Warmth",
                         "64-Tap Windowed Sinc (Hi-Fi Studio Remaster)",
                     ] {
                         ui.selectable_value(
@@ -596,7 +596,7 @@ fn render_tab_m1_extreme(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 });
             ui.horizontal_wrapped(|ui| {
                 let mut m1_mix = app.engine.active_patch().m1_layer_mix;
-                if vertical_fader(ui, &pal, "M1 ROM MIX", &mut m1_mix, 0.0, 1.0, "%") {
+                if vertical_fader(ui, &pal, "PCM MIX", &mut m1_mix, 0.0, 1.0, "%") {
                     app.engine.active_patch_mut().m1_layer_mix = m1_mix;
                     app.persist_state();
                 }
@@ -613,14 +613,14 @@ fn render_tab_m1_extreme(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
         });
 
         cols[1].group(|ui| {
-            ui.strong("Extreme Modern DSP Generator Calibration (Granular / Buchla / Swarm)");
+            ui.strong("Extreme Modern DSP Generator Calibration (Granular / West-Coast / Swarm)");
             ui.add(
                 egui::Slider::new(&mut app.settings.extreme_granular_grain_count, 4..=64)
                     .text("Granular Cloud Concurrent Grains"),
             );
             ui.add(
                 egui::Slider::new(&mut app.settings.extreme_wavefolder_stages, 1..=9)
-                    .text("West-Coast Buchla 259 Wavefolder Stages"),
+                    .text("West-Coast Wavefolder Stages"),
             );
             ui.add(
                 egui::Slider::new(&mut app.settings.extreme_unison_voices, 3..=16)

@@ -13,6 +13,7 @@ pub mod model;
 pub mod rompler;
 pub mod rt;
 pub mod sampler;
+pub mod sandbox;
 
 pub use db::{default_db_path, load_from_db, save_to_db};
 pub use error::SynthError;
@@ -23,7 +24,7 @@ pub use model::{
 };
 pub use rompler::{
     builtin_demo_showcases, builtin_midi_depot, default_rack_cables, export_midi_smf_file,
-    DemoShowcaseItem, ExtremeDspMode, KorgM1Program, MidiDepotClip, MidiHardwareConfig, RackCable,
+    DemoShowcaseItem, ExtremeDspMode, MidiDepotClip, MidiHardwareConfig, PcmProgram, RackCable,
 };
 pub use rt::{RtOptions, SynthRt, MAX_VOICES};
 
@@ -164,7 +165,7 @@ impl SynthEngine {
                 lfo_depth: 0.42,
                 drive_saturation: 1.1,
                 master_gain: 0.88,
-                m1_program: Some(KorgM1Program::OrchestraHit48),
+                m1_program: Some(PcmProgram::OrchestraHit48),
                 m1_layer_mix: 0.25,
                 extreme_dsp: ExtremeDspMode::WavetableMorph,
                 extreme_morph: 0.65,
@@ -198,7 +199,7 @@ impl SynthEngine {
                 lfo_depth: 0.55,
                 drive_saturation: 0.65,
                 master_gain: 0.80,
-                m1_program: Some(KorgM1Program::Organ2_17),
+                m1_program: Some(PcmProgram::Organ2_17),
                 m1_layer_mix: 0.45,
                 extreme_dsp: ExtremeDspMode::Off,
                 extreme_morph: 0.40,
@@ -232,7 +233,7 @@ impl SynthEngine {
                 lfo_depth: 0.12,
                 drive_saturation: 0.25,
                 master_gain: 0.82,
-                m1_program: Some(KorgM1Program::Piano16_01),
+                m1_program: Some(PcmProgram::Piano16_01),
                 m1_layer_mix: 0.55,
                 extreme_dsp: ExtremeDspMode::KarplusStrongPluck,
                 extreme_morph: 0.50,
@@ -300,7 +301,7 @@ impl SynthEngine {
                 lfo_depth: 0.30,
                 drive_saturation: 0.35,
                 master_gain: 0.80,
-                m1_program: Some(KorgM1Program::Universe00),
+                m1_program: Some(PcmProgram::Universe00),
                 m1_layer_mix: 0.65,
                 extreme_dsp: ExtremeDspMode::GranularCloud,
                 extreme_morph: 0.55,
@@ -402,13 +403,26 @@ pub enum Command {
     ExportDjcraftStem {
         bars: usize,
     },
-    LoadKorgM1Program {
+    LoadPcmProgram {
         program: String,
         mix: f32,
     },
     SetExtremeDsp {
         mode: String,
         morph: f32,
+    },
+    /// Load a sample bank (spec as in `sampler::load_bank`) into the active patch, or `None`
+    /// to unload. The bank is decoded now so a bad path fails here.
+    SetSamplerBank {
+        bank: Option<String>,
+        mix: f32,
+    },
+    /// Master chorus and reverb of the active patch (all values 0..=1 except decay seconds).
+    SetFx {
+        chorus_mix: f32,
+        reverb_mix: f32,
+        reverb_decay_s: f32,
+        reverb_damping: f32,
     },
     LoadMidiDepotClip {
         clip_id: String,
@@ -585,23 +599,23 @@ impl Command {
             Self::ExportDjcraftStem { bars } => {
                 Ok(export_djcraft_stem_manifest(engine.active_patch(), *bars))
             }
-            Self::LoadKorgM1Program { program, mix } => {
+            Self::LoadPcmProgram { program, mix } => {
                 let p = engine.active_patch_mut();
                 if program.trim().eq_ignore_ascii_case("off")
                     || program.trim().eq_ignore_ascii_case("none")
                 {
                     p.m1_program = None;
                 } else {
-                    let m1 = KorgM1Program::parse(program).ok_or_else(|| {
+                    let m1 = PcmProgram::parse(program).ok_or_else(|| {
                         SynthError::Validation(format!(
-                            "Unknown Korg M1 1990 program '{program}'. Expected m1_00_universe, m1_01_piano16, m1_11_fretless, m1_12_slapbass, m1_17_organ2, m1_24_panflute, m1_36_choir, or m1_48_orchhit."
+                            "Unknown PCM workstation 1990 program '{program}'. Expected m1_00_universe, m1_01_piano16, m1_11_fretless, m1_12_slapbass, m1_17_organ2, m1_24_panflute, m1_36_choir, or m1_48_orchhit."
                         ))
                     })?;
                     p.m1_program = Some(m1);
                 }
                 p.m1_layer_mix = mix.clamp(0.0, 1.0);
                 Ok(json!({
-                    "m1_program": p.m1_program.map(KorgM1Program::as_str),
+                    "m1_program": p.m1_program.map(PcmProgram::as_str),
                     "m1_layer_mix": p.m1_layer_mix,
                 }))
             }
@@ -617,6 +631,32 @@ impl Command {
                     "extreme_morph": p.extreme_morph,
                 }))
             }
+            Self::SetSamplerBank { bank, mix } => {
+                let info = match bank {
+                    Some(spec) => {
+                        let b = sampler::load_cached(spec)?;
+                        json!({ "name": b.name, "zones": b.zones.len(), "frames": b.total_frames() })
+                    }
+                    None => json!(null),
+                };
+                let p = engine.active_patch_mut();
+                p.sampler.bank.clone_from(bank);
+                p.sampler.mix = mix.clamp(0.0, 1.0);
+                Ok(json!({ "bank": p.sampler.bank, "mix": p.sampler.mix, "loaded": info }))
+            }
+            Self::SetFx {
+                chorus_mix,
+                reverb_mix,
+                reverb_decay_s,
+                reverb_damping,
+            } => {
+                let fx = &mut engine.active_patch_mut().fx;
+                fx.chorus_mix = chorus_mix.clamp(0.0, 1.0);
+                fx.reverb_mix = reverb_mix.clamp(0.0, 1.0);
+                fx.reverb_decay_s = reverb_decay_s.clamp(0.2, 20.0);
+                fx.reverb_damping = reverb_damping.clamp(0.0, 0.95);
+                Ok(json!(*fx))
+            }
             Self::LoadMidiDepotClip { clip_id } => {
                 let clip = engine
                     .midi_depot
@@ -628,7 +668,7 @@ impl Command {
                 p.bpm = clip.bpm;
                 p.camelot_key = clip.camelot_key.clone();
                 if let Some(ref m1_str) = clip.recommended_m1 {
-                    p.m1_program = KorgM1Program::parse(m1_str);
+                    p.m1_program = PcmProgram::parse(m1_str);
                 }
                 if let Some(xd) = ExtremeDspMode::parse(&clip.recommended_extreme_dsp) {
                     p.extreme_dsp = xd;

@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
+use synthcraft_core::sandbox::PathPolicy;
 use synthcraft_core::{default_db_path, Command, SynthEngine, APP_VERSION};
 
 #[derive(Debug, Parser)]
@@ -25,6 +26,14 @@ pub struct Cli {
     /// Launch MCP 2026-07-28 JSON-RPC server on stdio
     #[arg(long, global = true, default_value_t = false)]
     pub mcp: bool,
+
+    /// Directory an agent may read from (repeatable). Required for the MCP server.
+    #[arg(long = "automation-read-root", global = true)]
+    pub automation_read_roots: Vec<PathBuf>,
+
+    /// Directory an agent may write to (repeatable). Required for the MCP server.
+    #[arg(long = "automation-write-root", global = true)]
+    pub automation_write_roots: Vec<PathBuf>,
 
     #[command(subcommand)]
     pub subcommand: Option<CliSub>,
@@ -121,7 +130,7 @@ pub enum CliSub {
         #[arg(long, default_value_t = 4)]
         bars: usize,
     },
-    /// Load a 1990 Korg M1 AI2 PCM sample program (m1_00_universe, m1_01_piano16, m1_17_organ2, ...)
+    /// Load a 1990-style PCM sample program (m1_00_universe, m1_01_piano16, m1_17_organ2, ...)
     LoadM1 {
         #[arg(long, default_value = "m1_01_piano16")]
         program: String,
@@ -152,6 +161,25 @@ pub enum CliSub {
         #[arg(long, default_value = "demo_1990_m1_piano")]
         demo_id: String,
     },
+    /// Load a sample bank (.sf2[#preset], .sfz, .wav or a folder of wavs) into the active patch
+    SetSamplerBank {
+        /// Bank path; omit to unload
+        #[arg(long)]
+        bank: Option<String>,
+        #[arg(long, default_value_t = 1.0)]
+        mix: f32,
+    },
+    /// Set master chorus and reverb of the active patch
+    SetFx {
+        #[arg(long, default_value_t = 0.0)]
+        chorus_mix: f32,
+        #[arg(long, default_value_t = 0.0)]
+        reverb_mix: f32,
+        #[arg(long, default_value_t = 3.0)]
+        reverb_decay_s: f32,
+        #[arg(long, default_value_t = 0.5)]
+        reverb_damping: f32,
+    },
     /// Reset all patches to factory defaults
     ResetFactory,
 }
@@ -169,9 +197,22 @@ fn main() {
     for w in &engine.load_warnings {
         eprintln!("warning: {w}");
     }
+    let policy = match PathPolicy::new(&cli.automation_read_roots, &cli.automation_write_roots) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(2);
+        }
+    };
 
     if cli.mcp || matches!(cli.subcommand, Some(CliSub::Mcp)) {
-        run_mcp_stdio(&mut engine, &db_path);
+        if !policy.is_complete() {
+            eprintln!(
+                "error: the MCP server refuses to start without --automation-read-root and --automation-write-root (AGENTS rule 18). It can only read and write below those folders."
+            );
+            std::process::exit(2);
+        }
+        run_mcp_stdio(&mut engine, &db_path, &policy);
         return;
     }
 
@@ -240,7 +281,7 @@ fn main() {
         },
         CliSub::ExportClap => Command::ExportClapManifest,
         CliSub::ExportDjcraftStem { bars } => Command::ExportDjcraftStem { bars },
-        CliSub::LoadM1 { program, mix } => Command::LoadKorgM1Program { program, mix },
+        CliSub::LoadM1 { program, mix } => Command::LoadPcmProgram { program, mix },
         CliSub::SetExtremeDsp { mode, morph } => Command::SetExtremeDsp { mode, morph },
         CliSub::LoadMidiClip { clip_id } => Command::LoadMidiDepotClip { clip_id },
         CliSub::ExportMidi { clip_id, path } => Command::ExportMidiFile {
@@ -248,7 +289,30 @@ fn main() {
             output_path: path,
         },
         CliSub::RunDemo { demo_id } => Command::RunDemoShowcase { demo_id },
+        CliSub::SetSamplerBank { bank, mix } => Command::SetSamplerBank { bank, mix },
+        CliSub::SetFx {
+            chorus_mix,
+            reverb_mix,
+            reverb_decay_s,
+            reverb_damping,
+        } => Command::SetFx {
+            chorus_mix,
+            reverb_mix,
+            reverb_decay_s,
+            reverb_damping,
+        },
         CliSub::ResetFactory => Command::ResetFactoryPatches,
+    };
+    let cmd = if policy.is_active() {
+        match enforce_command(cmd, &policy) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        cmd
     };
 
     let before = serde_json::to_string(&engine).unwrap_or_default();
@@ -282,7 +346,82 @@ fn save_if_changed(
     engine.save_db(db_path)
 }
 
-pub fn handle_mcp_request(req: &Value, engine: &mut SynthEngine, db_path: &Path) -> Option<Value> {
+/// Rewrite the file paths of a command to their resolved form, or refuse the command when a
+/// path is outside the allowed roots.
+fn enforce_command(
+    cmd: Command,
+    policy: &PathPolicy,
+) -> Result<Command, synthcraft_core::SynthError> {
+    Ok(match cmd {
+        Command::RenderWavFile {
+            output_path,
+            duration_ms,
+        } => Command::RenderWavFile {
+            output_path: policy
+                .check_write(&output_path)?
+                .to_string_lossy()
+                .into_owned(),
+            duration_ms,
+        },
+        Command::ExportMidiFile {
+            clip_id,
+            output_path,
+        } => Command::ExportMidiFile {
+            clip_id,
+            output_path: policy
+                .check_write(&output_path)?
+                .to_string_lossy()
+                .into_owned(),
+        },
+        Command::SetSamplerBank {
+            bank: Some(spec),
+            mix,
+        } => {
+            // A `#preset` suffix selects an SF2 preset and is not part of the path.
+            let (path, suffix) = match spec.rsplit_once('#') {
+                Some((p, n)) if n.trim().parse::<usize>().is_ok() => {
+                    (p.to_string(), format!("#{}", n.trim()))
+                }
+                _ => (spec.clone(), String::new()),
+            };
+            let resolved = policy.check_read(&path)?;
+            Command::SetSamplerBank {
+                bank: Some(format!("{}{suffix}", resolved.to_string_lossy())),
+                mix,
+            }
+        }
+        other => other,
+    })
+}
+
+/// Turn one MCP tool call into a `Command` and apply the path policy to it.
+fn tool_command(name: &str, args: &Value) -> Option<Command> {
+    let f = |k: &str, d: f64| args.get(k).and_then(Value::as_f64).unwrap_or(d) as f32;
+    match name {
+        "set_sampler_bank" => Some(Command::SetSamplerBank {
+            bank: args
+                .get("bank")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
+            mix: f("mix", 1.0),
+        }),
+        "set_fx" => Some(Command::SetFx {
+            chorus_mix: f("chorus_mix", 0.0),
+            reverb_mix: f("reverb_mix", 0.0),
+            reverb_decay_s: f("reverb_decay_s", 3.0),
+            reverb_damping: f("reverb_damping", 0.5),
+        }),
+        _ => None,
+    }
+}
+
+pub fn handle_mcp_request(
+    req: &Value,
+    engine: &mut SynthEngine,
+    db_path: &Path,
+    policy: &PathPolicy,
+) -> Option<Value> {
     let method = req.get("method").and_then(Value::as_str).unwrap_or("");
     let id = req.get("id").cloned();
 
@@ -321,6 +460,12 @@ pub fn handle_mcp_request(req: &Value, engine: &mut SynthEngine, db_path: &Path)
 
             let before = serde_json::to_string(&*engine).unwrap_or_default();
             let cmd_res = match name {
+                "set_sampler_bank" | "set_fx" => match tool_command(name, &args) {
+                    Some(cmd) => enforce_command(cmd, policy).and_then(|c| c.dispatch(engine)),
+                    None => Err(synthcraft_core::SynthError::Validation(format!(
+                        "Unknown tool '{name}'"
+                    ))),
+                },
                 "synth_status" => Command::Status.dispatch(engine),
                 "synth_summary" => Command::Summary.dispatch(engine),
                 "list_patches" => Command::ListPatches.dispatch(engine),
@@ -459,25 +604,28 @@ pub fn handle_mcp_request(req: &Value, engine: &mut SynthEngine, db_path: &Path)
                         .get("duration_ms")
                         .and_then(Value::as_u64)
                         .unwrap_or(2000) as u32;
-                    Command::RenderWavFile {
-                        output_path,
-                        duration_ms,
-                    }
-                    .dispatch(engine)
+                    enforce_command(
+                        Command::RenderWavFile {
+                            output_path,
+                            duration_ms,
+                        },
+                        policy,
+                    )
+                    .and_then(|c| c.dispatch(engine))
                 }
                 "export_clap_manifest" => Command::ExportClapManifest.dispatch(engine),
                 "export_djcraft_stem" => {
                     let bars = args.get("bars").and_then(Value::as_u64).unwrap_or(4) as usize;
                     Command::ExportDjcraftStem { bars }.dispatch(engine)
                 }
-                "load_korg_m1_program" => {
+                "load_pcm_program" => {
                     let program = args
                         .get("program")
                         .and_then(Value::as_str)
                         .unwrap_or("m1_01_piano16")
                         .to_string();
                     let mix = args.get("mix").and_then(Value::as_f64).unwrap_or(0.65) as f32;
-                    Command::LoadKorgM1Program { program, mix }.dispatch(engine)
+                    Command::LoadPcmProgram { program, mix }.dispatch(engine)
                 }
                 "set_extreme_dsp" => {
                     let mode = args
@@ -507,11 +655,14 @@ pub fn handle_mcp_request(req: &Value, engine: &mut SynthEngine, db_path: &Path)
                         .and_then(Value::as_str)
                         .unwrap_or("synthcraft_clip.mid")
                         .to_string();
-                    Command::ExportMidiFile {
-                        clip_id,
-                        output_path,
-                    }
-                    .dispatch(engine)
+                    enforce_command(
+                        Command::ExportMidiFile {
+                            clip_id,
+                            output_path,
+                        },
+                        policy,
+                    )
+                    .and_then(|c| c.dispatch(engine))
                 }
                 "run_demo_showcase" => {
                     let demo_id = args
@@ -582,16 +733,18 @@ fn mcp_tools_schema() -> Value {
         { "name": "render_wav_file", "description": "Render the active patch to a 16-bit RIFF PCM .wav file on disk for SoundCraft or DJCraft.", "inputSchema": { "type": "object", "properties": { "output_path": { "type": "string" }, "duration_ms": { "type": "integer" } }, "required": ["output_path"] } },
         { "name": "export_clap_manifest", "description": "Export CLAP 1.2.2 plugin descriptor (dev.sandraschi.synthcraft) and polyphonic parameter automation table for SoundCraft.", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "export_djcraft_stem", "description": "Export BPM-locked, Camelot-keyed loop/stem metadata and cue points for DJCraft.", "inputSchema": { "type": "object", "properties": { "bars": { "type": "integer" } } } },
-        { "name": "load_korg_m1_program", "description": "Layer a 1990 Korg M1 AI2 PCM sample program (m1_00_universe, m1_01_piano16, m1_11_fretless, m1_12_slapbass, m1_17_organ2, m1_24_panflute, m1_36_choir, m1_48_orchhit, or off).", "inputSchema": { "type": "object", "properties": { "program": { "type": "string" }, "mix": { "type": "number" } }, "required": ["program"] } },
+        { "name": "load_pcm_program", "description": "Layer a 1990-style PCM sample program (m1_00_universe, m1_01_piano16, m1_11_fretless, m1_12_slapbass, m1_17_organ2, m1_24_panflute, m1_36_choir, m1_48_orchhit, or off).", "inputSchema": { "type": "object", "properties": { "program": { "type": "string" }, "mix": { "type": "number" } }, "required": ["program"] } },
         { "name": "set_extreme_dsp", "description": "Activate an Extreme Modern DSP generator (off, karplus_strong_pluck, granular_cloud, wavetable_morph, west_coast_wavefolder, phase_distortion_cz, modal_struck_bar).", "inputSchema": { "type": "object", "properties": { "mode": { "type": "string" }, "morph": { "type": "number" } }, "required": ["mode"] } },
+        { "name": "set_sampler_bank", "description": "Load a sample bank into the active patch: an .sf2 (add #N for preset N), .sfz, .wav or a folder of wavs named by note. Must be inside the read root. Omit bank to unload.", "inputSchema": { "type": "object", "properties": { "bank": { "type": "string" }, "mix": { "type": "number" } } } },
+        { "name": "set_fx", "description": "Set the master chorus and reverb of the active patch (chorus_mix, reverb_mix 0..1, reverb_decay_s 0.2..20, reverb_damping 0..0.95).", "inputSchema": { "type": "object", "properties": { "chorus_mix": { "type": "number" }, "reverb_mix": { "type": "number" }, "reverb_decay_s": { "type": "number" }, "reverb_damping": { "type": "number" } } } },
         { "name": "load_midi_depot_clip", "description": "Load one of the 8 built-in MIDI Depot patterns into the 16-step sequencer.", "inputSchema": { "type": "object", "properties": { "clip_id": { "type": "string" } }, "required": ["clip_id"] } },
         { "name": "export_midi_file", "description": "Export a MIDI Depot clip as a Standard MIDI File (.mid, SMF Format 0, 480 PPQN).", "inputSchema": { "type": "object", "properties": { "clip_id": { "type": "string" }, "output_path": { "type": "string" } }, "required": ["clip_id", "output_path"] } },
-        { "name": "run_demo_showcase", "description": "Configure and audition one of the 6 curated 1-click Demo Showcases (demo_1990_m1_piano, demo_show_me_love_organ, demo_m1_universe_granular, demo_buchla_wavefolder, demo_karplus_panflute, demo_modal_glass_choir).", "inputSchema": { "type": "object", "properties": { "demo_id": { "type": "string" } }, "required": ["demo_id"] } },
+        { "name": "run_demo_showcase", "description": "Configure and audition one of the 6 curated 1-click Demo Showcases (demo_1990_m1_piano, demo_club_organ_bass, demo_m1_universe_granular, demo_buchla_wavefolder, demo_karplus_panflute, demo_modal_glass_choir).", "inputSchema": { "type": "object", "properties": { "demo_id": { "type": "string" } }, "required": ["demo_id"] } },
         { "name": "reset_factory_patches", "description": "Reset all 6 factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
     ])
 }
 
-fn run_mcp_stdio(engine: &mut SynthEngine, db_path: &Path) {
+fn run_mcp_stdio(engine: &mut SynthEngine, db_path: &Path, policy: &PathPolicy) {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     for line in stdin.lock().lines() {
@@ -603,7 +756,7 @@ fn run_mcp_stdio(engine: &mut SynthEngine, db_path: &Path) {
         let Ok(req) = serde_json::from_str::<Value>(trimmed) else {
             continue;
         };
-        if let Some(resp) = handle_mcp_request(&req, engine, db_path) {
+        if let Some(resp) = handle_mcp_request(&req, engine, db_path, policy) {
             if let Ok(s) = serde_json::to_string(&resp) {
                 let _ = writeln!(stdout, "{s}");
                 let _ = stdout.flush();
@@ -623,13 +776,14 @@ mod tests {
     }
 
     #[test]
-    fn mcp_initialize_returns_2026_07_28_and_14_tools() {
+    fn mcp_initialize_returns_2026_07_28_and_21_tools() {
         let mut eng = SynthEngine::default();
         let db = temp_db();
         let init = handle_mcp_request(
             &json!({"jsonrpc":"2.0","id":1,"method":"initialize"}),
             &mut eng,
             &db,
+            &PathPolicy::default(),
         )
         .unwrap_or_default();
         assert_eq!(init["result"]["protocolVersion"], "2026-07-28");
@@ -638,13 +792,14 @@ mod tests {
             &json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
             &mut eng,
             &db,
+            &PathPolicy::default(),
         )
         .unwrap_or_default();
         let tools = list["result"]["tools"]
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 19);
+        assert_eq!(tools, 21);
         let _ = std::fs::remove_file(&db);
     }
 
@@ -665,6 +820,7 @@ mod tests {
             }),
             &mut eng,
             &db,
+            &PathPolicy::default(),
         )
         .unwrap_or_default();
         assert_eq!(spec["result"]["isError"], false);
@@ -681,6 +837,7 @@ mod tests {
             }),
             &mut eng,
             &db,
+            &PathPolicy::default(),
         )
         .unwrap_or_default();
         assert_eq!(clap["result"]["isError"], false);
@@ -697,6 +854,7 @@ mod tests {
             }),
             &mut eng,
             &db,
+            &PathPolicy::default(),
         )
         .unwrap_or_default();
         assert_eq!(stem["result"]["isError"], false);

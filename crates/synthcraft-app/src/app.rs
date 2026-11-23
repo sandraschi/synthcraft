@@ -15,7 +15,7 @@ use std::sync::Arc;
 use synthcraft_core::midi::MidiEvent;
 use synthcraft_core::{
     default_db_path, export_clap_descriptor, export_djcraft_stem_manifest, midi_to_freq_hz,
-    write_wav_file, FilterMode, KorgM1Program, SynthEngine, WaveformKind, APP_VERSION,
+    write_wav_file, FilterMode, PcmProgram, SynthEngine, WaveformKind, APP_VERSION,
 };
 
 const ATTRIBUTION_MD: &str = include_str!("../../../ATTRIBUTION.md");
@@ -662,13 +662,13 @@ impl SynthCraftApp {
         let pal = self.skin.palette();
         let (rms_db, peak_db) = self.level_dbfs();
         let ap = self.engine.active_patch();
-        let m1_tag = ap.m1_program.map(KorgM1Program::as_str).unwrap_or("OFF");
+        let m1_tag = ap.m1_program.map(PcmProgram::as_str).unwrap_or("OFF");
         let headline = format!(
             "PROG: {} ({:.0} BPM | KEY {})",
             ap.name, ap.bpm, ap.camelot_key
         );
         let subline = format!(
-            "VCO: {}+{} | M1 ROM: {} | X-DSP: {} | VCF: {:.0} Hz (Q {:.1})",
+            "VCO: {}+{} | PCM: {} | X-DSP: {} | VCF: {:.0} Hz (Q {:.1})",
             ap.vco1_wave.as_str(),
             ap.vco2_wave.as_str(),
             m1_tag,
@@ -794,7 +794,7 @@ impl SynthCraftApp {
                     changed |= rotary_knob(ui, &pal, "RESON Q", &mut p.resonance_q, 0.5, 12.0, "Q");
                     changed |= rotary_knob(ui, &pal, "ENV MOD", &mut p.env_mod_depth, 0.0, 1.0, "%");
                     changed |= rotary_knob(ui, &pal, "DRIVE", &mut p.drive_saturation, 0.0, 3.0, "x");
-                    changed |= rotary_knob(ui, &pal, "M1 ROM", &mut p.m1_layer_mix, 0.0, 1.0, "%");
+                    changed |= rotary_knob(ui, &pal, "PCM", &mut p.m1_layer_mix, 0.0, 1.0, "%");
                     changed |= rotary_knob(ui, &pal, "X-MORPH", &mut p.extreme_morph, 0.0, 1.0, "%");
                 });
             });
@@ -805,7 +805,7 @@ impl SynthCraftApp {
     }
 
     fn render_modular_rack(&mut self, ui: &mut egui::Ui) {
-        ui.heading("1. VCV Rack 2-Style 3U Eurorack & Dual VCO/VCF Bay");
+        ui.heading("1. 3U Eurorack & Dual VCO/VCF Bay");
         ui.horizontal_wrapped(|ui| {
             ui.label("Factory Patches:");
             let patch_list: Vec<(String, String)> = self
@@ -967,7 +967,7 @@ impl SynthCraftApp {
 
     fn render_sequencer_env(&mut self, ui: &mut egui::Ui) {
         let pal = self.skin.palette();
-        ui.heading("2. 16-Step TB-303 Acid Sequencer, ADSR Fader Bank & Tempo LFO");
+        ui.heading("2. 16-Step Acid Sequencer, ADSR Fader Bank & Tempo LFO");
         ui.separator();
 
         let note_names = [
@@ -1282,7 +1282,7 @@ impl SynthCraftApp {
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.chat_input)
-                    .hint_text("Ask about TB-303 acid filters, CLAP 1.2.2 parameters, or DJCraft stems...")
+                    .hint_text("Ask about acid filters, CLAP 1.2.2 parameters, or DJCraft stems...")
                     .desired_width(420.0),
             );
             if ui.button("Send").clicked() && !self.chat_input.trim().is_empty() {
@@ -1334,7 +1334,7 @@ impl SynthCraftApp {
                     for (label, page, sub) in [
                         ("Modular Rack: Dual VCO & Ladder VCF", Page::ModularRack, 0),
                         ("Modular Rack: Factory Patch Bank", Page::ModularRack, 1),
-                        ("16-Step TB-303 Acid Sequencer", Page::SequencerEnv, 0),
+                        ("16-Step Acid Sequencer", Page::SequencerEnv, 0),
                         ("ADSR Envelope & Tempo LFO", Page::SequencerEnv, 1),
                         ("Real-Time Waveform Oscilloscope", Page::ScopeSpectrum, 0),
                         ("32-Band DFT Spectrum & dBFS Meter", Page::ScopeSpectrum, 1),

@@ -68,8 +68,8 @@ const M1_DSP_SUBS: &[SubPage] = &[
     SubPage {
         page: Page::M1ExtremeDsp,
         sub: 0,
-        en: "1990 Korg M1 PCM Rompler",
-        de: "1990 Korg M1 PCM-Rompler",
+        en: "1990 PCM workstation PCM Rompler",
+        de: "1990 PCM workstation PCM-Rompler",
     },
     SubPage {
         page: Page::M1ExtremeDsp,
@@ -97,8 +97,8 @@ const MIDI_SUBS: &[SubPage] = &[
 const DEMO_SUBS: &[SubPage] = &[SubPage {
     page: Page::DemoShowcase,
     sub: 0,
-    en: "1-Click M1 / Acid / Buchla Demos",
-    de: "1-Klick M1 / Acid / Buchla Demos",
+    en: "1-Click PCM / Acid / West-Coast Demos",
+    de: "1-Klick PCM / Acid / West-Coast Demos",
 }];
 
 const SEQ_SUBS: &[SubPage] = &[
@@ -198,8 +198,8 @@ const SETTINGS_SUBS: &[SubPage] = &[
     SubPage {
         page: Page::Settings,
         sub: 3,
-        en: "Korg M1 DAC & Extreme DSP Tuning",
-        de: "Korg M1 DAC & Extreme-DSP-Kalibrierung",
+        en: "PCM workstation DAC & Extreme DSP Tuning",
+        de: "PCM workstation DAC & Extreme-DSP-Kalibrierung",
     },
     SubPage {
         page: Page::Settings,
@@ -224,8 +224,8 @@ static WORKBENCHES: [CraftWorkbench; 10] = [
     },
     CraftWorkbench {
         id: "m1_extreme_dsp",
-        en: "2. Korg M1 (1990) & Extreme DSP",
-        de: "2. Korg M1 (1990) & Extreme-DSP",
+        en: "2. 1990-style PCM & Extreme DSP",
+        de: "2. 1990-style PCM & Extreme-DSP",
         subpages: M1_DSP_SUBS,
     },
     CraftWorkbench {
