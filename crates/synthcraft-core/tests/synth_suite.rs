@@ -155,7 +155,7 @@ fn reset_factory_patches_restores_default_patch() {
 fn all_eight_korg_m1_1990_programs_parse_and_sample_pcm() {
     for prog in KorgM1Program::all() {
         assert_eq!(KorgM1Program::parse(prog.as_str()), Some(*prog));
-        let s = prog.sample_pcm(220.0, 0.015);
+        let s = prog.sample_pcm(3.3, 0.015);
         assert!((-1.0..=1.0).contains(&s));
     }
 }
@@ -164,7 +164,7 @@ fn all_eight_korg_m1_1990_programs_parse_and_sample_pcm() {
 fn all_extreme_dsp_modes_parse_and_synthesize_bounded_samples() {
     for mode in ExtremeDspMode::all() {
         assert_eq!(ExtremeDspMode::parse(mode.as_str()), Some(*mode));
-        let s = mode.sample_dsp(220.0, 0.025, 0.65);
+        let s = mode.sample_dsp(5.5, 0.025, 0.65);
         assert!((-1.0..=1.0).contains(&s));
     }
 }
@@ -204,4 +204,181 @@ fn all_six_demo_showcases_execute_and_produce_valid_spectra() {
         let res = Command::RunDemoShowcase { demo_id: id }.dispatch(&mut eng);
         assert!(res.is_ok());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Real-time engine behaviour
+// ---------------------------------------------------------------------------
+
+use synthcraft_core::dsp::{autocorrelation_pitch, magnitude_db, Ladder, Osc};
+use synthcraft_core::{SynthPatch, SynthRt};
+
+const SR: f32 = 48_000.0;
+
+fn rms(x: &[f32]) -> f32 {
+    (x.iter().map(|s| s * s).sum::<f32>() / x.len().max(1) as f32).sqrt()
+}
+
+fn plain_patch() -> SynthPatch {
+    let mut p = SynthEngine::factory_seed().active_patch().clone();
+    p.vco1_wave = WaveformKind::Saw;
+    p.vco2_wave = WaveformKind::Saw;
+    p.vco_mix = 0.0;
+    p.vco2_detune_cents = 0.0;
+    p.fm_index = 0.0;
+    p.filter_mode = FilterMode::LowPass24dB;
+    p.cutoff_hz = 9000.0;
+    p.resonance_q = 0.5;
+    p.env_mod_depth = 0.0;
+    p.lfo_depth = 0.0;
+    p.drive_saturation = 0.0;
+    p.attack_ms = 2.0;
+    p.decay_ms = 50.0;
+    p.sustain_level = 1.0;
+    p.release_ms = 80.0;
+    p.m1_program = None;
+    p.extreme_dsp = ExtremeDspMode::Off;
+    p.master_gain = 0.8;
+    p
+}
+
+fn render_held(patch: &SynthPatch, note: u8, held_ms: u32, tail_ms: u32) -> (Vec<f32>, Vec<f32>) {
+    let mut rt = SynthRt::new(SR, patch.clone());
+    let mut held = vec![0.0; (SR as u32 * held_ms / 1000) as usize];
+    let mut tail = vec![0.0; (SR as u32 * tail_ms / 1000) as usize];
+    rt.note_on(note, 1.0);
+    rt.process(&mut held);
+    rt.note_off(note);
+    rt.process(&mut tail);
+    (held, tail)
+}
+
+#[test]
+fn band_limited_saw_has_less_alias_energy_than_a_naive_saw() {
+    // 529 cycles in 8192 samples puts every true harmonic at a known bin; any energy away
+    // from those bins is aliasing.
+    const N: usize = 8192;
+    const K: usize = 529;
+    let f0 = SR * K as f32 / N as f32;
+    let mut osc = Osc::new(1);
+    let blep: Vec<f32> = (0..N)
+        .map(|_| osc.tick(WaveformKind::Saw, f0, SR, 0.5, 0.0))
+        .collect();
+    let naive: Vec<f32> = (0..N)
+        .map(|i| 2.0 * ((i as f32 * K as f32 / N as f32).rem_euclid(1.0)) - 1.0)
+        .collect();
+    let alias_power = |x: &[f32]| -> f32 {
+        let db = magnitude_db(x);
+        db.iter()
+            .enumerate()
+            .filter(|(bin, _)| (1..=7).all(|h| (*bin as i64 - (h * K) as i64).abs() > 3))
+            .map(|(_, d)| 10.0_f32.powf(d / 10.0))
+            .sum()
+    };
+    assert!(alias_power(&blep) < 0.5 * alias_power(&naive));
+}
+
+#[test]
+fn ladder_modes_shape_the_spectrum_as_named() {
+    fn gain(mode: FilterMode, freq: f32, q: f32) -> f32 {
+        let mut f = Ladder::default();
+        let n = 9600;
+        let out: Vec<f32> = (0..n)
+            .map(|i| {
+                let x = 0.3 * (std::f32::consts::TAU * freq * i as f32 / SR).sin();
+                f.process(x, 1000.0, SR, q, mode)
+            })
+            .collect();
+        rms(&out[n / 2..]) / (0.3 / 2.0_f32.sqrt())
+    }
+    let lo = |m| gain(m, 125.0, 0.5);
+    let mid = |m| gain(m, 1000.0, 0.5);
+    let hi = |m| gain(m, 8000.0, 0.5);
+    // Low-pass: three octaves above cutoff is at least 40 dB below the passband.
+    assert!(hi(FilterMode::LowPass24dB) < lo(FilterMode::LowPass24dB) * 0.01);
+    // High-pass: low content is far below high content.
+    assert!(lo(FilterMode::HighPass12dB) < hi(FilterMode::HighPass12dB) * 0.1);
+    // Band-pass: the middle beats both edges.
+    assert!(mid(FilterMode::BandPass12dB) > lo(FilterMode::BandPass12dB));
+    assert!(mid(FilterMode::BandPass12dB) > hi(FilterMode::BandPass12dB));
+    // Resonance lifts the level at cutoff.
+    assert!(gain(FilterMode::LowPass24dB, 1000.0, 10.0) > 1.5 * mid(FilterMode::LowPass24dB));
+}
+
+#[test]
+fn held_notes_sound_the_right_pitch() {
+    let patch = plain_patch();
+    for note in [45_u8, 57, 69, 81] {
+        let (held, _) = render_held(&patch, note, 400, 0);
+        let hz = autocorrelation_pitch(&held[held.len() - 4096..], SR);
+        let want = midi_to_freq_hz(note);
+        assert!(
+            (hz / want - 1.0).abs() < 0.01,
+            "note {note}: got {hz}, want {want}"
+        );
+    }
+}
+
+#[test]
+fn note_off_releases_and_a_shorter_release_is_quieter_sooner() {
+    let mut p = plain_patch();
+    p.release_ms = 400.0;
+    let (held, slow) = render_held(&p, 57, 300, 600);
+    p.release_ms = 20.0;
+    let (_, fast) = render_held(&p, 57, 300, 600);
+    let sustain = rms(&held[held.len() - 2000..]);
+    let at = |x: &[f32], ms: usize| rms(&x[ms * 48..(ms + 20) * 48]);
+    assert!(
+        at(&fast, 150) < 0.05 * sustain,
+        "fast release should be gone by 150 ms"
+    );
+    assert!(at(&slow, 150) > 3.0 * at(&fast, 150));
+    assert!(at(&slow, 550) < 0.2 * sustain, "slow release still ends");
+}
+
+#[test]
+fn chords_are_polyphonic_and_voices_free_up_after_release() {
+    let patch = plain_patch();
+    let mut one = SynthRt::new(SR, patch.clone());
+    let mut chord = SynthRt::new(SR, patch);
+    one.note_on(57, 1.0);
+    for n in [57, 61, 64] {
+        chord.note_on(n, 1.0);
+    }
+    let mut a = vec![0.0; 9600];
+    let mut b = vec![0.0; 9600];
+    one.process(&mut a);
+    chord.process(&mut b);
+    assert_eq!(chord.active_voices(), 3);
+    assert!(rms(&b[4800..]) > rms(&a[4800..]));
+    chord.all_notes_off();
+    let mut tail = vec![0.0; 48_000];
+    chord.process(&mut tail);
+    assert_eq!(chord.active_voices(), 0);
+}
+
+#[test]
+fn engine_is_deterministic_and_the_output_has_no_dc_offset() {
+    let eng = SynthEngine::factory_seed();
+    let mut p = eng.active_patch().clone();
+    p.m1_program = Some(KorgM1Program::Piano16_01);
+    p.m1_layer_mix = 0.8;
+    let a = synthcraft_core::synthesize_audio_buffer(&p, 48_000, 600);
+    let b = synthcraft_core::synthesize_audio_buffer(&p, 48_000, 600);
+    assert_eq!(a, b);
+    let mean = a.iter().sum::<f32>() / a.len() as f32;
+    assert!(mean.abs() < 0.01, "dc offset {mean}");
+}
+
+#[test]
+fn a_sounding_sequencer_step_stops_when_playback_stops() {
+    let mut rt = SynthRt::new(SR, plain_patch());
+    rt.set_playing(true);
+    let mut buf = vec![0.0; 9600];
+    rt.process(&mut buf);
+    assert!(rms(&buf) > 0.01);
+    rt.set_playing(false);
+    let mut tail = vec![0.0; 48_000];
+    rt.process(&mut tail);
+    assert_eq!(rt.active_voices(), 0);
 }

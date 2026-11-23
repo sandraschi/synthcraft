@@ -2,8 +2,11 @@
 #![forbid(unsafe_code)]
 
 mod app;
+mod audio_io;
 mod controls;
 mod help_docs;
+mod live;
+mod midi_io;
 mod rack_ui;
 mod settings_ui;
 mod subapps;
@@ -17,7 +20,7 @@ fn main() -> eframe::Result<()> {
 
     if args.iter().any(|a| a == "-h" || a == "--help") {
         println!(
-            "SynthCraft Desktop Studio v{APP_VERSION}\n\nUsage: synthcraft-app [OPTIONS]\n\nOptions:\n  --db <PATH>   Override SQLite database path\n  --smoke       Run non-interactive smoke verification and exit 0\n  -h, --help    Print help\n  -V, --version Print version"
+            "SynthCraft Desktop Studio v{APP_VERSION}\n\nUsage: synthcraft-app [OPTIONS]\n\nOptions:\n  --db <PATH>   Override SQLite database path\n  --smoke       Run non-interactive smoke verification and exit 0\n  --audio-check Open the audio device, play a note and verify the callback output, then exit\n  -h, --help    Print help\n  -V, --version Print version"
         );
         return Ok(());
     }
@@ -55,6 +58,10 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
 
+    if args.iter().any(|a| a == "--audio-check") {
+        return audio_check(resolved_db);
+    }
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1240.0, 800.0])
@@ -65,6 +72,54 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "SynthCraft Studio",
         options,
-        Box::new(move |_cc| Ok(Box::new(SynthCraftApp::with_db_path(resolved_db)))),
+        Box::new(move |cc| {
+            let mut app = SynthCraftApp::with_db_path(resolved_db);
+            app.start_audio(&cc.egui_ctx);
+            Ok(Box::new(app))
+        }),
     )
+}
+
+/// Headless end-to-end check of the live path: device, callback, engine and meters.
+fn audio_check(db: PathBuf) -> eframe::Result<()> {
+    use audio_io::{AudioHandle, AudioMsg};
+    let eng = SynthEngine::open_or_seed(&db).unwrap_or_default();
+    let handle = AudioHandle::start(
+        None,
+        Some(eng.sample_rate_hz),
+        Some(256),
+        eng.active_patch().clone(),
+        synthcraft_core::RtOptions::default(),
+    )
+    .map_err(|e| eframe::Error::AppCreation(e.into()))?;
+    println!(
+        "device: {} | {} Hz | {} ch | buffer {:?}",
+        handle.info.device,
+        handle.info.sample_rate,
+        handle.info.channels,
+        handle.info.buffer_frames
+    );
+    handle.send(AudioMsg::NoteOn(57, 0.9));
+    std::thread::sleep(std::time::Duration::from_millis(900));
+    let recent = handle.meters.recent(4096);
+    let rms = (recent.iter().map(|s| s * s).sum::<f32>() / recent.len().max(1) as f32).sqrt();
+    println!(
+        "voices: {} | callback output rms: {rms:.4}",
+        handle.meters.voices()
+    );
+    handle.send(AudioMsg::NoteOff(57));
+    handle.send(AudioMsg::Play(true));
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    println!(
+        "sequencer playing: {} | step: {}",
+        handle.meters.playing(),
+        handle.meters.step() + 1
+    );
+    if rms < 0.001 {
+        return Err(eframe::Error::AppCreation(
+            "callback produced silence".into(),
+        ));
+    }
+    println!("[synthcraft] audio check ok");
+    Ok(())
 }

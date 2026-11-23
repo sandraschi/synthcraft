@@ -393,28 +393,7 @@ pub fn render_midi_and_depot(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     ui.columns(2, |cols| {
         cols[0].group(|ui| {
             ui.strong("Hardware USB / DIN MIDI Keyboard Connection");
-            let ports = app.engine.midi_hw.available_ports.clone();
-            egui::ComboBox::from_label("MIDI Input Device")
-                .selected_text(&app.engine.midi_hw.selected_port)
-                .show_ui(ui, |ui| {
-                    for port in &ports {
-                        ui.selectable_value(
-                            &mut app.engine.midi_hw.selected_port,
-                            port.clone(),
-                            port,
-                        );
-                    }
-                });
-            ui.horizontal(|ui| {
-                ui.add(
-                    egui::Slider::new(&mut app.engine.midi_hw.midi_channel, 0..=16)
-                        .text("MIDI Channel (0 = Omni)"),
-                );
-                ui.add(
-                    egui::Slider::new(&mut app.engine.midi_hw.pitch_bend_semitones, 1..=12)
-                        .text("Pitch Bend (+/- st)"),
-                );
-            });
+            app.render_midi_port_picker(ui);
             ui.small(
                 "Tip: Plug any class-compliant USB MIDI keyboard in (Arturia, Akai, Korg, NI, Novation) or load dev.sandraschi.synthcraft as a CLAP 1.2.2 instrument inside SoundCraft / Bitwig / REAPER.",
             );
@@ -447,16 +426,16 @@ pub fn render_midi_and_depot(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
         let t0 = (i as f32) / 16000.0;
         let t1 = ((i + 1) as f32) / 16000.0;
         let y0 = if let Some(m1) = p.m1_program {
-            m1.sample_pcm(freq, t0)
+            m1.sample_pcm(freq * t0, t0)
         } else if p.extreme_dsp != ExtremeDspMode::Off {
-            p.extreme_dsp.sample_dsp(freq, t0, p.extreme_morph)
+            p.extreme_dsp.sample_dsp(freq * t0, t0, p.extreme_morph)
         } else {
             (2.0 * PI * freq * t0).sin()
         };
         let y1 = if let Some(m1) = p.m1_program {
-            m1.sample_pcm(freq, t1)
+            m1.sample_pcm(freq * t1, t1)
         } else if p.extreme_dsp != ExtremeDspMode::Off {
-            p.extreme_dsp.sample_dsp(freq, t1, p.extreme_morph)
+            p.extreme_dsp.sample_dsp(freq * t1, t1, p.extreme_morph)
         } else {
             (2.0 * PI * freq * t1).sin()
         };
@@ -480,7 +459,7 @@ pub fn render_piano_keyboard_strip(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     ui.group(|ui| {
         let last_note = app.engine.midi_hw.last_triggered_note;
         ui.strong(format!(
-            "Interactive 25-Key On-Screen Studio Keyboard (C3..C5) -- Last Triggered: MIDI {} ({:.1} Hz)",
+            "25-key on-screen keyboard (C3..C5): hold a key to play. Last note: MIDI {} ({:.1} Hz)",
             last_note,
             midi_to_freq_hz(last_note)
         ));
@@ -488,14 +467,14 @@ pub fn render_piano_keyboard_strip(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
         let note_names = [
             "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
         ];
-        let mut triggered: Option<u8> = None;
+        let mut pressed: Option<u8> = None;
         ui.horizontal_wrapped(|ui| {
             for midi in 48_u8..=72_u8 {
                 let semitone = (midi % 12) as usize;
                 let octave = (midi / 12) - 1;
                 let is_black = matches!(semitone, 1 | 3 | 6 | 8 | 10);
                 let label = format!("{}{}", note_names[semitone], octave);
-                let is_active = app.engine.midi_hw.last_triggered_note == midi;
+                let is_active = app.held_ui_note == Some(midi);
                 let fill = if is_active {
                     pal.arc_primary
                 } else if is_black {
@@ -505,24 +484,26 @@ pub fn render_piano_keyboard_strip(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 };
                 let btn = egui::Button::new(RichText::new(label).color(Color32::WHITE).small())
                     .fill(fill);
-                if ui.add(btn).clicked() {
-                    triggered = Some(midi);
+                if ui.add(btn).is_pointer_button_down_on() {
+                    pressed = Some(midi);
                 }
             }
         });
 
-        if let Some(note) = triggered {
-            app.engine.midi_hw.last_triggered_note = note;
-            if let Some(first_step) = app.engine.active_patch_mut().steps.first_mut() {
-                first_step.midi_note = note;
+        if pressed != app.held_ui_note {
+            if let Some(old) = app.held_ui_note.take() {
+                app.note_off(old);
             }
-            app.status_line = format!(
-                "Triggered MIDI Note {} ({:.1} Hz) on {}",
-                note,
-                midi_to_freq_hz(note),
-                app.engine.active_patch().name
-            );
-            app.persist_state();
+            if let Some(note) = pressed {
+                app.held_ui_note = Some(note);
+                app.note_on(note, 0.85);
+                app.status_line = format!(
+                    "Playing MIDI note {} ({:.1} Hz) on {}",
+                    note,
+                    midi_to_freq_hz(note),
+                    app.engine.active_patch().name
+                );
+            }
         }
     });
 }

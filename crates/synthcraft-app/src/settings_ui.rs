@@ -70,7 +70,6 @@ impl SettingsTab {
 #[derive(Debug, Clone)]
 pub struct StudioSettings {
     // 1. Audio & DSP Engine
-    pub audio_backend: String,
     pub output_device: String,
     pub buffer_frames: u32,
     pub oversampling_factor: u32,
@@ -130,8 +129,7 @@ pub struct StudioSettings {
 impl Default for StudioSettings {
     fn default() -> Self {
         Self {
-            audio_backend: "WASAPI Exclusive (Windows Low-Latency)".into(),
-            output_device: "Default Studio Monitor Interface (24-bit / 48 kHz)".into(),
+            output_device: String::new(),
             buffer_frames: 128,
             oversampling_factor: 2,
             max_polyphony_voices: 16,
@@ -222,42 +220,45 @@ pub fn render_studio_settings(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     }
 }
 
+fn cpal_host_id() -> cpal::HostId {
+    cpal::default_host().id()
+}
+
 fn render_tab_audio_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     let pal = app.skin.palette();
     ui.columns(2, |cols| {
         cols[0].group(|ui| {
-            ui.strong("Audio Driver Backend, Sample Rate & Buffer Latency");
-            egui::ComboBox::from_label("Audio Driver Backend")
-                .selected_text(&app.settings.audio_backend)
-                .show_ui(ui, |ui| {
-                    for b in [
-                        "WASAPI Exclusive (Windows Low-Latency)",
-                        "WASAPI Shared (Windows Desktop)",
-                        "Steinberg ASIO 2.3 Direct Hardware",
-                        "CLAP 1.2.2 Host Audio Thread (SoundCraft / Bitwig / REAPER)",
-                        "JACK / PipeWire Pro Audio",
-                    ] {
-                        ui.selectable_value(&mut app.settings.audio_backend, b.into(), b);
-                    }
-                });
+            ui.strong("Audio output: device, sample rate and buffer");
+            ui.label(format!("Audio host: {:?}", cpal_host_id()));
 
-            egui::ComboBox::from_label("Hardware Output Device")
-                .selected_text(&app.settings.output_device)
+            let devices = app.audio_devices.clone();
+            let shown = if app.settings.output_device.is_empty() {
+                "System default".to_string()
+            } else {
+                app.settings.output_device.clone()
+            };
+            egui::ComboBox::from_label("Output device")
+                .selected_text(shown)
                 .show_ui(ui, |ui| {
-                    for d in [
-                        "Default Studio Monitor Interface (24-bit / 48 kHz)",
-                        "NVIDIA High Definition Audio (Goliath HDMI)",
-                        "Focusrite USB ASIO / Scarlett 4i4 Studio",
-                        "RME Fireface USB / Babyface Pro FS",
-                        "SoundCraft Internal CLAP Audio Bus",
-                    ] {
-                        ui.selectable_value(&mut app.settings.output_device, d.into(), d);
+                    if ui
+                        .selectable_label(app.settings.output_device.is_empty(), "System default")
+                        .clicked()
+                    {
+                        app.settings.output_device.clear();
+                    }
+                    for d in &devices {
+                        if ui
+                            .selectable_label(&app.settings.output_device == d, d)
+                            .clicked()
+                        {
+                            app.settings.output_device = d.clone();
+                        }
                     }
                 });
 
             ui.horizontal_wrapped(|ui| {
-                ui.label("Engine Sample Rate:");
-                for sr in [44_100_u32, 48_000, 88_200, 96_000, 192_000] {
+                ui.label("Sample rate:");
+                for sr in [44_100_u32, 48_000, 88_200, 96_000] {
                     if ui
                         .selectable_label(app.engine.sample_rate_hz == sr, format!("{sr} Hz"))
                         .clicked()
@@ -268,10 +269,13 @@ fn render_tab_audio_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             });
 
             ui.horizontal_wrapped(|ui| {
-                ui.label("Audio Buffer Size:");
-                for buf in [32_u32, 64, 128, 256, 512, 1024] {
+                ui.label("Buffer size:");
+                for buf in [64_u32, 128, 256, 512, 1024] {
                     if ui
-                        .selectable_label(app.settings.buffer_frames == buf, format!("{buf} smp"))
+                        .selectable_label(
+                            app.settings.buffer_frames == buf,
+                            format!("{buf} frames"),
+                        )
                         .clicked()
                     {
                         app.settings.buffer_frames = buf;
@@ -279,18 +283,42 @@ fn render_tab_audio_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 }
             });
 
-            let latency_ms =
-                (app.settings.buffer_frames as f32 / app.engine.sample_rate_hz as f32) * 1000.0;
-            ui.monospace(format!(
-                "Computed Round-Trip Block Latency: {:.2} ms ({} frames @ {} Hz)",
-                latency_ms, app.settings.buffer_frames, app.engine.sample_rate_hz
-            ));
+            if ui.button("Apply: restart audio output").clicked() {
+                app.restart_audio();
+                app.persist_state();
+            }
+
+            match (&app.audio, &app.audio_error) {
+                (Some(a), _) => {
+                    ui.monospace(format!(
+                        "Running: {} | {} Hz | {} ch",
+                        a.info.device, a.info.sample_rate, a.info.channels
+                    ));
+                    match a.info.buffer_frames {
+                        Some(n) => ui.monospace(format!(
+                            "Output buffer {} frames = {:.1} ms (device may add more)",
+                            n,
+                            n as f32 / a.info.sample_rate as f32 * 1000.0
+                        )),
+                        None => ui.monospace("Output buffer: driver default"),
+                    };
+                }
+                (None, Some(e)) => {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(239, 68, 68),
+                        format!("Audio unavailable: {e}"),
+                    );
+                }
+                (None, None) => {
+                    ui.label("Audio output not started.");
+                }
+            }
         });
 
         cols[1].group(|ui| {
-            ui.strong("DSP Oversampling, Voice Polyphony & Master Reference Tuning");
+            ui.strong("Voices, reference tuning and master level");
             ui.horizontal_wrapped(|ui| {
-                ui.label("Non-Linear VCF / Wavefolder Oversampling:");
+                ui.label("Oversampling (not implemented yet, no effect):");
                 for os in [1_u32, 2, 4, 8] {
                     if ui
                         .selectable_label(
@@ -305,8 +333,8 @@ fn render_tab_audio_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             });
 
             ui.add(
-                egui::Slider::new(&mut app.settings.max_polyphony_voices, 1..=64)
-                    .text("Max Polyphony Voices"),
+                egui::Slider::new(&mut app.settings.max_polyphony_voices, 1..=16)
+                    .text("Max polyphony voices"),
             );
 
             ui.horizontal_wrapped(|ui| {
@@ -332,15 +360,12 @@ fn render_tab_audio_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
 
             ui.checkbox(
                 &mut app.settings.soft_clip_limiter,
-                "Enable Master Analog Tanh Brickwall Soft-Clipper (0.0 dBFS Guard)",
+                "Master tanh soft clipper",
             );
-            ui.checkbox(
-                &mut app.settings.dc_blocker_enabled,
-                "Enable 5 Hz High-Pass Subsonic DC-Offset Blocker",
-            );
+            ui.checkbox(&mut app.settings.dc_blocker_enabled, "DC offset blocker");
             ui.checkbox(
                 &mut app.settings.denormal_flush_simd,
-                "Enable IEEE-754 Subnormal / Denormal Flush-to-Zero (FTZ/DAZ)",
+                "Denormal flush-to-zero (not implemented yet, no effect)",
             );
         });
     });
@@ -350,39 +375,19 @@ fn render_tab_midi_mpe(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     ui.columns(2, |cols| {
         cols[0].group(|ui| {
             ui.strong("Hardware MIDI Input Routing, Clock Sync & MPE Configuration");
-            let ports = app.engine.midi_hw.available_ports.clone();
-            egui::ComboBox::from_label("Active Hardware MIDI Port")
-                .selected_text(&app.engine.midi_hw.selected_port)
-                .show_ui(ui, |ui| {
-                    for port in &ports {
-                        ui.selectable_value(
-                            &mut app.engine.midi_hw.selected_port,
-                            port.clone(),
-                            port,
-                        );
-                    }
-                });
-
-            ui.add(
-                egui::Slider::new(&mut app.engine.midi_hw.midi_channel, 0..=16)
-                    .text("MIDI Receive Channel (0 = Omni)"),
-            );
-            ui.add(
-                egui::Slider::new(&mut app.engine.midi_hw.pitch_bend_semitones, 1..=24)
-                    .text("Standard Pitch Bend Range (+/- st)"),
-            );
+            app.render_midi_port_picker(ui);
 
             ui.separator();
             ui.checkbox(
                 &mut app.settings.mpe_enabled,
-                "Enable MPE (MIDI Polyphonic Expression -- Per-Note Pitch/Slide/Pressure)",
+                "MPE (not implemented yet, no effect)",
             );
             ui.add(
                 egui::Slider::new(&mut app.settings.mpe_pitch_bend_range, 12..=96)
-                    .text("MPE Per-Note Bend Range (+/- st)"),
+                    .text("MPE bend range (not implemented yet)"),
             );
 
-            egui::ComboBox::from_label("MIDI Clock & Transport Sync")
+            egui::ComboBox::from_label("MIDI clock sync (not implemented yet)")
                 .selected_text(&app.settings.midi_clock_mode)
                 .show_ui(ui, |ui| {
                     for m in [
@@ -395,7 +400,7 @@ fn render_tab_midi_mpe(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                     }
                 });
 
-            egui::ComboBox::from_label("Keyboard Velocity Response Curve")
+            egui::ComboBox::from_label("Velocity curve (not implemented yet)")
                 .selected_text(&app.settings.velocity_curve)
                 .show_ui(ui, |ui| {
                     for v in [
@@ -409,13 +414,13 @@ fn render_tab_midi_mpe(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 });
             ui.checkbox(
                 &mut app.settings.midi_thru_echo,
-                "Echo Incoming MIDI Notes to CLAP Event Output / SoundCraft Bus",
+                "MIDI thru echo (not implemented yet)",
             );
         });
 
         cols[1].group(|ui| {
             ui.strong("MIDI Continuous Controller (CC) & Expression Matrix");
-            egui::ComboBox::from_label("Channel Aftertouch Target")
+            egui::ComboBox::from_label("Aftertouch target (not implemented yet)")
                 .selected_text(&app.settings.aftertouch_target)
                 .show_ui(ui, |ui| {
                     for t in [
@@ -428,7 +433,7 @@ fn render_tab_midi_mpe(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                     }
                 });
 
-            egui::ComboBox::from_label("Modulation Wheel (CC#01) Target")
+            egui::ComboBox::from_label("Mod wheel target (CC#01 currently drives LFO depth only)")
                 .selected_text(&app.settings.mod_wheel_target)
                 .show_ui(ui, |ui| {
                     for t in [

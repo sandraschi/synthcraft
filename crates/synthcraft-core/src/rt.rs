@@ -1,0 +1,447 @@
+//! Real-time polyphonic voice engine.
+//!
+//! `SynthRt` is the one synthesis path in SynthCraft. The audio callback in the desktop app
+//! and the offline renderer (`synthesize_audio_buffer`, WAV export, analysis) both call
+//! [`SynthRt::process`], so what you hear is what you export.
+//!
+//! The engine owns no threads and does no I/O. `process` does not allocate.
+
+use crate::dsp::{Adsr, DcBlocker, Ladder, Osc};
+use crate::model::midi_to_freq_hz as midi_hz;
+use crate::model::SynthPatch;
+use std::f32::consts::TAU;
+
+pub const MAX_VOICES: usize = 16;
+const GLIDE_MS: f32 = 55.0;
+
+#[derive(Debug, Clone, Copy)]
+struct Voice {
+    active: bool,
+    gate: bool,
+    from_seq: bool,
+    note: u8,
+    age_order: u64,
+    freq: f32,
+    target_freq: f32,
+    vel: f32,
+    accent: bool,
+    osc1: Osc,
+    osc2: Osc,
+    layer_m1_phase: f64,
+    layer_x_phase: f64,
+    time_s: f32,
+    env: Adsr,
+    filter: Ladder,
+}
+
+impl Voice {
+    fn new(i: usize) -> Self {
+        Self {
+            active: false,
+            gate: false,
+            from_seq: false,
+            note: 0,
+            age_order: 0,
+            freq: 110.0,
+            target_freq: 110.0,
+            vel: 1.0,
+            accent: false,
+            osc1: Osc::new(0x1234_5678 ^ (i as u32 * 7919 + 1)),
+            osc2: Osc::new(0x9E37_79B9 ^ (i as u32 * 104_729 + 3)),
+            layer_m1_phase: 0.0,
+            layer_x_phase: 0.0,
+            time_s: 0.0,
+            env: Adsr::default(),
+            filter: Ladder::default(),
+        }
+    }
+}
+
+/// Engine-wide options the audio settings page drives.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RtOptions {
+    pub a4_hz: f32,
+    pub max_voices: usize,
+    pub headroom_db: f32,
+    pub dc_blocker: bool,
+    pub soft_clip: bool,
+}
+
+impl Default for RtOptions {
+    fn default() -> Self {
+        Self {
+            a4_hz: 440.0,
+            max_voices: 8,
+            headroom_db: 0.0,
+            dc_blocker: true,
+            soft_clip: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct Sequencer {
+    playing: bool,
+    step: usize,
+    pos: f32,
+    just_started: bool,
+    gate_closed: bool,
+}
+
+/// Polyphonic synthesizer voice engine with an in-engine step sequencer.
+#[derive(Debug, Clone)]
+pub struct SynthRt {
+    sr: f32,
+    patch: SynthPatch,
+    voices: [Voice; MAX_VOICES],
+    seq: Sequencer,
+    counter: u64,
+    lfo_phase: f32,
+    dc: DcBlocker,
+    bend_ratio: f32,
+    mod_wheel: f32,
+    cutoff_s: f32,
+    q_s: f32,
+    gain_s: f32,
+    opts: RtOptions,
+}
+
+impl SynthRt {
+    pub fn new(sample_rate: f32, patch: SynthPatch) -> Self {
+        let sr = sample_rate.clamp(8000.0, 192_000.0);
+        let mut voices = [Voice::new(0); MAX_VOICES];
+        for (i, v) in voices.iter_mut().enumerate() {
+            *v = Voice::new(i);
+        }
+        Self {
+            sr,
+            cutoff_s: patch.cutoff_hz,
+            q_s: patch.resonance_q,
+            gain_s: patch.master_gain,
+            patch,
+            voices,
+            seq: Sequencer::default(),
+            counter: 0,
+            lfo_phase: 0.0,
+            dc: DcBlocker::default(),
+            bend_ratio: 1.0,
+            mod_wheel: 0.0,
+            opts: RtOptions::default(),
+        }
+    }
+
+    pub fn sample_rate(&self) -> f32 {
+        self.sr
+    }
+
+    pub fn patch(&self) -> &SynthPatch {
+        &self.patch
+    }
+
+    /// Swap the patch without disturbing sounding voices. Returns the old patch so the caller
+    /// can drop it off the audio thread.
+    pub fn replace_patch(&mut self, patch: SynthPatch) -> SynthPatch {
+        std::mem::replace(&mut self.patch, patch)
+    }
+
+    /// Exchange the patch with `other` in place (no allocation, no drop), for the audio thread.
+    pub fn swap_patch(&mut self, other: &mut SynthPatch) {
+        std::mem::swap(&mut self.patch, other);
+    }
+
+    pub fn set_options(&mut self, opts: RtOptions) {
+        self.opts = RtOptions {
+            a4_hz: opts.a4_hz.clamp(400.0, 480.0),
+            max_voices: opts.max_voices.clamp(1, MAX_VOICES),
+            headroom_db: opts.headroom_db.clamp(-24.0, 0.0),
+            ..opts
+        };
+    }
+
+    pub fn options(&self) -> RtOptions {
+        self.opts
+    }
+
+    fn hz(&self, note: u8) -> f32 {
+        midi_hz(note) * (self.opts.a4_hz / 440.0)
+    }
+
+    pub fn set_playing(&mut self, playing: bool) {
+        if playing && !self.seq.playing {
+            self.seq.step = 0;
+            self.seq.pos = 0.0;
+            self.seq.just_started = true;
+            self.seq.gate_closed = false;
+        }
+        if !playing && self.seq.playing {
+            for v in self.voices.iter_mut().filter(|v| v.from_seq) {
+                v.gate = false;
+                v.env.gate_off();
+            }
+        }
+        self.seq.playing = playing;
+    }
+
+    pub fn is_playing(&self) -> bool {
+        self.seq.playing
+    }
+
+    pub fn current_step(&self) -> usize {
+        self.seq.step
+    }
+
+    pub fn active_voices(&self) -> usize {
+        self.voices.iter().filter(|v| v.active).count()
+    }
+
+    pub fn pitch_bend(&mut self, semitones: f32) {
+        self.bend_ratio = 2.0_f32.powf(semitones / 12.0);
+    }
+
+    pub fn set_mod_wheel(&mut self, value: f32) {
+        self.mod_wheel = value.clamp(0.0, 1.0);
+    }
+
+    fn allocate(&mut self) -> usize {
+        let limit = self.opts.max_voices.clamp(1, MAX_VOICES);
+        if let Some(i) = self.voices[..limit].iter().position(|v| !v.active) {
+            return i;
+        }
+        // Steal the oldest releasing voice, otherwise the oldest voice.
+        let releasing = self.voices[..limit]
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| !v.gate)
+            .min_by_key(|(_, v)| v.age_order)
+            .map(|(i, _)| i);
+        if let Some(i) = releasing {
+            return i;
+        }
+        self.voices[..limit]
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, v)| v.age_order)
+            .map_or(0, |(i, _)| i)
+    }
+
+    fn start_voice(&mut self, idx: usize, note: u8, vel: f32, accent: bool, from_seq: bool) {
+        self.counter += 1;
+        let counter = self.counter;
+        let was_active = self.voices[idx].active;
+        let f = self.hz(note);
+        let v = &mut self.voices[idx];
+        v.note = note;
+        v.vel = vel.clamp(0.05, 1.0);
+        v.accent = accent;
+        v.from_seq = from_seq;
+        v.age_order = counter;
+        v.gate = true;
+        v.freq = f;
+        v.target_freq = f;
+        v.time_s = 0.0;
+        v.layer_m1_phase = 0.0;
+        v.layer_x_phase = 0.0;
+        if !was_active {
+            v.osc1.reset();
+            v.osc2.reset();
+            v.filter.reset();
+            v.env = Adsr::default();
+        }
+        v.active = true;
+        v.env.gate_on();
+    }
+
+    pub fn note_on(&mut self, note: u8, velocity: f32) {
+        // Re-trigger the same held note instead of stacking duplicates.
+        let existing = self
+            .voices
+            .iter()
+            .position(|v| v.active && !v.from_seq && v.note == note);
+        let idx = existing.unwrap_or_else(|| self.allocate());
+        self.start_voice(idx, note, velocity, false, false);
+    }
+
+    pub fn note_off(&mut self, note: u8) {
+        for v in self
+            .voices
+            .iter_mut()
+            .filter(|v| v.active && v.gate && !v.from_seq && v.note == note)
+        {
+            v.gate = false;
+            v.env.gate_off();
+        }
+    }
+
+    pub fn all_notes_off(&mut self) {
+        for v in self.voices.iter_mut().filter(|v| v.active) {
+            v.gate = false;
+            v.env.gate_off();
+        }
+    }
+
+    fn seq_voice(&self) -> Option<usize> {
+        self.voices
+            .iter()
+            .position(|v| v.active && v.from_seq && v.gate)
+    }
+
+    fn trigger_step(&mut self) {
+        let len = self.patch.steps.len();
+        if len == 0 {
+            return;
+        }
+        let idx = self.seq.step % len;
+        let step = self.patch.steps[idx].clone();
+        self.seq.gate_closed = false;
+        if !step.active {
+            if let Some(i) = self.seq_voice() {
+                self.voices[i].gate = false;
+                self.voices[i].env.gate_off();
+            }
+            self.seq.gate_closed = true;
+            return;
+        }
+        let note = step.midi_note.clamp(0, 127);
+        if step.slide {
+            if let Some(i) = self.seq_voice() {
+                // Legato glide: keep the envelope running, move the pitch.
+                let target = self.hz(note);
+                let v = &mut self.voices[i];
+                v.target_freq = target;
+                v.note = note;
+                v.accent = step.accent;
+                return;
+            }
+        }
+        let vel = step.velocity.clamp(0.05, 1.0);
+        let i = match self.seq_voice() {
+            Some(i) => i,
+            None => self.allocate(),
+        };
+        // A new non-slide step always retriggers.
+        self.start_voice(i, note, vel, step.accent, true);
+    }
+
+    fn maybe_close_gate(&mut self, step_len: f32) {
+        let len = self.patch.steps.len();
+        if len == 0 || self.seq.gate_closed {
+            return;
+        }
+        let cur = self.patch.steps[self.seq.step % len].clone();
+        let gate_len = step_len * cur.gate_pct.clamp(0.1, 1.0);
+        if self.seq.pos < gate_len {
+            return;
+        }
+        let next = &self.patch.steps[(self.seq.step + 1) % len];
+        if next.active && next.slide {
+            // Slide into the next note keeps the gate open through the step boundary.
+            return;
+        }
+        self.seq.gate_closed = true;
+        if let Some(i) = self.seq_voice() {
+            self.voices[i].gate = false;
+            self.voices[i].env.gate_off();
+        }
+    }
+
+    /// Render `out.len()` mono samples. Allocation-free.
+    pub fn process(&mut self, out: &mut [f32]) {
+        let sr = self.sr;
+        let glide_coef = 1.0 - (-1.0 / (GLIDE_MS * 0.001 * sr)).exp();
+        let smooth = 1.0 - (-1.0 / (0.008 * sr)).exp();
+        let step_len = 60.0 / self.patch.bpm.clamp(40.0, 240.0) * sr * 0.25;
+        let headroom = 10.0_f32.powf(self.opts.headroom_db / 20.0);
+
+        for sample_out in out.iter_mut() {
+            if self.seq.playing {
+                if self.seq.just_started {
+                    self.seq.just_started = false;
+                    self.trigger_step();
+                }
+                self.maybe_close_gate(step_len);
+            }
+
+            self.cutoff_s += (self.patch.cutoff_hz - self.cutoff_s) * smooth;
+            self.q_s += (self.patch.resonance_q - self.q_s) * smooth;
+            self.gain_s += (self.patch.master_gain - self.gain_s) * smooth;
+
+            let lfo = (TAU * self.lfo_phase).sin()
+                * (self.patch.lfo_depth + self.mod_wheel * (1.0 - self.patch.lfo_depth))
+                    .clamp(0.0, 1.0);
+            self.lfo_phase =
+                (self.lfo_phase + self.patch.lfo_rate_hz.clamp(0.05, 40.0) / sr).rem_euclid(1.0);
+
+            let p = &self.patch;
+            let detune_ratio = 2.0_f32.powf(p.vco2_detune_cents / 1200.0);
+            let mix = p.vco_mix.clamp(0.0, 1.0);
+            let drive_in = 1.0 + p.drive_saturation.clamp(0.0, 3.0) * 0.8;
+            let drive_out = 1.0 + p.drive_saturation.clamp(0.0, 3.0) * 1.2;
+            let mut sum = 0.0_f32;
+
+            for v in self.voices.iter_mut().filter(|v| v.active) {
+                v.freq += (v.target_freq - v.freq) * glide_coef;
+                let f = v.freq * self.bend_ratio;
+                let env = v
+                    .env
+                    .tick(p.attack_ms, p.decay_ms, p.sustain_level, p.release_ms, sr);
+                if v.env.is_idle() {
+                    v.active = false;
+                    continue;
+                }
+                let acc = if v.accent { 1.35 } else { 1.0 };
+
+                let s2 = v
+                    .osc2
+                    .tick(p.vco2_wave, f * detune_ratio, sr, p.pulse_width, 0.0);
+                let fm = s2 * p.fm_index.clamp(0.0, 4.0) * 0.08;
+                let s1 = v.osc1.tick(p.vco1_wave, f, sr, p.pulse_width, fm);
+                let mut raw = s1 * (1.0 - mix) + s2 * mix;
+
+                let dphase = f64::from(f / sr);
+                if p.extreme_dsp != crate::rompler::ExtremeDspMode::Off {
+                    v.layer_x_phase += dphase;
+                    let x =
+                        p.extreme_dsp
+                            .sample_dsp(v.layer_x_phase as f32, v.time_s, p.extreme_morph);
+                    raw = raw * 0.45 + x * 0.55;
+                }
+                if let Some(m1) = p.m1_program {
+                    v.layer_m1_phase += dphase;
+                    let pcm = m1.sample_pcm(v.layer_m1_phase as f32, v.time_s);
+                    let m = p.m1_layer_mix.clamp(0.0, 1.0);
+                    raw = raw * (1.0 - m) + pcm * m;
+                }
+                v.time_s += 1.0 / sr;
+
+                let octaves = env * p.env_mod_depth.clamp(0.0, 1.0) * 3.0 * acc + lfo * 1.2;
+                let cutoff = self.cutoff_s * 2.0_f32.powf(octaves);
+                let filtered =
+                    v.filter
+                        .process(raw * drive_in, cutoff, sr, self.q_s, p.filter_mode);
+                sum += (filtered * drive_out).tanh() * env * v.vel * acc;
+            }
+
+            let level = sum * self.gain_s.clamp(0.0, 1.0) * headroom;
+            let mono = if self.opts.dc_blocker {
+                self.dc.process(level)
+            } else {
+                level
+            };
+            *sample_out = if self.opts.soft_clip {
+                (mono * 0.9).tanh()
+            } else {
+                mono.clamp(-1.0, 1.0)
+            };
+
+            if self.seq.playing {
+                self.seq.pos += 1.0;
+                if self.seq.pos >= step_len {
+                    self.seq.pos -= step_len;
+                    let len = self.patch.steps.len().max(1);
+                    self.seq.step = (self.seq.step + 1) % len;
+                    self.trigger_step();
+                }
+            }
+        }
+    }
+}

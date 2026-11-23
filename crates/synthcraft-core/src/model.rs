@@ -207,140 +207,27 @@ pub fn midi_to_freq_hz(midi_note: u8) -> f32 {
     440.0 * 2.0_f32.powf((f32::from(midi_note) - 69.0) / 12.0)
 }
 
-/// Synthesize mono PCM floating-point audio (`[-1.0, 1.0]`) for `duration_ms` at `sample_rate`.
+/// Render mono audio (`[-1.0, 1.0]`) for `duration_ms` by running the sequencer through the
+/// same [`crate::rt::SynthRt`] engine the live audio callback uses.
 pub fn synthesize_audio_buffer(patch: &SynthPatch, sample_rate: u32, duration_ms: u32) -> Vec<f32> {
-    let sr = sample_rate.clamp(8000, 96000) as f32;
-    let total_samples = ((sr * (duration_ms.clamp(20, 15000) as f32)) / 1000.0).round() as usize;
-    let mut out = Vec::with_capacity(total_samples);
-
-    let step_dur_sec = (60.0 / patch.bpm.clamp(40.0, 240.0)) * 0.25; // 1/16th note
-    let step_samples = (step_dur_sec * sr).max(1.0) as usize;
-
-    let mut phase1 = 0.0_f32;
-    let mut phase2 = 0.0_f32;
-    let mut lfo_phase = 0.0_f32;
-    let mut lp_state1 = 0.0_f32;
-    let mut lp_state2 = 0.0_f32;
-    let mut bp_state = 0.0_f32;
-    let mut current_freq = 110.0_f32;
-
-    let detune_ratio = 2.0_f32.powf(patch.vco2_detune_cents / 1200.0);
-    let atk_s = (patch.attack_ms.max(1.0) / 1000.0) * sr;
-    let dec_s = (patch.decay_ms.max(5.0) / 1000.0) * sr;
-    let rel_s = (patch.release_ms.max(5.0) / 1000.0) * sr;
-
-    for idx in 0..total_samples {
-        let step_idx = if patch.steps.is_empty() {
-            0
-        } else {
-            (idx / step_samples) % patch.steps.len()
-        };
-        let pos_in_step = (idx % step_samples) as f32;
-
-        let (target_note, vel, gate_pct, accent, slide, active) = patch
-            .steps
-            .get(step_idx)
-            .map(|s| {
-                (
-                    s.midi_note,
-                    s.velocity,
-                    s.gate_pct,
-                    s.accent,
-                    s.slide,
-                    s.active,
-                )
-            })
-            .unwrap_or((45, 0.85, 0.75, false, false, true));
-
-        let target_freq = midi_to_freq_hz(target_note);
-        if idx == 0 || !slide {
-            current_freq = target_freq;
-        } else {
-            current_freq += (target_freq - current_freq) * 0.008;
-        }
-
-        // ADSR envelope within step
-        let gate_samples = (step_samples as f32 * gate_pct.clamp(0.1, 1.0)).max(1.0);
-        let env = if !active {
-            0.0
-        } else if pos_in_step < atk_s {
-            pos_in_step / atk_s
-        } else if pos_in_step < atk_s + dec_s {
-            let t = (pos_in_step - atk_s) / dec_s;
-            1.0 - t * (1.0 - patch.sustain_level.clamp(0.0, 1.0))
-        } else if pos_in_step < gate_samples {
-            patch.sustain_level.clamp(0.0, 1.0)
-        } else {
-            let rel_t = ((pos_in_step - gate_samples) / rel_s).clamp(0.0, 1.0);
-            patch.sustain_level.clamp(0.0, 1.0) * (1.0 - rel_t)
-        };
-
-        let accent_boost = if accent { 1.35 } else { 1.0 };
-
-        // LFO modulation
-        let lfo_val = (2.0 * PI * lfo_phase).sin() * patch.lfo_depth.clamp(0.0, 1.0);
-        lfo_phase = (lfo_phase + patch.lfo_rate_hz.clamp(0.05, 40.0) / sr).rem_euclid(1.0);
-
-        // VCO2 + FM -> VCO1
-        let s2 = patch
-            .vco2_wave
-            .sample(phase2, patch.pulse_width, idx as u32);
-        let fm_offset = s2 * patch.fm_index.clamp(0.0, 4.0) * 0.08;
-        let s1 = patch
-            .vco1_wave
-            .sample(phase1 + fm_offset, patch.pulse_width, idx as u32);
-
-        phase1 = (phase1 + current_freq / sr).rem_euclid(1.0);
-        phase2 = (phase2 + (current_freq * detune_ratio) / sr).rem_euclid(1.0);
-
-        let mix = patch.vco_mix.clamp(0.0, 1.0);
-        let mut raw_osc = s1 * (1.0 - mix) + s2 * mix;
-
-        let step_time_sec = pos_in_step / sr;
-        if patch.extreme_dsp != ExtremeDspMode::Off {
-            let xdsp =
-                patch
-                    .extreme_dsp
-                    .sample_dsp(current_freq, step_time_sec, patch.extreme_morph);
-            raw_osc = raw_osc * 0.45 + xdsp * 0.55;
-        }
-        if let Some(m1) = patch.m1_program {
-            let m1_pcm = m1.sample_pcm(current_freq, step_time_sec);
-            let m1_mix = patch.m1_layer_mix.clamp(0.0, 1.0);
-            raw_osc = raw_osc * (1.0 - m1_mix) + m1_pcm * m1_mix;
-        }
-
-        // 4-Pole Resonant State-Variable / Ladder VCF approximation
-        let mod_cutoff =
-            (patch.cutoff_hz + env * patch.env_mod_depth * 3200.0 * accent_boost + lfo_val * 900.0)
-                .clamp(35.0, sr * 0.44);
-        let f = (2.0 * (PI * mod_cutoff / sr).sin()).clamp(0.005, 0.92);
-        let q_fb = (patch.resonance_q.clamp(0.5, 12.0) / 12.0) * 0.88;
-
-        let hp = raw_osc - lp_state1 - (1.0 - q_fb) * bp_state;
-        bp_state += f * hp;
-        lp_state1 += f * bp_state;
-        lp_state2 += f * (lp_state1 - lp_state2);
-
-        let filtered = match patch.filter_mode {
-            FilterMode::LowPass24dB => lp_state2,
-            FilterMode::BandPass12dB => bp_state,
-            FilterMode::HighPass12dB => hp,
-            FilterMode::AcidResonant => (lp_state2 + 0.45 * bp_state * accent_boost).tanh(),
-        };
-
-        let drive = (1.0 + patch.drive_saturation.clamp(0.0, 3.0) * 2.5) * accent_boost;
-        let sample = (filtered * drive).tanh()
-            * env
-            * vel.clamp(0.1, 1.0)
-            * patch.master_gain.clamp(0.05, 1.0);
-        out.push(sample.clamp(-1.0, 1.0));
+    let sr = sample_rate.clamp(8000, 96000);
+    let total =
+        ((f64::from(sr) * f64::from(duration_ms.clamp(20, 15000))) / 1000.0).round() as usize;
+    let mut out = vec![0.0_f32; total];
+    let mut rt = crate::rt::SynthRt::new(sr as f32, patch.clone());
+    rt.set_playing(true);
+    for chunk in out.chunks_mut(512) {
+        rt.process(chunk);
     }
-
+    for s in &mut out {
+        *s = s.clamp(-1.0, 1.0);
+    }
     out
 }
 
-/// Analyze synthesized audio: RMS/Peak dBFS, crest factor, pitch estimate, 128-sample scope, and 32-band DFT spectrum.
+/// Analyse a rendered patch: RMS/peak over the whole render, then a Hann-windowed FFT of the
+/// loudest block for 32 log-spaced bands (40 Hz to 12 kHz), a scope slice that starts on a
+/// rising zero crossing, and an autocorrelation pitch estimate (0.0 when not periodic).
 pub fn analyze_patch_spectrum(
     patch: &SynthPatch,
     sample_rate: u32,
@@ -348,56 +235,56 @@ pub fn analyze_patch_spectrum(
 ) -> SpectrumAnalysisReport {
     let samples = synthesize_audio_buffer(patch, sample_rate, duration_ms);
     let n = samples.len().max(1);
+    let sr = sample_rate.clamp(8000, 96000) as f32;
 
-    let mut sum_sq = 0.0_f32;
-    let mut peak = 1e-6_f32;
-    let mut zero_crossings = 0usize;
-
-    for i in 0..samples.len() {
-        let s = samples[i];
-        sum_sq += s * s;
-        let a = s.abs();
-        if a > peak {
-            peak = a;
-        }
-        if i > 0 && ((samples[i - 1] < 0.0 && s >= 0.0) || (samples[i - 1] >= 0.0 && s < 0.0)) {
-            zero_crossings += 1;
-        }
-    }
-
-    let rms = (sum_sq / (n as f32)).sqrt().max(1e-6);
+    let sum_sq: f32 = samples.iter().map(|s| s * s).sum();
+    let peak = samples.iter().fold(1e-6_f32, |m, s| m.max(s.abs()));
+    let rms = (sum_sq / n as f32).sqrt().max(1e-6);
     let rms_dbfs = round2(20.0 * rms.log10());
     let peak_dbfs = round2(20.0 * peak.log10());
     let crest_factor_db = round2(peak_dbfs - rms_dbfs);
-    let dur_sec = (n as f32) / (sample_rate.max(1) as f32);
-    let estimated_pitch_hz = round2((zero_crossings as f32) / (2.0 * dur_sec.max(0.01)));
 
-    let scope_len = 128.min(samples.len());
-    let scope_samples: Vec<f32> = samples[..scope_len]
+    // Loudest power-of-two block.
+    let mut win = 4096usize;
+    while win > samples.len() && win > 64 {
+        win /= 2;
+    }
+    let win = win.min(samples.len().max(1));
+    let hop = (win / 4).max(1);
+    let mut best_start = 0usize;
+    let mut best_energy = -1.0_f32;
+    let mut start = 0usize;
+    while start + win <= samples.len() {
+        let e: f32 = samples[start..start + win].iter().map(|s| s * s).sum();
+        if e > best_energy {
+            best_energy = e;
+            best_start = start;
+        }
+        start += hop;
+    }
+    let block = samples
+        .get(best_start..best_start + win)
+        .unwrap_or(&samples[..]);
+
+    let estimated_pitch_hz = round2(crate::dsp::autocorrelation_pitch(block, sr));
+
+    let scope_from = block
+        .windows(2)
+        .position(|w| w[0] < 0.0 && w[1] >= 0.0)
+        .unwrap_or(0);
+    let scope_samples: Vec<f32> = block
         .iter()
+        .skip(scope_from)
+        .take(128)
         .map(|&x| (x * 1000.0).round() / 1000.0)
         .collect();
 
-    // 32 log-spaced frequency bands from 40 Hz to 12,000 Hz evaluated over a 512-sample window
-    let win_len = 512.min(samples.len()).max(1);
-    let sr = sample_rate.max(8000) as f32;
-    let mut spectrum_bands_db = Vec::with_capacity(32);
-
-    for b in 0..32 {
-        let frac = (b as f32) / 31.0;
-        let freq = 40.0 * (12000.0_f32 / 40.0).powf(frac);
-        let omega = 2.0 * PI * freq / sr;
-        let mut re = 0.0_f32;
-        let mut im = 0.0_f32;
-        for (k, &s) in samples[..win_len].iter().enumerate() {
-            let angle = omega * (k as f32);
-            re += s * angle.cos();
-            im -= s * angle.sin();
-        }
-        let mag = ((re * re + im * im).sqrt() / (win_len as f32)).max(1e-5);
-        let db = (20.0 * mag.log10()).clamp(-80.0, 6.0);
-        spectrum_bands_db.push((round2(freq), round2(db)));
-    }
+    let mag_db = if block.len().is_power_of_two() {
+        crate::dsp::magnitude_db(block)
+    } else {
+        Vec::new()
+    };
+    let spectrum_bands_db = crate::dsp::log_bands(&mag_db, sr / block.len().max(1) as f32);
 
     SpectrumAnalysisReport {
         patch_id: patch.id.clone(),

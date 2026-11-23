@@ -6,9 +6,12 @@
 #![forbid(unsafe_code)]
 
 pub mod db;
+pub mod dsp;
 pub mod error;
+pub mod midi;
 pub mod model;
 pub mod rompler;
+pub mod rt;
 
 pub use db::{default_db_path, load_from_db, save_to_db};
 pub use error::SynthError;
@@ -21,6 +24,7 @@ pub use rompler::{
     builtin_demo_showcases, builtin_midi_depot, default_rack_cables, export_midi_smf_file,
     DemoShowcaseItem, ExtremeDspMode, KorgM1Program, MidiDepotClip, MidiHardwareConfig, RackCable,
 };
+pub use rt::{RtOptions, SynthRt, MAX_VOICES};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

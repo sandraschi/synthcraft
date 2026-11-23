@@ -1,16 +1,21 @@
 //! SynthCraft L3 Native Desktop Studio (`eframe` / `egui` 0.37).
 
+use crate::audio_io::AudioHandle;
 use crate::controls::{
     illuminated_step_pad, lcd_display_banner, rotary_knob, vertical_fader, SynthLayout, SynthSkin,
 };
+use crate::midi_io::{MidiHandle, MidiShared};
 use crate::settings_ui::StudioSettings;
 use crate::subapps;
 use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Arc;
+use synthcraft_core::midi::MidiEvent;
 use synthcraft_core::{
-    analyze_patch_spectrum, default_db_path, export_clap_descriptor, export_djcraft_stem_manifest,
-    midi_to_freq_hz, write_wav_file, FilterMode, KorgM1Program, SynthEngine, WaveformKind,
-    APP_VERSION,
+    default_db_path, export_clap_descriptor, export_djcraft_stem_manifest, midi_to_freq_hz,
+    write_wav_file, FilterMode, KorgM1Program, SynthEngine, WaveformKind, APP_VERSION,
 };
 
 const ATTRIBUTION_MD: &str = include_str!("../../../ATTRIBUTION.md");
@@ -81,6 +86,22 @@ pub struct SynthCraftApp {
     pub show_shortcuts: bool,
     pub show_licenses: bool,
     pub show_about: bool,
+    // Live instrument state (see live.rs)
+    pub audio: Option<AudioHandle>,
+    pub audio_error: Option<String>,
+    pub audio_devices: Vec<String>,
+    pub midi: Option<MidiHandle>,
+    pub midi_ports: Vec<String>,
+    pub midi_shared: Arc<MidiShared>,
+    pub midi_tx: Sender<MidiEvent>,
+    pub midi_rx: Receiver<MidiEvent>,
+    pub repaint_ctx: Option<egui::Context>,
+    pub last_patch_json: String,
+    pub last_opts: Option<synthcraft_core::RtOptions>,
+    pub held_ui_note: Option<u8>,
+    pub kbd_down: HashMap<egui::Key, u8>,
+    pub kbd_octave: i32,
+    pub analysis_cache: Option<((String, u32, u32), synthcraft_core::SpectrumAnalysisReport)>,
 }
 
 impl Default for SynthCraftApp {
@@ -92,6 +113,11 @@ impl Default for SynthCraftApp {
 impl SynthCraftApp {
     pub fn with_db_path(db_path: PathBuf) -> Self {
         let engine = SynthEngine::open_or_seed(&db_path).unwrap_or_default();
+        let (midi_tx, midi_rx) = channel();
+        let midi_shared = MidiShared::new(
+            engine.midi_hw.midi_channel,
+            engine.midi_hw.pitch_bend_semitones,
+        );
         Self {
             engine,
             db_path,
@@ -120,6 +146,21 @@ impl SynthCraftApp {
             show_shortcuts: false,
             show_licenses: false,
             show_about: false,
+            audio: None,
+            audio_error: None,
+            audio_devices: Vec::new(),
+            midi: None,
+            midi_ports: Vec::new(),
+            midi_shared,
+            midi_tx,
+            midi_rx,
+            repaint_ctx: None,
+            last_patch_json: String::new(),
+            last_opts: None,
+            held_ui_note: None,
+            kbd_down: HashMap::new(),
+            kbd_octave: 3,
+            analysis_cache: None,
         }
     }
 
@@ -433,8 +474,8 @@ impl SynthCraftApp {
 
     pub fn render_lcd_header(&mut self, ui: &mut egui::Ui) {
         let pal = self.skin.palette();
+        let (rms_db, peak_db) = self.level_dbfs();
         let ap = self.engine.active_patch();
-        let rep = analyze_patch_spectrum(ap, self.engine.sample_rate_hz, 80);
         let m1_tag = ap.m1_program.map(KorgM1Program::as_str).unwrap_or("OFF");
         let headline = format!(
             "PROG: {} ({:.0} BPM | KEY {})",
@@ -455,9 +496,43 @@ impl SynthCraftApp {
             self.skin.label(),
             &headline,
             &subline,
-            rep.rms_dbfs,
-            rep.peak_dbfs,
+            rms_db,
+            peak_db,
         );
+        let transport = match (&self.audio, &self.audio_error) {
+            (Some(a), _) => format!(
+                "{} | {} voices | {} Hz",
+                if a.meters.playing() {
+                    format!("playing step {}", a.meters.step() + 1)
+                } else {
+                    "stopped".to_string()
+                },
+                a.meters.voices(),
+                a.info.sample_rate
+            ),
+            (None, Some(e)) => format!("audio unavailable: {e}"),
+            (None, None) => "audio not started".to_string(),
+        };
+        ui.horizontal(|ui| {
+            let label = if self.is_playing() {
+                "Stop sequencer (Space)"
+            } else {
+                "Play sequencer (Space)"
+            };
+            if ui.button(label).clicked() {
+                self.toggle_play();
+            }
+            if ui.button("All notes off").clicked() {
+                if let Some(a) = &self.audio {
+                    a.send(crate::audio_io::AudioMsg::AllNotesOff);
+                }
+            }
+            ui.monospace(transport);
+            ui.small(format!(
+                "Keys Z..M / Q..I play notes, -/= octave (C{})",
+                self.kbd_octave
+            ));
+        });
     }
 
     pub fn render_page(&mut self, ui: &mut egui::Ui) {
@@ -711,6 +786,7 @@ impl SynthCraftApp {
             "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
         ];
         let mut changed = false;
+        let playing_step = self.playing_step();
         {
             let p = self.engine.active_patch_mut();
             ui.group(|ui| {
@@ -743,7 +819,11 @@ impl SynthCraftApp {
                     for s in &mut p.steps {
                         let semitone = (s.midi_note % 12) as usize;
                         let octave = (s.midi_note / 12) - 1;
-                        let n_lbl = format!("{}{}", note_names[semitone], octave);
+                        let n_lbl = if playing_step == Some(s.step_index) {
+                            format!(">{}{}", note_names[semitone], octave)
+                        } else {
+                            format!("{}{}", note_names[semitone], octave)
+                        };
                         changed |= illuminated_step_pad(
                             ui,
                             &pal,
@@ -796,7 +876,12 @@ impl SynthCraftApp {
         let green = Color32::from_rgb(34, 197, 94);
         let cyan = Color32::from_rgb(56, 189, 248);
 
-        ui.heading("3. Real-Time Oscilloscope & 32-Band DFT Spectrum Analyzer");
+        ui.heading("3. Oscilloscope & 32-Band Spectrum Analyzer");
+        ui.small(if self.audio.is_some() {
+            "Live: analysing the audio device output (last 4096 samples)."
+        } else {
+            "Offline: no audio output is running, showing a render of the active patch."
+        });
         ui.horizontal(|ui| {
             ui.add(
                 egui::Slider::new(&mut self.analysis_duration_ms, 80..=1000)
@@ -805,11 +890,10 @@ impl SynthCraftApp {
         });
         ui.separator();
 
-        let rep = analyze_patch_spectrum(
-            self.engine.active_patch(),
-            self.engine.sample_rate_hz,
-            self.analysis_duration_ms,
-        );
+        let rep = match self.live_report() {
+            Some(r) => r,
+            None => self.cached_analysis(self.analysis_duration_ms),
+        };
 
         ui.horizontal_wrapped(|ui| {
             for (lbl, val) in [
@@ -817,8 +901,12 @@ impl SynthCraftApp {
                 ("Peak Level", format!("{:.2} dBFS", rep.peak_dbfs)),
                 ("Crest Factor", format!("{:.2} dB", rep.crest_factor_db)),
                 (
-                    "Zero-Crossing Pitch",
-                    format!("{:.1} Hz", rep.estimated_pitch_hz),
+                    "Pitch (autocorrelation)",
+                    if rep.estimated_pitch_hz > 0.0 {
+                        format!("{:.1} Hz", rep.estimated_pitch_hz)
+                    } else {
+                        "unpitched".to_string()
+                    },
                 ),
                 (
                     "PCM Samples",
@@ -1118,6 +1206,8 @@ impl eframe::App for SynthCraftApp {
         let ctx = ui.ctx().clone();
         self.apply_theme(&ctx);
         self.handle_shortcuts(&ctx);
+        self.handle_keyboard(&ctx);
+        self.pump_live(&ctx);
 
         egui::Panel::top("synthcraft_top_menu").show(ui, |ui| {
             self.render_menu_bar(&ctx, ui);

@@ -82,11 +82,12 @@ impl KorgM1Program {
         }
     }
 
-    /// Synthesize one 16-bit 32 kHz-quantized Korg M1 AI2 PCM sample at `time_sec` for `freq_hz`.
-    pub fn sample_pcm(self, freq_hz: f32, time_sec: f32) -> f32 {
+    /// One 16-bit, 32 kHz-quantised sample of this additive voice. `phase_cycles` is the
+    /// integrated oscillator phase (continuous through glide and bend); `time_sec` is time since note-on.
+    pub fn sample_pcm(self, phase_cycles: f32, time_sec: f32) -> f32 {
         // Quantize time to 32,000 Hz DAC clock like the original 1988 Korg M1 MB87404 chip
         let t = (time_sec * 32000.0).floor() / 32000.0;
-        let w = 2.0 * PI * freq_hz * t;
+        let w = 2.0 * PI * phase_cycles;
 
         let raw = match self {
             Self::Piano16_01 => {
@@ -227,10 +228,11 @@ impl ExtremeDspMode {
         }
     }
 
-    /// Sample the Extreme DSP generator at `time_sec` for `freq_hz` and macro parameter `morph in [0.0, 1.0]`.
-    pub fn sample_dsp(self, freq_hz: f32, time_sec: f32, morph: f32) -> f32 {
+    /// Sample the generator. `phase_cycles` is the integrated oscillator phase, `time_sec` the time
+    /// since note-on, `morph` the macro in `[0.0, 1.0]`.
+    pub fn sample_dsp(self, phase_cycles: f32, time_sec: f32, morph: f32) -> f32 {
         let m = morph.clamp(0.0, 1.0);
-        let w = 2.0 * PI * freq_hz * time_sec;
+        let w = 2.0 * PI * phase_cycles;
 
         match self {
             Self::Off => (w).sin(),
@@ -266,7 +268,7 @@ impl ExtremeDspMode {
                 let s_sine = (w).sin();
                 let s_formant = (w).sin() * (w * 3.0).cos();
                 let s_fold = ((w).sin() * 3.8).sin();
-                let s_hyper = 2.0 * (freq_hz * time_sec).rem_euclid(1.0) - 1.0;
+                let s_hyper = 2.0 * phase_cycles.rem_euclid(1.0) - 1.0;
                 let out = if m < 0.33 {
                     let t = m / 0.33;
                     s_sine * (1.0 - t) + s_formant * t
@@ -289,7 +291,7 @@ impl ExtremeDspMode {
             }
             Self::PhaseDistortionCz => {
                 // Non-linear phase knee warping + hard-synced resonant window
-                let p = (freq_hz * time_sec).rem_euclid(1.0);
+                let p = phase_cycles.rem_euclid(1.0);
                 let knee = (0.5 - m * 0.42).clamp(0.05, 0.5);
                 let warped = if p < knee {
                     0.5 * (p / knee)
