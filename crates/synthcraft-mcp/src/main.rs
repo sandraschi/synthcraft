@@ -1,6 +1,8 @@
 //! SynthCraft L2 CLI & MCP `2026-07-28` stdio server.
 #![forbid(unsafe_code)]
 
+mod fetch;
+
 use clap::{Parser, Subcommand};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
@@ -43,6 +45,16 @@ pub struct Cli {
 pub enum CliSub {
     /// Run MCP 2026-07-28 JSON-RPC server on stdio
     Mcp,
+    /// List the free sample banks that `fetch-bank` can download
+    ListBanks,
+    /// Download a free sample bank (checksum verified, SFZ generated) into a folder
+    FetchBank {
+        /// Bank id from `list-banks`
+        id: String,
+        /// Destination folder (default: Documents/SynthCraft/Banks)
+        #[arg(long)]
+        dest: Option<PathBuf>,
+    },
     /// Show SynthCraft engine status
     Status,
     /// Show full active patch and engine summary
@@ -184,6 +196,76 @@ pub enum CliSub {
     ResetFactory,
 }
 
+fn default_banks_dir() -> PathBuf {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    home.join("Documents").join("SynthCraft").join("Banks")
+}
+
+fn run_list_banks(json: bool) -> i32 {
+    let m = match fetch::manifest() {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return 1;
+        }
+    };
+    if json {
+        let v: Vec<Value> = m
+            .banks
+            .iter()
+            .map(|b| json!({"id": b.id, "name": b.name, "license": b.license, "files": b.files.len(), "bytes": b.files.iter().map(|f| f.bytes).sum::<u64>()}))
+            .collect();
+        println!("{}", json!({"banks": v}));
+    } else {
+        for b in &m.banks {
+            let mb = b.files.iter().map(|f| f.bytes).sum::<u64>() / 1_000_000;
+            println!("{}  {} MB  {}  {}", b.id, mb, b.license, b.name);
+        }
+    }
+    0
+}
+
+fn run_fetch_bank(id: &str, dest: Option<&Path>, policy: &PathPolicy) -> i32 {
+    let m = match fetch::manifest() {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return 1;
+        }
+    };
+    let Some(bank) = m.banks.iter().find(|b| b.id == id) else {
+        eprintln!("error: unknown bank {id:?}; run `list-banks`");
+        return 2;
+    };
+    let dest = dest
+        .map(Path::to_path_buf)
+        .unwrap_or_else(default_banks_dir);
+    let dest = if policy.is_active() {
+        match policy.check_write(&dest.to_string_lossy()) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return 2;
+            }
+        }
+    } else {
+        dest
+    };
+    match fetch::fetch_bank(bank, &dest, &fetch::http_get, &mut |l| eprintln!("{l}")) {
+        Ok(sfz) => {
+            println!("{}", sfz.display());
+            0
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            1
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     let db_path = cli.db.unwrap_or_else(default_db_path);
@@ -216,7 +298,18 @@ fn main() {
         return;
     }
 
-    let cmd = match cli.subcommand.unwrap_or(CliSub::Status) {
+    let sub = cli.subcommand.unwrap_or(CliSub::Status);
+    match &sub {
+        CliSub::ListBanks => {
+            std::process::exit(run_list_banks(cli.json));
+        }
+        CliSub::FetchBank { id, dest } => {
+            std::process::exit(run_fetch_bank(id, dest.as_deref(), &policy));
+        }
+        _ => {}
+    }
+    let cmd = match sub {
+        CliSub::ListBanks | CliSub::FetchBank { .. } => Command::Status,
         CliSub::Mcp | CliSub::Status => Command::Status,
         CliSub::Summary => Command::Summary,
         CliSub::ListPatches => Command::ListPatches,

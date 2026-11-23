@@ -46,6 +46,17 @@ cargo run -p synthcraft-mcp -- export-djcraft-stem --bars 4
 cargo run -p synthcraft-mcp -- --mcp
 ```
 
+## Real Sample Banks
+
+The sampler loads WAV, SFZ and SF2 files (Banks folder: `Documents/SynthCraft/Banks`). Free CC0 packs can be fetched with checksum verification and an auto-generated SFZ:
+
+```
+synthcraft-mcp list-banks
+synthcraft-mcp fetch-bank vsco2ce-cello-section-sus
+```
+
+Then enter the printed `.sfz` path in the sample bank field of the rack. Sample files are never stored in this repository; `banks/manifest.json` pins source commit, SHA-256 and licence. Bring your own SF2/SFZ files for anything else.
+
 ## License
 
 Dual-licensed under `MIT OR Apache-2.0`.

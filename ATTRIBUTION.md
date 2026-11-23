@@ -18,3 +18,9 @@ SynthCraft is dual-licensed under `MIT OR Apache-2.0` and authored by Sandra Sch
 ## Bundled Assets
 
 - `assets/synth.svg` -- Original vector modular synthesizer waveform & filter icon authored for SynthCraft (`CC0-1.0 / MIT`).
+
+## Downloadable Sample Banks (not stored in this repository)
+
+`synthcraft-mcp fetch-bank <id>` downloads packs listed in `banks/manifest.json` (URL pinned to a commit, SHA-256 per file) into the user's Banks folder and writes an `ATTRIBUTION.txt` beside the samples.
+
+- `vsco2ce-violin-section-sus`, `vsco2ce-cello-section-sus` -- VSCO 2 Community Edition by Versilian Studios LLC (`https://github.com/sgossner/VSCO-2-CE`, `CC0-1.0`). Sustained-vibrato section strings, velocity layer 1, used as a pad base.

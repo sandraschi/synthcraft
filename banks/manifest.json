@@ -1,0 +1,169 @@
+{
+    "version":  1,
+    "banks":  [
+                  {
+                      "id":  "vsco2ce-violin-section-sus",
+                      "name":  "VSCO 2 CE Violin Section, sustained vibrato (pad base)",
+                      "license":  "CC0-1.0",
+                      "author":  "Versilian Studios LLC, VSCO 2 Community Edition",
+                      "repo":  "sgossner/VSCO-2-CE",
+                      "commit":  "440300901dfe9275fd84e0b7763af1f8443ae62e",
+                      "files":  [
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_A2_v1.wav",
+                                        "note":  "A2",
+                                        "bytes":  1979216,
+                                        "sha256":  "5b3ff9f991642a6dc2fdad56a7d94f581077d2c4082cc1ed89156737716ff22c"
+                                    },
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_A3_v1.wav",
+                                        "note":  "A3",
+                                        "bytes":  1890316,
+                                        "sha256":  "72817a53dfd2eb61eca94658c14e1cab6017629ca2f27bab8e394c6675bfaad7"
+                                    },
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_B2_v1.wav",
+                                        "note":  "B2",
+                                        "bytes":  2314360,
+                                        "sha256":  "1a873970a86da78ed8c9aa068303958496c34eee6fa94fcab39d499dbdfb7826"
+                                    },
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_B4_v1.wav",
+                                        "note":  "B4",
+                                        "bytes":  2056964,
+                                        "sha256":  "ec4cea41ac77f251bf5f4158fe9cbeeae13755e3785106e505808de18fdddc0d"
+                                    },
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_C4_v1.wav",
+                                        "note":  "C4",
+                                        "bytes":  2063320,
+                                        "sha256":  "c07edd5b2119fa1da2207aba996961b50dd616f69bbcf2300ab271bc6c16239f"
+                                    },
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_D3_v1.wav",
+                                        "note":  "D3",
+                                        "bytes":  2061808,
+                                        "sha256":  "583e660bc5daa4e094aef5fc014fbb92751040be8741ed7a16847306a1fe0a99"
+                                    },
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_D5_v1.wav",
+                                        "note":  "D5",
+                                        "bytes":  2116352,
+                                        "sha256":  "f8d870457826c94270b9c3ead8e8ec02cb7e6c4a3481cded055641b7fab7df62"
+                                    },
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_E4_v1.wav",
+                                        "note":  "E4",
+                                        "bytes":  2315540,
+                                        "sha256":  "787fb4bcfb47d5c88ee1573c8db15f32d345386301be4a8eea6a825847413ae2"
+                                    },
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_F#3_v1.wav",
+                                        "note":  "F#3",
+                                        "bytes":  1585612,
+                                        "sha256":  "8dc13d197373f0d1fe1b0744de57796800bde372906d3667398c55d473a383ea"
+                                    },
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_G2_v1.wav",
+                                        "note":  "G2",
+                                        "bytes":  2341712,
+                                        "sha256":  "feb96c5064fbef43087c495d61a9cab9f70ff1be5b22905147c1f86d5f89547c"
+                                    },
+                                    {
+                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_G4_v1.wav",
+                                        "note":  "G4",
+                                        "bytes":  2330236,
+                                        "sha256":  "ed2a89cf254432d2af073699fa43ebfa16cfbc5552c7fc964a184fc434eaaa39"
+                                    }
+                                ]
+                  },
+                  {
+                      "id":  "vsco2ce-cello-section-sus",
+                      "name":  "VSCO 2 CE Cello Section, sustained vibrato (pad base)",
+                      "license":  "CC0-1.0",
+                      "author":  "Versilian Studios LLC, VSCO 2 Community Edition",
+                      "repo":  "sgossner/VSCO-2-CE",
+                      "commit":  "440300901dfe9275fd84e0b7763af1f8443ae62e",
+                      "files":  [
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_A2_v1_1.wav",
+                                        "note":  "A2",
+                                        "bytes":  2336738,
+                                        "sha256":  "c97a003184fdcb153d6b6c0bae8d82a90592a1b04b06bd7caaeda8b9776d5284"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_B1_v1_1.wav",
+                                        "note":  "B1",
+                                        "bytes":  2372492,
+                                        "sha256":  "4f95c087c4b8d87ee591e9d39c3c9caf085c6f1b9125eac3ca9e4e637da628ee"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_B3_v1_1.wav",
+                                        "note":  "B3",
+                                        "bytes":  1690082,
+                                        "sha256":  "bd25d66c1c4e73f5827bf3b931244e51ec8388594d8004529a762be81258097f"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_C1_v1_1.wav",
+                                        "note":  "C1",
+                                        "bytes":  2347376,
+                                        "sha256":  "abdcea431f384e135c469b0f3e4ac2a437f282f521dc5bcbe22abc221536e8de"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_C3_v1_1.wav",
+                                        "note":  "C3",
+                                        "bytes":  2444174,
+                                        "sha256":  "a614ee7ca821b44660236e47b89620cf914ec6ad27a99bc0d9764f47dbe512e1"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_D2_v1_1.wav",
+                                        "note":  "D2",
+                                        "bytes":  2550956,
+                                        "sha256":  "e8640dec9febc6e39fcf06b19d2c95a85d5ff8c38f13c9879e69f551eaf38ab8"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_D4_v1_1.wav",
+                                        "note":  "D4",
+                                        "bytes":  2153228,
+                                        "sha256":  "b4aa3a7fec1f0e783fa560f493868c17045feb271738e3d6834d1b00594b1c38"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_E1_v1_1.wav",
+                                        "note":  "E1",
+                                        "bytes":  2468348,
+                                        "sha256":  "de31a61b02d4e1d5a79b8bc432b0f35fe2e434290ad34402cc0f2dd7dc278cde"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_E3_v1_1.wav",
+                                        "note":  "E3",
+                                        "bytes":  2456672,
+                                        "sha256":  "d2f961e30bf64021cf4acbd88e0e7a1fd1840943ae78c62a711bcce3d109216e"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_F2_v1_1.wav",
+                                        "note":  "F2",
+                                        "bytes":  2186012,
+                                        "sha256":  "162054eab4ba118924f8f8986cf1b17ccfd65211d1945743ffbae30b4953f901"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_F4_v1_1.wav",
+                                        "note":  "F4",
+                                        "bytes":  1922948,
+                                        "sha256":  "a9888547b4b684c7649a882e693d61964848f18401a18e4646a8449b40c08bad"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_G1_v1_1.wav",
+                                        "note":  "G1",
+                                        "bytes":  2161700,
+                                        "sha256":  "9e5d24e8e28d6c7f650f9bb2b33d43c13e341a8bd33124c64e23881378b181ba"
+                                    },
+                                    {
+                                        "path":  "Strings/Cello Section/susvib/susvib_G3_v1_1.wav",
+                                        "note":  "G3",
+                                        "bytes":  2431598,
+                                        "sha256":  "8d658346b8d2054fd534b3222b5d7a23196d22a83a68c3a04ffb76b21853a3db"
+                                    }
+                                ]
+                  }
+              ]
+}
