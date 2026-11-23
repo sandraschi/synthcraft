@@ -1,0 +1,25 @@
+[package]
+name = "synthcraft-app"
+description = "L3 Native Desktop Studio for SynthCraft (Modular VCO/VCF Rack, 16-Step Acid Sequencer, 32-Band Spectrum Analyzer, CLAP 1.2.2 Bridge for SoundCraft, BPM/Camelot Stem Forge for DJCraft)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "synthcraft-app"
+path = "src/main.rs"
+
+[dependencies]
+eframe.workspace = true
+egui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+synthcraft-core = { path = "../synthcraft-core" }
+
+[dev-dependencies]
+egui_kittest.workspace = true
+
+[lints]
+workspace = true
