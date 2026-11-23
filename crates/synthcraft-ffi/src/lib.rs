@@ -262,7 +262,7 @@ pub extern "C" fn sc_param_default(id: c_uint) -> c_float {
     param_def(id).map_or(c_float::NAN, |d| d.default)
 }
 
-/// Render `frames` frames of audio into `left` and `right` (both mono copies today).
+/// Render `frames` frames of audio into `left` and `right` (true stereo: voices are spread across the field, chorus and reverb are stereo).
 ///
 /// # Safety
 /// `e` must be null or a live engine pointer; `left` and `right` must each be null or point

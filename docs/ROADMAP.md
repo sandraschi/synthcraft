@@ -10,12 +10,13 @@ Live audio and MIDI, one shared `SynthRt` engine for live and offline, sampler (
 
 FFI shim (`synthcraft-ffi`), CLAP plug-in (`synthcraft-clap`, passes `clap-validator`) and a VCV Rack module (`rack/`, builds and links against the Rack SDK). Details and what is still unverified: `docs/PLUGINS.md`.
 
+Then: layered and one-shot sampler zones, true stereo output (voice spread, stereo chorus and reverb) and an ambient drift mode; see `docs/SAMPLES_AND_M1.md`.
+
 ## Next, in the order I would do it
 
 1. **Try both plug-ins in real hosts (hours).** A DAW for the CLAP, Rack for the module. Fix whatever turns up.
-2. **AI2-style layering in the sampler (about 1 to 2 days).** Overlapping zones, one-shot attack zones plus looped sustain; see `docs/SAMPLES_AND_M1.md`.
-3. **Release assets.** `SynthCraft.clap` as a plain file beside the exes, and a `.vcvplugin` per platform built in CI.
-4. **Stereo engine output**, then the feature work below.
+2. **Release assets.** `SynthCraft.clap` as a plain file beside the exes, and a `.vcvplugin` per platform built in CI.
+3. **Listen to the new layering, stereo and ambient mode** with a real multi-zone bank and tune the defaults (spread, layer balance). Then the feature work below.
 
 ## VCV Rack module (design notes, built)
 

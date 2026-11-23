@@ -195,6 +195,14 @@ pub struct FxParams {
     pub reverb_mix: f32,
     pub reverb_decay_s: f32,
     pub reverb_damping: f32,
+    /// Spread of the voices across the stereo field, 0 (centre) to 1 (wide).
+    pub stereo_spread: f32,
+    /// Ambient mode: depth of the slow seeded drift on filter, morph and reverb send. 0 = off.
+    pub ambient_depth: f32,
+    /// Ambient mode: drift speed in Hz (about 20 seconds per cycle at the default).
+    pub ambient_rate_hz: f32,
+    /// Ambient mode: seed of the drift pattern. The same seed always drifts the same way.
+    pub ambient_seed: u32,
 }
 
 impl Default for FxParams {
@@ -204,6 +212,10 @@ impl Default for FxParams {
             reverb_mix: 0.0,
             reverb_decay_s: 3.0,
             reverb_damping: 0.5,
+            stereo_spread: 0.3,
+            ambient_depth: 0.0,
+            ambient_rate_hz: 0.05,
+            ambient_seed: 1,
         }
     }
 }

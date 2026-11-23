@@ -247,6 +247,7 @@ impl AudioHandle {
         let meters_cb = Arc::clone(meters);
         let err_slot = Arc::clone(last_error);
         let mut mono = vec![0.0_f32; 4096];
+        let mut right_buf = vec![0.0_f32; 4096];
         device
             .build_output_stream(
                 config,
@@ -273,13 +274,15 @@ impl AudioHandle {
                     let mut done = 0;
                     while done < frames {
                         let n = (frames - done).min(mono.len());
-                        rt.process(&mut mono[..n]);
-                        for (i, &s) in mono[..n].iter().enumerate() {
-                            let v: T = T::from_sample(s);
+                        rt.process_stereo(&mut mono[..n], &mut right_buf[..n]);
+                        for (i, (&l, &r)) in mono[..n].iter().zip(&right_buf[..n]).enumerate() {
                             let base = (done + i) * channels;
-                            for slot in &mut data[base..base + channels] {
-                                *slot = v;
+                            for (c, slot) in data[base..base + channels].iter_mut().enumerate() {
+                                *slot = T::from_sample(if c % 2 == 0 { l } else { r });
                             }
+                        }
+                        for (m, &r) in mono[..n].iter_mut().zip(&right_buf[..n]) {
+                            *m = 0.5 * (*m + r);
                         }
                         if let Ok(mut ring) = meters_cb.ring.try_lock() {
                             let len = ring.buf.len();

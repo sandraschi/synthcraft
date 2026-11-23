@@ -20,7 +20,7 @@ SynthCraft is a 3-tier Pure-Rust ArtCraft modular audio synthesis studio and MCP
 | Dual VCO (`9` waveforms, FM/detune) + 4-Pole Resonant Ladder VCF (`4` modes) | `Implemented` | `synthcraft-core::model` |
 | ADSR Envelope + Tempo-Synced LFO + 16-Step Acid Sequencer | `Implemented` | `synthcraft-core::model` |
 | 32-Band DFT Spectrum Analyzer, Oscilloscope & RMS/Peak dBFS Metering | `Implemented` | `synthcraft-core::model` |
-| CLAP `1.2.2` instrument plug-in (`SynthCraft.clap`): 22 automatable parameters, notes, state; passes `clap-validator` | `Implemented; not yet tried in a DAW` | `synthcraft-clap`, `synthcraft-core::plugin` |
+| CLAP `1.2.2` instrument plug-in (`SynthCraft.clap`): 25 automatable parameters, notes, state; passes `clap-validator` | `Implemented; not yet tried in a DAW` | `synthcraft-clap`, `synthcraft-core::plugin` |
 | VCV Rack module (polyphonic V/Oct and gate, CV inputs, bank loading) over a C ABI | `Builds and links against the Rack SDK; not yet loaded in Rack` | `rack/`, `synthcraft-ffi` |
 | CLAP descriptor and parameter map export for SoundCraft | `Implemented` | `synthcraft-core::model` |
 | RIFF PCM `.wav` Renderer + BPM/Camelot Stem & Riser Exporter for DJCraft | `Implemented` | `synthcraft-core::model` |

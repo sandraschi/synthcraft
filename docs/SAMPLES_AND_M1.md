@@ -94,3 +94,14 @@ This is practical guidance, not legal advice.
 - Plugin Boutique M1 listing: https://www.pluginboutique.com/products/11198
 - Korg forum thread on offline activation: https://korgforums.com/forum/phpBB3/viewtopic.php?p=837042
 - VSCO 2 Community Edition (CC0): https://github.com/sgossner/VSCO-2-CE
+
+## Layers, one-shots, stereo and ambient mode
+
+Added after the first plug-in release; all of it is in `synthcraft-core` and so reaches the app, the CLAP plug-in and the Rack module at once.
+
+- **Layered zones.** A note now plays every zone that matches its key and velocity, up to 4 (`MAX_LAYERS`), instead of only the first. An SFZ or SF2 bank with an attack transient zone over a looped sustain zone sounds as the author built it. Layers add up, so overlapping zones of one bank are louder than a single zone; `volume` in SFZ and the SF2 attenuation set the balance. When nothing matches, the nearest zone is used as before.
+- **One-shot zones.** SFZ `loop_mode=one_shot` (without a loop) marks a zone that plays to its end and ignores note-off, like a drum hit. The voice frees itself when the last one-shot ends. SF2 sample modes are not read yet, so SF2 zones are never one-shot.
+- **Per-zone pan.** SFZ `pan` (-100 to 100) is read. A voice has one filter, so a voice with several layers is panned by the mean of its layers' pans, not each layer separately.
+- **Stereo engine.** `SynthRt::process_stereo` is the one synthesis path; `process` is its mono average. Each voice slot has a fixed position in the field scaled by `stereo_spread` (default 0.3; 0 is exactly mono), chorus taps go to opposite channels, and reverb is a decorrelated pair of tanks. The desktop app, CLAP, the C ABI and Rack all output true stereo. Offline WAV export and DJCraft stems are still mono (the average). This changes the sound of existing patches slightly because the default spread is not 0.
+- **Ambient mode.** `ambient_depth` (0 is off) adds a slow seeded drift to the filter cutoff (up to 1.5 octaves), the X-morph (up to 0.35) and the reverb send (up to 0.25); `ambient_rate_hz` sets the speed and `ambient_seed` (patch JSON only, not a host parameter) the pattern. Same seed, same drift. The drift needs `reverb_mix` above 0 to move the reverb send, and `extreme_dsp` on to move the morph.
+- **Fixed on the way:** pitch bend was applied twice to sampler playback.

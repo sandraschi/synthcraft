@@ -816,6 +816,7 @@ fn ambient_patches(mk_steps: &dyn Fn(&[u8]) -> Vec<SequencerStep>) -> Vec<SynthP
             reverb_mix: 0.5,
             reverb_decay_s: 6.0,
             reverb_damping: 0.45,
+            ..FxParams::default()
         },
         steps: mk_steps(&[
             57, 57, 57, 57, 57, 57, 57, 57, 64, 64, 64, 64, 64, 64, 64, 64,

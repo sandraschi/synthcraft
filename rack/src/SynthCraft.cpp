@@ -17,7 +17,7 @@
 
 namespace {
 
-constexpr int N_PARAMS = 22;
+constexpr int N_PARAMS = 25;
 constexpr int BLOCK = 16;
 constexpr int MAX_POLY = 16;
 
@@ -26,6 +26,7 @@ const char* const LABELS[N_PARAMS] = {
 	"DETUNE", "OSC MIX", "FM",      "CUTOFF", "RESO",   "ENV AMT", "ATTACK", "DECAY",
 	"SUSTAIN", "LFO HZ", "RELEASE", "LFO AMT", "DRIVE", "LEVEL",   "PW",     "PCM MIX",
 	"MORPH",  "SAMPLE", "CHORUS",  "REVERB", "REV TIME", "REV DAMP",
+	"SPREAD", "AMB AMT", "AMB HZ",
 };
 
 // Parameters whose knob is exponential (the knob value is log2 of the engine value).
@@ -35,7 +36,7 @@ bool isLogParam(const std::string& key) {
 }
 
 const char* unitOf(const std::string& key) {
-	if (key == "cutoff_hz" || key == "lfo_rate_hz") return " Hz";
+	if (key == "cutoff_hz" || key == "lfo_rate_hz" || key == "ambient_rate_hz") return " Hz";
 	if (key.size() > 3 && key.compare(key.size() - 3, 3, "_ms") == 0) return " ms";
 	if (key == "vco2_detune_cents") return " cents";
 	if (key == "reverb_decay_s") return " s";
@@ -329,7 +330,7 @@ struct SynthCraftWidget : ModuleWidget {
 
 		addChild(makeLabel(Vec(50.8f, 4.f), "SYNTHCRAFT", 11.f, 60.f));
 
-		// 22 knobs in a grid of 5 columns.
+		// 25 knobs in a grid of 5 columns.
 		for (int i = 0; i < N_PARAMS; i++) {
 			int col = i % 5;
 			int row = i / 5;

@@ -605,7 +605,7 @@ mod tests {
         let (l, r, _) = run_block(p, 2048, &ev);
         assert!(energy(&l[..200]) < 1e-9, "silent before the note event");
         assert!(energy(&l[200..]) > 0.01, "sounds from the event onward");
-        assert_eq!(l, r);
+        assert!(energy(&r[200..]) > 0.01, "right channel sounds too");
 
         // SAFETY: `p` is live.
         unsafe {

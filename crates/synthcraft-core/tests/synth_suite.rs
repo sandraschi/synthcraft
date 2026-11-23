@@ -409,6 +409,8 @@ fn looped_sine_bank(root: u8) -> std::sync::Arc<synthcraft_core::sampler::Sample
             tune_cents: 0.0,
             gain: 1.0,
             loop_range: Some((0, n)),
+            one_shot: false,
+            pan: 0.0,
         }],
     })
 }
@@ -463,6 +465,8 @@ fn sampler_layer_is_silent_without_a_bank_and_oneshot_ends() {
             tune_cents: 0.0,
             gain: 1.0,
             loop_range: None,
+            one_shot: false,
+            pan: 0.0,
         }],
     };
     let mut rt = SynthRt::new(SR, p);
@@ -642,4 +646,194 @@ fn a_panel_edit_becomes_commands_that_reproduce_it() {
         value: 1.0,
     };
     assert!(bad.dispatch(&mut eng).is_err());
+}
+
+// ---------------------------------------------------------------- stereo, layers, ambient
+
+fn dry_patch() -> SynthPatch {
+    let mut p = plain_patch();
+    p.fx.chorus_mix = 0.0;
+    p.fx.reverb_mix = 0.0;
+    p
+}
+
+fn render_stereo(p: &SynthPatch, note: u8, frames: usize) -> (Vec<f32>, Vec<f32>) {
+    let mut rt = SynthRt::new(SR, p.clone());
+    rt.note_on(note, 1.0);
+    let (mut l, mut r) = (vec![0.0; frames], vec![0.0; frames]);
+    rt.process_stereo(&mut l, &mut r);
+    (l, r)
+}
+
+#[test]
+fn stereo_spread_pans_voices_and_zero_spread_is_exactly_mono() {
+    let mut p = dry_patch();
+    p.fx.stereo_spread = 0.0;
+    let (l, r) = render_stereo(&p, 60, 4800);
+    assert_eq!(l, r, "no spread, no effects: both channels identical");
+
+    p.fx.stereo_spread = 1.0;
+    let mut rt = SynthRt::new(SR, p.clone());
+    // Four held notes land in four different voice slots, so they sit at different pans.
+    for n in [48u8, 55, 60, 67] {
+        rt.note_on(n, 1.0);
+    }
+    let (mut l, mut r) = (vec![0.0; 9600], vec![0.0; 9600]);
+    rt.process_stereo(&mut l, &mut r);
+    assert!(l.iter().chain(&r).all(|x| x.abs() <= 1.0));
+    let diff: f32 = l.iter().zip(&r).map(|(a, b)| (a - b).abs()).sum::<f32>() / l.len() as f32;
+    assert!(diff > 0.01, "spread must make the channels differ: {diff}");
+}
+
+#[test]
+fn mono_process_is_the_average_of_the_stereo_channels() {
+    let mut p = dry_patch();
+    p.fx.stereo_spread = 0.7;
+    p.fx.chorus_mix = 0.5;
+    p.fx.reverb_mix = 0.3;
+    let (l, r) = render_stereo(&p, 64, 6000);
+    let mut rt = SynthRt::new(SR, p);
+    rt.note_on(64, 1.0);
+    let mut mono = vec![0.0; 6000];
+    rt.process(&mut mono);
+    for i in 0..mono.len() {
+        assert!((mono[i] - 0.5 * (l[i] + r[i])).abs() < 1e-5, "frame {i}");
+    }
+}
+
+#[test]
+fn chorus_and_reverb_decorrelate_the_channels() {
+    let mut p = dry_patch();
+    p.fx.stereo_spread = 0.0;
+    p.fx.chorus_mix = 0.6;
+    p.fx.reverb_mix = 0.5;
+    let (l, r) = render_stereo(&p, 60, 24_000);
+    let diff: f32 = l.iter().zip(&r).map(|(a, b)| (a - b).abs()).sum::<f32>() / l.len() as f32;
+    assert!(diff > 0.005, "effects must widen a centred voice: {diff}");
+}
+
+#[test]
+fn find_all_returns_every_overlapping_zone_up_to_the_cap() {
+    use synthcraft_core::sampler::{SampleBank, MAX_LAYERS};
+    let mut base = looped_sine_bank(57).zones[0].clone();
+    base.key_hi = 99;
+    let mut zones = Vec::new();
+    for _ in 0..(MAX_LAYERS + 2) {
+        zones.push(base.clone());
+    }
+    let mut hi = base.clone();
+    hi.key_lo = 100;
+    hi.key_hi = 110;
+    zones.push(hi);
+    let bank = SampleBank {
+        name: "t".into(),
+        zones,
+    };
+    let mut out = [0usize; MAX_LAYERS];
+    assert_eq!(bank.find_all(60, 1.0, &mut out), MAX_LAYERS);
+    assert_eq!(&out[..MAX_LAYERS], &[0, 1, 2, 3]);
+    let mut out = [0usize; MAX_LAYERS];
+    assert_eq!(bank.find_all(105, 1.0, &mut out), 1);
+    assert_eq!(out[0], MAX_LAYERS + 2);
+}
+
+#[test]
+fn layered_zones_add_up() {
+    use synthcraft_core::sampler::SampleBank;
+    let mut z = looped_sine_bank(57).zones[0].clone();
+    z.gain = 0.15;
+    let one = std::sync::Arc::new(SampleBank {
+        name: "one".into(),
+        zones: vec![z.clone()],
+    });
+    let two = std::sync::Arc::new(SampleBank {
+        name: "two".into(),
+        zones: vec![z.clone(), z],
+    });
+    let mut p = dry_patch();
+    p.sampler.mix = 1.0;
+    p.fx.stereo_spread = 0.0;
+    let level = |bank: std::sync::Arc<SampleBank>| {
+        let mut rt = SynthRt::new(SR, p.clone());
+        rt.set_bank(Some(bank));
+        rt.note_on(57, 1.0);
+        let mut buf = vec![0.0; 12_000];
+        rt.process(&mut buf);
+        rms(&buf[6000..])
+    };
+    let (a, b) = (level(one), level(two));
+    assert!(
+        b > a * 1.7 && b < a * 2.3,
+        "two layers ~ double: {a} vs {b}"
+    );
+}
+
+#[test]
+fn one_shot_zone_ignores_note_off_and_frees_its_voice() {
+    use synthcraft_core::sampler::{SampleBank, Zone};
+    let n = 9600;
+    let data: Vec<f32> = (0..n)
+        .map(|i| (std::f32::consts::TAU * 440.0 * i as f32 / SR).sin() * 0.5)
+        .collect();
+    let zone = Zone {
+        data: data.into(),
+        sample_rate: SR,
+        key_lo: 0,
+        key_hi: 127,
+        vel_lo: 0,
+        vel_hi: 127,
+        root_key: 69,
+        tune_cents: 0.0,
+        gain: 1.0,
+        loop_range: None,
+        one_shot: true,
+        pan: 0.0,
+    };
+    let bank = std::sync::Arc::new(SampleBank {
+        name: "hit".into(),
+        zones: vec![zone],
+    });
+    let mut p = dry_patch();
+    p.sampler.mix = 1.0;
+    p.cutoff_hz = 15_000.0;
+    let mut rt = SynthRt::new(SR, p);
+    rt.set_bank(Some(bank));
+    rt.note_on(69, 1.0);
+    let mut buf = vec![0.0; 1000];
+    rt.process(&mut buf);
+    rt.note_off(69);
+    // Well past the 80 ms release the hit is still sounding, because note-off was ignored.
+    let mut mid = vec![0.0; 6000];
+    rt.process(&mut mid);
+    assert!(rms(&mid[4000..]) > 0.05, "one-shot must keep playing");
+    // After the sample ends the voice releases and frees itself.
+    let mut tail = vec![0.0; 24_000];
+    rt.process(&mut tail);
+    assert_eq!(rt.active_voices(), 0);
+}
+
+#[test]
+fn ambient_drift_is_seeded_bounded_and_off_at_zero_depth() {
+    let mut base = dry_patch();
+    base.fx.reverb_mix = 0.3;
+    base.fx.stereo_spread = 0.0;
+    base.cutoff_hz = 1200.0;
+    base.sustain_level = 1.0;
+    let go = |depth: f32, seed: u32| {
+        let mut p = base.clone();
+        p.fx.ambient_depth = depth;
+        p.fx.ambient_rate_hz = 0.4;
+        p.fx.ambient_seed = seed;
+        render_stereo(&p, 48, 96_000).0
+    };
+    let off = go(0.0, 1);
+    let a = go(0.9, 7);
+    let a2 = go(0.9, 7);
+    let b = go(0.9, 8);
+    assert_eq!(a, a2, "same seed, same drift");
+    assert_ne!(a, b, "different seed, different drift");
+    assert_ne!(a, off, "depth must change the sound");
+    assert!(a.iter().all(|x| x.abs() <= 1.0));
+    // Depth zero is the plain engine: it must match a patch that never heard of ambient.
+    assert_eq!(off, go(0.0, 99));
 }

@@ -1,7 +1,7 @@
 //! SynthCraft as a CLAP instrument.
 //!
 //! Exports the standard `clap_entry` symbol. Features: stereo output, note input (CLAP note
-//! events and raw MIDI), 22 automatable parameters from `synthcraft_core::params`, and
+//! events and raw MIDI), 25 automatable parameters from `synthcraft_core::params`, and
 //! state save/load as the patch JSON. Audio runs on the same engine as the desktop app.
 //!
 //! Sample banks: the patch JSON stores the bank path, so a saved project reloads its bank.

@@ -25,7 +25,6 @@ pub const MAX_BLOCK: usize = 1024;
 /// Host-facing synth instance.
 pub struct PluginEngine {
     rt: SynthRt,
-    scratch: Vec<f32>,
 }
 
 impl PluginEngine {
@@ -40,7 +39,6 @@ impl PluginEngine {
     pub fn from_patch(sample_rate: f32, patch: SynthPatch) -> Self {
         Self {
             rt: SynthRt::new(sample_rate, patch),
-            scratch: vec![0.0; MAX_BLOCK],
         }
     }
 
@@ -116,11 +114,8 @@ impl PluginEngine {
         let mut done = 0;
         while done < frames {
             let n = (frames - done).min(MAX_BLOCK);
-            let buf = &mut self.scratch[..n];
-            buf.fill(0.0);
-            self.rt.process(buf);
-            left[done..done + n].copy_from_slice(buf);
-            right[done..done + n].copy_from_slice(buf);
+            self.rt
+                .process_stereo(&mut left[done..done + n], &mut right[done..done + n]);
             done += n;
         }
     }
@@ -188,7 +183,7 @@ mod tests {
         e.note_on(60, 0.9);
         e.process(&mut l, &mut r);
         assert!(energy(&l) > 0.01);
-        assert_eq!(l, r);
+        assert!(energy(&r) > 0.01);
         e.note_off(60);
         for _ in 0..40 {
             e.process(&mut l, &mut r);

@@ -7,7 +7,7 @@ Status: 2026-11-23. SynthCraft runs as a CLAP instrument plug-in and as a VCV Ra
 | Piece | Where | What it is | Verified |
 |---|---|---|---|
 | Plug-in engine | `crates/synthcraft-core/src/plugin.rs` | Safe `PluginEngine`: notes, parameters by id, block processing, JSON state, bank loading | unit tests |
-| Parameter table | `crates/synthcraft-core/src/params.rs` | 22 parameters with stable ids, ranges, defaults; shared by every front end | unit tests |
+| Parameter table | `crates/synthcraft-core/src/params.rs` | 25 parameters with stable ids, ranges, defaults; shared by every front end | unit tests |
 | C ABI | `crates/synthcraft-ffi` | `libsynthcraft_ffi` (static, shared, rlib) and `include/synthcraft.h` | Rust ABI tests, C smoke test with gcc |
 | CLAP plug-in | `crates/synthcraft-clap` | `synthcraft_clap.dll` to install as `SynthCraft.clap` | in-crate host simulation tests and `clap-validator` 0.4.1 (34 passed, 0 failed, 10 skipped) |
 | VCV Rack module | `rack/` | C++ module over the C ABI | compiled and linked against the Rack SDK 2.6.4 on Linux; not yet loaded in a running Rack |
@@ -16,7 +16,7 @@ The CLAP plug-in calls the Rust `PluginEngine` directly. The Rack module goes th
 
 ## Parameters
 
-All 22 parameters are automatable in CLAP and have a knob in Rack. Ids never change; new parameters get new ids at the end of the table.
+All 25 parameters are automatable in CLAP and have a knob in Rack. Ids never change; new parameters get new ids at the end of the table.
 
 | Id | Key | Range | Default |
 |---|---|---|---|
@@ -42,6 +42,9 @@ All 22 parameters are automatable in CLAP and have a knob in Rack. Ids never cha
 | 0x1014 | `reverb_mix` | 0 to 1 | 0 |
 | 0x1015 | `reverb_decay_s` | 0.2 to 20 | 3 |
 | 0x1016 | `reverb_damping` | 0 to 0.95 | 0.5 |
+| 0x1017 | `stereo_spread` | 0 to 1 | 0.3 |
+| 0x1018 | `ambient_depth` | 0 to 1 | 0 |
+| 0x1019 | `ambient_rate_hz` | 0.01 to 0.5 | 0.05 |
 
 The source of truth is `params.rs`. Waveform choice, filter mode, the PCM program and the sequencer steps are part of the saved patch but have no host parameter yet.
 
@@ -60,7 +63,7 @@ just clap-install
 
 - Instrument with one stereo output and one note input (CLAP note events and raw MIDI: note on and off, mod wheel CC1, pitch bend of plus or minus 2 semitones, all notes off).
 - Sample-accurate event handling: the block is split at each event time.
-- 22 automatable parameters with value text and parsing.
+- 25 automatable parameters with value text and parsing.
 - State as the full patch JSON (a few KB), including the sample bank path. Loading a state tells the host to rescan parameter values, as the CLAP specification requires.
 - Safe on the audio thread: `process` never blocks. If the main thread holds the engine (during a state load) the block is silent.
 
@@ -98,7 +101,7 @@ On Linux this is verified (SDK 2.6.4, GCC, `plugin.so` links with no undefined `
 
 ### Module
 
-Name `SynthCraft`, 20 HP. 22 knobs (one per parameter) and these ports:
+Name `SynthCraft`, 20 HP. 25 knobs (one per parameter) and these ports:
 
 | Port | Type | Meaning |
 |---|---|---|

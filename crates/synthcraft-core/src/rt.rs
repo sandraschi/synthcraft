@@ -6,17 +6,31 @@
 //!
 //! The engine owns no threads and does no I/O. `process` does not allocate.
 
-use crate::dsp::{Adsr, Chorus, DcBlocker, Ladder, Osc, Reverb};
+use crate::dsp::{Adsr, Chorus, DcBlocker, Drift, Ladder, Osc, Reverb};
 use crate::model::midi_to_freq_hz as midi_hz;
 use crate::model::SynthPatch;
-use crate::sampler::SampleBank;
-use std::f32::consts::TAU;
+use crate::sampler::{SampleBank, MAX_LAYERS};
+use std::f32::consts::{FRAC_PI_4, SQRT_2, TAU};
 use std::sync::Arc;
 
 const NO_ZONE: usize = usize::MAX;
 
 pub const MAX_VOICES: usize = 16;
 const GLIDE_MS: f32 = 55.0;
+
+/// One sounding zone of a voice (a layer).
+#[derive(Debug, Clone, Copy)]
+struct Layer {
+    zone: usize,
+    pos: f64,
+    step: f32,
+}
+
+const IDLE_LAYER: Layer = Layer {
+    zone: NO_ZONE,
+    pos: 0.0,
+    step: 0.0,
+};
 
 #[derive(Debug, Clone, Copy)]
 struct Voice {
@@ -33,9 +47,12 @@ struct Voice {
     osc2: Osc,
     layer_m1_phase: f64,
     layer_x_phase: f64,
-    zone: usize,
-    s_pos: f64,
-    s_step: f32,
+    layers: [Layer; MAX_LAYERS],
+    n_layers: usize,
+    /// A one-shot zone is sounding: note-off is ignored until the sample ends.
+    hold: bool,
+    /// Fixed position of this voice slot in the stereo field, -1..=1.
+    pan: f32,
     time_s: f32,
     env: Adsr,
     filter: Ladder,
@@ -57,9 +74,10 @@ impl Voice {
             osc2: Osc::new(0x9E37_79B9 ^ (i as u32 * 104_729 + 3)),
             layer_m1_phase: 0.0,
             layer_x_phase: 0.0,
-            zone: NO_ZONE,
-            s_pos: 0.0,
-            s_step: 0.0,
+            layers: [IDLE_LAYER; MAX_LAYERS],
+            n_layers: 0,
+            hold: false,
+            pan: (i as f32 * 0.618_034).fract() * 2.0 - 1.0,
             time_s: 0.0,
             env: Adsr::default(),
             filter: Ladder::default(),
@@ -106,11 +124,15 @@ pub struct SynthRt {
     bank: Option<Arc<SampleBank>>,
     chorus: Chorus,
     reverb: Reverb,
+    reverb_r: Reverb,
+    drift: Drift,
+    drift_seed: u32,
     voices: [Voice; MAX_VOICES],
     seq: Sequencer,
     counter: u64,
     lfo_phase: f32,
     dc: DcBlocker,
+    dc_r: DcBlocker,
     bend_ratio: f32,
     mod_wheel: f32,
     cutoff_s: f32,
@@ -126,6 +148,7 @@ impl SynthRt {
         for (i, v) in voices.iter_mut().enumerate() {
             *v = Voice::new(i);
         }
+        let patch_seed = patch.fx.ambient_seed;
         Self {
             sr,
             cutoff_s: patch.cutoff_hz,
@@ -135,11 +158,15 @@ impl SynthRt {
             bank: None,
             chorus: Chorus::new(sr),
             reverb: Reverb::new(sr),
+            reverb_r: Reverb::with_spread(sr, 23.0),
+            drift: Drift::new(patch_seed),
+            drift_seed: patch_seed,
             voices,
             seq: Sequencer::default(),
             counter: 0,
             lfo_phase: 0.0,
             dc: DcBlocker::default(),
+            dc_r: DcBlocker::default(),
             bend_ratio: 1.0,
             mod_wheel: 0.0,
             opts: RtOptions::default(),
@@ -174,7 +201,8 @@ impl SynthRt {
     /// zones from the new bank. Returns the old bank so the caller can drop it off-thread.
     pub fn set_bank(&mut self, bank: Option<Arc<SampleBank>>) -> Option<Arc<SampleBank>> {
         for v in &mut self.voices {
-            v.zone = NO_ZONE;
+            v.n_layers = 0;
+            v.hold = false;
         }
         std::mem::replace(&mut self.bank, bank)
     }
@@ -275,15 +303,22 @@ impl SynthRt {
         v.time_s = 0.0;
         v.layer_m1_phase = 0.0;
         v.layer_x_phase = 0.0;
-        v.zone = NO_ZONE;
+        v.n_layers = 0;
+        v.hold = false;
         if let Some(bank) = self.bank.as_deref() {
-            if let Some(zi) = bank.find(note, v.vel) {
+            let mut found = [0usize; MAX_LAYERS];
+            let n = bank.find_all(note, v.vel, &mut found);
+            for &zi in &found[..n] {
                 if let Some(z) = bank.zones.get(zi) {
                     let root_hz = midi_hz(z.root_key) * (self.opts.a4_hz / 440.0);
-                    v.zone = zi;
-                    v.s_pos = 0.0;
-                    v.s_step = z.sample_rate / self.sr * 2.0_f32.powf(z.tune_cents / 1200.0)
-                        / root_hz.max(1.0);
+                    v.layers[v.n_layers] = Layer {
+                        zone: zi,
+                        pos: 0.0,
+                        step: z.sample_rate / self.sr * 2.0_f32.powf(z.tune_cents / 1200.0)
+                            / root_hz.max(1.0),
+                    };
+                    v.n_layers += 1;
+                    v.hold |= z.one_shot && z.loop_range.is_none();
                 }
             }
         }
@@ -311,7 +346,7 @@ impl SynthRt {
         for v in self
             .voices
             .iter_mut()
-            .filter(|v| v.active && v.gate && !v.from_seq && v.note == note)
+            .filter(|v| v.active && v.gate && !v.from_seq && v.note == note && !v.hold)
         {
             v.gate = false;
             v.env.gate_off();
@@ -320,6 +355,7 @@ impl SynthRt {
 
     pub fn all_notes_off(&mut self) {
         for v in self.voices.iter_mut().filter(|v| v.active) {
+            v.hold = false;
             v.gate = false;
             v.env.gate_off();
         }
@@ -391,7 +427,22 @@ impl SynthRt {
     }
 
     /// Render `out.len()` mono samples. Allocation-free.
+    /// Render a mono mix (left and right averaged). Does not allocate.
     pub fn process(&mut self, out: &mut [f32]) {
+        let mut l = [0.0_f32; 256];
+        let mut r = [0.0_f32; 256];
+        for chunk in out.chunks_mut(256) {
+            let n = chunk.len();
+            self.process_stereo(&mut l[..n], &mut r[..n]);
+            for ((o, a), b) in chunk.iter_mut().zip(&l[..n]).zip(&r[..n]) {
+                *o = 0.5 * (a + b);
+            }
+        }
+    }
+
+    /// Render `left.len().min(right.len())` stereo frames. This is the one synthesis path.
+    /// Does not allocate.
+    pub fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
         let sr = self.sr;
         let glide_coef = 1.0 - (-1.0 / (GLIDE_MS * 0.001 * sr)).exp();
         let smooth = 1.0 - (-1.0 / (0.008 * sr)).exp();
@@ -399,8 +450,15 @@ impl SynthRt {
         let headroom = 10.0_f32.powf(self.opts.headroom_db / 20.0);
         let fx = self.patch.fx;
         self.reverb.set(fx.reverb_decay_s, fx.reverb_damping);
+        self.reverb_r.set(fx.reverb_decay_s, fx.reverb_damping);
+        if fx.ambient_seed != self.drift_seed {
+            self.drift = Drift::new(fx.ambient_seed);
+            self.drift_seed = fx.ambient_seed;
+        }
+        let spread = fx.stereo_spread.clamp(0.0, 1.0);
+        let ambient = fx.ambient_depth.clamp(0.0, 1.0);
 
-        for sample_out in out.iter_mut() {
+        for (left_out, right_out) in left.iter_mut().zip(right.iter_mut()) {
             if self.seq.playing {
                 if self.seq.just_started {
                     self.seq.just_started = false;
@@ -429,7 +487,15 @@ impl SynthRt {
             } else {
                 0.0
             };
-            let mut sum = 0.0_f32;
+            let (d_cut, d_morph, d_verb) = if ambient > 0.0 {
+                let d = self.drift.tick(fx.ambient_rate_hz, sr);
+                (d[0] * ambient, d[1] * ambient, d[2] * ambient)
+            } else {
+                (0.0, 0.0, 0.0)
+            };
+            let morph = (p.extreme_morph + d_morph * 0.35).clamp(0.0, 1.0);
+            let mut sum_l = 0.0_f32;
+            let mut sum_r = 0.0_f32;
 
             for v in self.voices.iter_mut().filter(|v| v.active) {
                 v.freq += (v.target_freq - v.freq) * glide_coef;
@@ -453,9 +519,9 @@ impl SynthRt {
                 let dphase = f64::from(f / sr);
                 if p.extreme_dsp != crate::rompler::ExtremeDspMode::Off {
                     v.layer_x_phase += dphase;
-                    let x =
-                        p.extreme_dsp
-                            .sample_dsp(v.layer_x_phase as f32, v.time_s, p.extreme_morph);
+                    let x = p
+                        .extreme_dsp
+                        .sample_dsp(v.layer_x_phase as f32, v.time_s, morph);
                     raw = raw * 0.45 + x * 0.55;
                 }
                 if let Some(m1) = p.m1_program {
@@ -464,49 +530,83 @@ impl SynthRt {
                     let m = p.m1_layer_mix.clamp(0.0, 1.0);
                     raw = raw * (1.0 - m) + pcm * m;
                 }
-                if sampler_mix > 0.0 {
+                let mut layer_pan = 0.0_f32;
+                if sampler_mix > 0.0 || v.hold {
                     let mut smp = 0.0;
-                    if let Some(z) = self.bank.as_deref().and_then(|b| b.zones.get(v.zone)) {
-                        smp = z.read(v.s_pos) * z.gain;
-                        v.s_pos += f64::from(f * self.bend_ratio * v.s_step);
-                        match z.loop_range {
-                            Some((ls, le)) if v.s_pos >= le as f64 && le > ls => {
-                                v.s_pos -= (le - ls) as f64;
+                    let mut alive = 0_u32;
+                    let mut pan_acc = 0.0_f32;
+                    if let Some(bank) = self.bank.as_deref() {
+                        for l in &mut v.layers[..v.n_layers] {
+                            let Some(z) = bank.zones.get(l.zone) else {
+                                continue;
+                            };
+                            smp += z.read(l.pos) * z.gain;
+                            pan_acc += z.pan;
+                            alive += 1;
+                            l.pos += f64::from(f * l.step);
+                            match z.loop_range {
+                                Some((ls, le)) if l.pos >= le as f64 && le > ls => {
+                                    l.pos -= (le - ls) as f64;
+                                }
+                                None if l.pos >= z.len() as f64 => l.zone = NO_ZONE,
+                                _ => {}
                             }
-                            None if v.s_pos >= z.len() as f64 => v.zone = NO_ZONE,
-                            _ => {}
                         }
+                    }
+                    if alive > 0 {
+                        layer_pan = pan_acc / alive as f32;
+                    }
+                    if v.hold && alive == 0 {
+                        v.hold = false;
+                        v.gate = false;
+                        v.env.gate_off();
                     }
                     raw = raw * (1.0 - sampler_mix) + smp * sampler_mix;
                 }
                 v.time_s += 1.0 / sr;
 
-                let octaves = env * p.env_mod_depth.clamp(0.0, 1.0) * 3.0 * acc + lfo * 1.2;
+                let octaves =
+                    env * p.env_mod_depth.clamp(0.0, 1.0) * 3.0 * acc + lfo * 1.2 + d_cut * 1.5;
                 let cutoff = self.cutoff_s * 2.0_f32.powf(octaves);
                 let filtered =
                     v.filter
                         .process(raw * drive_in, cutoff, sr, self.q_s, p.filter_mode);
-                sum += (filtered * drive_out).tanh() * env * v.vel * acc;
+                let x = (filtered * drive_out).tanh() * env * v.vel * acc;
+                let pan = (v.pan * spread + layer_pan).clamp(-1.0, 1.0);
+                if pan == 0.0 {
+                    sum_l += x;
+                    sum_r += x;
+                } else {
+                    let ang = (pan + 1.0) * FRAC_PI_4;
+                    sum_l += x * ang.cos() * SQRT_2;
+                    sum_r += x * ang.sin() * SQRT_2;
+                }
             }
 
-            let mut level = sum * self.gain_s.clamp(0.0, 1.0) * headroom;
+            let g = self.gain_s.clamp(0.0, 1.0) * headroom;
+            let mut out_l = sum_l * g;
+            let mut out_r = sum_r * g;
             if fx.chorus_mix > 0.001 {
-                level = self.chorus.process(level, fx.chorus_mix.clamp(0.0, 1.0));
+                (out_l, out_r) =
+                    self.chorus
+                        .process_stereo(out_l, out_r, fx.chorus_mix.clamp(0.0, 1.0));
             }
             if fx.reverb_mix > 0.001 {
-                let m = fx.reverb_mix.clamp(0.0, 1.0);
-                level = level * (1.0 - 0.4 * m) + self.reverb.process(level) * m;
+                let m = (fx.reverb_mix + d_verb * 0.25).clamp(0.0, 1.0);
+                out_l = out_l * (1.0 - 0.4 * m) + self.reverb.process(out_l) * m;
+                out_r = out_r * (1.0 - 0.4 * m) + self.reverb_r.process(out_r) * m;
             }
-            let mono = if self.opts.dc_blocker {
-                self.dc.process(level)
+            if self.opts.dc_blocker {
+                out_l = self.dc.process(out_l);
+                out_r = self.dc_r.process(out_r);
+            }
+            if self.opts.soft_clip {
+                *left_out = (out_l * 0.9).tanh();
+                *right_out = (out_r * 0.9).tanh();
             } else {
-                level
-            };
-            *sample_out = if self.opts.soft_clip {
-                (mono * 0.9).tanh()
-            } else {
-                mono.clamp(-1.0, 1.0)
-            };
+                *left_out = out_l.clamp(-1.0, 1.0);
+                *right_out = out_r.clamp(-1.0, 1.0);
+            }
 
             if self.seq.playing {
                 self.seq.pos += 1.0;

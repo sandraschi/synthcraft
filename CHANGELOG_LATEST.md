@@ -11,6 +11,9 @@
 - C ABI crate `synthcraft-ffi` (`include/synthcraft.h`, ABI version 1) and a VCV Rack module in `rack/` (polyphonic V/Oct and gate, velocity, CV for cutoff, resonance, morph and pulse width, bank loading, patch stored in the Rack patch).
 - `synthcraft_core::plugin::PluginEngine` and `params` (stable parameter ids) shared by every front end; `SynthRt::patch_mut`.
 - `docs/PLUGINS.md`, `docs/SAMPLES_AND_M1.md`, `docs/ROADMAP.md`; `just clap-install`.
+- Sampler layers (a note plays every matching zone, up to 4) and one-shot zones (SFZ `loop_mode=one_shot`, ignores note-off); SFZ `pan`.
+- True stereo engine output: `SynthRt::process_stereo`, per-voice spread (`stereo_spread`), stereo chorus, decorrelated stereo reverb. CLAP, C ABI, Rack and the desktop audio callback now output real stereo.
+- Ambient mode: slow seeded drift on cutoff, morph and reverb send (`ambient_depth`, `ambient_rate_hz`, `ambient_seed`). Three new host parameters (25 in total, ids 0x1017 to 0x1019).
 
 ### Changed
 - SQLite persistence rewritten: schema v2, backup before migration, bad rows quarantined, per-row upserts, background saves, UI settings persisted. `rusqlite` 0.41 (fixes RUSTSEC-2026-0459).
@@ -20,6 +23,8 @@
 
 ### Fixed
 - `SubOctave` reference wave had a DC offset.
+- Pitch bend was applied twice to sampler playback.
+- Default stereo spread of 0.3 slightly changes the sound of existing patches (voices are now panned); set `stereo_spread` to 0 for the old mono image.
 
 ## SynthCraft v0.2.0 (2026-11-23)
 

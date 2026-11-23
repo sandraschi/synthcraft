@@ -58,7 +58,7 @@ fn play_a_note_through_the_c_api() {
         assert_eq!(sc_active_voices(e), 1);
         sc_process(e, l.as_mut_ptr(), r.as_mut_ptr(), 4800);
         assert!(l.iter().map(|x| x * x).sum::<f32>() > 0.01);
-        assert_eq!(l, r);
+        assert!(r.iter().map(|x| x * x).sum::<f32>() > 0.01);
         sc_note_off(e, 60);
         sc_all_notes_off(e);
         sc_destroy(e);

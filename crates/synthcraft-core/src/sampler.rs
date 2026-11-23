@@ -24,7 +24,14 @@ pub struct Zone {
     pub gain: f32,
     /// Loop start and end (end exclusive) in sample frames, when the zone sustains.
     pub loop_range: Option<(usize, usize)>,
+    /// Play to the end on every note and ignore note-off (drum hits, attack transients).
+    pub one_shot: bool,
+    /// Stereo position, -1.0 (left) to 1.0 (right).
+    pub pan: f32,
 }
+
+/// Most zones that can sound together for one note (layers).
+pub const MAX_LAYERS: usize = 4;
 
 impl Zone {
     /// Cubic Hermite read at a fractional frame position. Out-of-range reads give silence.
@@ -98,6 +105,32 @@ impl SampleBank {
             })
             .map(|(i, _)| i)
             .or_else(|| (!self.zones.is_empty()).then_some(0))
+    }
+
+    /// Every zone that matches a note and velocity, up to [`MAX_LAYERS`], written into `out`.
+    /// Returns how many were found. When nothing matches it falls back to the single nearest
+    /// zone like [`SampleBank::find`]. Does not allocate.
+    pub fn find_all(&self, note: u8, velocity: f32, out: &mut [usize; MAX_LAYERS]) -> usize {
+        let v = (velocity.clamp(0.0, 1.0) * 127.0).round() as u8;
+        let mut n = 0;
+        for (i, z) in self.zones.iter().enumerate() {
+            if n < MAX_LAYERS
+                && note >= z.key_lo
+                && note <= z.key_hi
+                && v >= z.vel_lo
+                && v <= z.vel_hi
+            {
+                out[n] = i;
+                n += 1;
+            }
+        }
+        if n == 0 {
+            if let Some(i) = self.find(note, velocity) {
+                out[0] = i;
+                n = 1;
+            }
+        }
+        n
     }
 
     pub fn total_frames(&self) -> usize {
@@ -313,6 +346,8 @@ fn wav_zone(w: Wav, key_lo: u8, key_hi: u8, root: u8) -> Zone {
         tune_cents: 0.0,
         gain: 1.0,
         loop_range: w.loop_range,
+        one_shot: false,
+        pan: 0.0,
     }
 }
 
@@ -542,6 +577,8 @@ pub fn load_sfz(path: &Path) -> Result<SampleBank, SynthError> {
                 + sfz_f(ops, "transpose").unwrap_or(0.0) * 100.0,
             gain: 10.0_f32.powf(vol_db / 20.0),
             loop_range,
+            one_shot: mode.as_deref() == Some("one_shot"),
+            pan: sfz_f(ops, "pan").map_or(0.0, |p| (p / 100.0).clamp(-1.0, 1.0)),
         });
     }
     if zones.is_empty() {
@@ -797,6 +834,8 @@ pub fn load_sf2(path: &Path, preset: Option<usize>) -> Result<SampleBank, SynthE
                     as f32,
                 gain: 10.0_f32.powf(-(atten as f32) / 200.0),
                 loop_range,
+                one_shot: false,
+                pan: 0.0,
             });
         }
     }
@@ -1013,6 +1052,8 @@ mod tests {
             tune_cents: 0.0,
             gain: 1.0,
             loop_range: Some((0, 4)),
+            one_shot: false,
+            pan: 0.0,
         };
         assert!((z.read(1.0) - 1.0).abs() < 1e-6);
         assert!((z.read(5.0) - 1.0).abs() < 1e-6, "loop wraps");

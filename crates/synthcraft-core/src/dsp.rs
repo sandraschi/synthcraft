@@ -486,12 +486,28 @@ impl Chorus {
         }
     }
 
+    /// Mono in, mono out.
     pub fn process(&mut self, x: f32, mix: f32) -> f32 {
+        let t = self.write_and_taps(x);
+        x * (1.0 - 0.5 * mix) + (t[0] + t[1]) * 0.5 * mix * 0.75
+    }
+
+    /// Stereo in, stereo out: the two modulated taps go to opposite channels, so the chorus
+    /// widens the sound. The mono sum equals [`Chorus::process`] of the mono sum.
+    pub fn process_stereo(&mut self, l: f32, r: f32, mix: f32) -> (f32, f32) {
+        let t = self.write_and_taps((l + r) * 0.5);
+        (
+            l * (1.0 - 0.5 * mix) + t[0] * 0.75 * mix,
+            r * (1.0 - 0.5 * mix) + t[1] * 0.75 * mix,
+        )
+    }
+
+    fn write_and_taps(&mut self, x: f32) -> [f32; 2] {
         let len = self.buf.len();
         if let Some(slot) = self.buf.get_mut(self.w) {
             *slot = x;
         }
-        let mut wet = 0.0_f32;
+        let mut taps = [0.0_f32; 2];
         for (i, rate) in [0.31_f32, 0.43].into_iter().enumerate() {
             self.ph[i] += rate / self.sr;
             if self.ph[i] >= 1.0 {
@@ -504,10 +520,10 @@ impl Chorus {
             let fr = pos - pos.floor();
             let a = self.buf.get(i0).copied().unwrap_or(0.0);
             let b = self.buf.get(i1).copied().unwrap_or(0.0);
-            wet += a + (b - a) * fr;
+            taps[i] = a + (b - a) * fr;
         }
         self.w = (self.w + 1) % len;
-        x * (1.0 - 0.5 * mix) + wet * 0.5 * mix * 0.75
+        taps
     }
 }
 
@@ -542,12 +558,18 @@ pub struct Reverb {
 
 impl Reverb {
     pub fn new(sr: f32) -> Self {
+        Self::with_spread(sr, 0.0)
+    }
+
+    /// Like [`Reverb::new`] with every delay line lengthened by `spread` samples (at 44.1 kHz).
+    /// Two reverbs with different spreads make a decorrelated stereo pair.
+    pub fn with_spread(sr: f32, spread: f32) -> Self {
         let scale = sr / 44100.0;
         let mut r = Self {
             combs: COMB_TUNING
                 .iter()
                 .map(|t| Comb {
-                    buf: vec![0.0; (t * scale).round().max(2.0) as usize],
+                    buf: vec![0.0; ((t + spread) * scale).round().max(2.0) as usize],
                     i: 0,
                     store: 0.0,
                 })
@@ -555,7 +577,7 @@ impl Reverb {
             allpass: ALLPASS_TUNING
                 .iter()
                 .map(|t| Allpass {
-                    buf: vec![0.0; (t * scale).round().max(2.0) as usize],
+                    buf: vec![0.0; ((t + spread) * scale).round().max(2.0) as usize],
                     i: 0,
                 })
                 .collect(),
@@ -607,5 +629,44 @@ impl Reverb {
             sum = out;
         }
         sum * 3.0
+    }
+}
+
+/// Slow, seeded, bounded drift for the ambient mode. Three outputs in -1..=1, each the sum of
+/// two incommensurate sines, so the pattern does not audibly repeat. Same seed, same drift.
+#[derive(Debug, Clone)]
+pub struct Drift {
+    phase: [f32; 6],
+}
+
+impl Drift {
+    const RATIOS: [f32; 6] = [1.0, 0.618, 0.731, 0.377, 0.467, 0.887];
+
+    pub fn new(seed: u32) -> Self {
+        let mut s = seed ^ 0x9E37_79B9;
+        let mut phase = [0.0_f32; 6];
+        for p in &mut phase {
+            s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            s ^= s >> 15;
+            *p = (s >> 8) as f32 / 16_777_216.0;
+        }
+        Self { phase }
+    }
+
+    /// Advance one sample at `rate_hz` and return the three drift values.
+    pub fn tick(&mut self, rate_hz: f32, sr: f32) -> [f32; 3] {
+        let inc = rate_hz.clamp(0.001, 2.0) / sr;
+        for (p, k) in self.phase.iter_mut().zip(Self::RATIOS) {
+            *p += inc * k;
+            if *p >= 1.0 {
+                *p -= 1.0;
+            }
+        }
+        let s = |i: usize| (TAU * self.phase.get(i).copied().unwrap_or(0.0)).sin();
+        [
+            0.5 * (s(0) + s(1)),
+            0.5 * (s(2) + s(3)),
+            0.5 * (s(4) + s(5)),
+        ]
     }
 }

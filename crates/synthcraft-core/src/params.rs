@@ -161,6 +161,33 @@ pub const PARAMS: &[ParamDef] = &[
         0.95,
         0.5
     ),
+    p!(
+        0x1017,
+        "stereo_spread",
+        "Stereo Spread",
+        "fx",
+        0.0,
+        1.0,
+        0.3
+    ),
+    p!(
+        0x1018,
+        "ambient_depth",
+        "Ambient Depth",
+        "fx",
+        0.0,
+        1.0,
+        0.0
+    ),
+    p!(
+        0x1019,
+        "ambient_rate_hz",
+        "Ambient Rate (Hz)",
+        "fx",
+        0.01,
+        0.5,
+        0.05
+    ),
 ];
 
 /// Look a parameter up by id.
@@ -198,6 +225,9 @@ pub fn get_param(patch: &SynthPatch, id: u32) -> Option<f32> {
         0x1014 => patch.fx.reverb_mix,
         0x1015 => patch.fx.reverb_decay_s,
         0x1016 => patch.fx.reverb_damping,
+        0x1017 => patch.fx.stereo_spread,
+        0x1018 => patch.fx.ambient_depth,
+        0x1019 => patch.fx.ambient_rate_hz,
         _ => return None,
     })
 }
@@ -232,7 +262,10 @@ pub fn set_param(patch: &mut SynthPatch, id: u32, value: f32) -> Option<f32> {
         0x1013 => patch.fx.chorus_mix = v,
         0x1014 => patch.fx.reverb_mix = v,
         0x1015 => patch.fx.reverb_decay_s = v,
-        _ => patch.fx.reverb_damping = v,
+        0x1016 => patch.fx.reverb_damping = v,
+        0x1017 => patch.fx.stereo_spread = v,
+        0x1018 => patch.fx.ambient_depth = v,
+        _ => patch.fx.ambient_rate_hz = v,
     }
     Some(v)
 }
