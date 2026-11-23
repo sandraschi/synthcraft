@@ -3,6 +3,7 @@
 
 mod app;
 mod help_docs;
+mod rack_ui;
 mod subapps;
 
 use app::SynthCraftApp;
