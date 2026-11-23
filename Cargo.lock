@@ -705,6 +705,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a76abbdb2907f6fd97fb6bc0b7be96b77d328f2dd9669d1075cc03369ed22154"
+
+[[package]]
 name = "clap_builder"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3738,6 +3744,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "synthcraft-clap"
+version = "0.2.0"
+dependencies = [
+ "clap-sys",
+ "synthcraft-core",
+]
+
+[[package]]
 name = "synthcraft-core"
 version = "0.2.0"
 dependencies = [
@@ -3746,6 +3760,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "synthcraft-ffi"
+version = "0.2.0"
+dependencies = [
+ "synthcraft-core",
 ]
 
 [[package]]

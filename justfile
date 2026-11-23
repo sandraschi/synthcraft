@@ -22,3 +22,10 @@ release-dry:
 # Same, then tag, push the tag and upload to GitHub (clean, pushed trunk required).
 release:
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1 -Publish
+
+# Build the CLAP plug-in and install it for the current user.
+clap-install:
+    cargo build --release -p synthcraft-clap
+    New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\Common\CLAP" | Out-Null
+    Copy-Item target\release\synthcraft_clap.dll "$env:LOCALAPPDATA\Programs\Common\CLAP\SynthCraft.clap" -Force
+    Write-Host "Installed SynthCraft.clap"

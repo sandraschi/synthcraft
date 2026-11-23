@@ -71,6 +71,9 @@ SynthCraft workspace. Run `cargo xtask ci` before every commit (alias in `.cargo
 - `crates/synthcraft-core` (L1): engine, DSP (`dsp.rs`), real-time voice engine `SynthRt` (`rt.rs`), sampler (`sampler.rs`), free bank catalogue (`banks.rs`), SQLite persistence (`db.rs`), agent sandbox (`sandbox.rs`), `Command` and `SynthEngine` (`lib.rs`). No UI, no network.
 - `crates/synthcraft-mcp` (L2): CLI and hand-rolled MCP stdio server. Every tool maps to a `Command`. File paths from agents go through `PathPolicy` (`enforce_command`); the MCP server refuses to start without both automation roots.
 - `crates/synthcraft-app` (L3): eframe/egui studio, live audio (cpal), MIDI (midir), background saver, bank downloader.
+- `crates/synthcraft-ffi` (L5): C ABI over `synthcraft_core::plugin::PluginEngine` (`include/synthcraft.h`), static and shared library for the VCV Rack module. Allowed to contain `unsafe` (every block has a `// SAFETY:` comment).
+- `crates/synthcraft-clap` (L5): CLAP instrument plug-in (`clap_entry`), built as `synthcraft_clap.dll`, installed as `SynthCraft.clap`. Allowed to contain `unsafe`, same rule.
+- `rack/`: C++ VCV Rack module over the C ABI (not a Cargo crate). See `docs/PLUGINS.md`.
 - `banks/manifest.json`: pinned sources, SHA-256 and licences for downloadable sample packs. Samples are never committed.
 
 ### Commands
@@ -86,4 +89,6 @@ SynthCraft workspace. Run `cargo xtask ci` before every commit (alias in `.cargo
 - Existing content is never removed or rewritten by a standard or template sweep unless the owner explicitly commands it.
 - No trademarked product or song names in presets, programs, ids or docs; no em dash anywhere.
 - Panel edits go through `Command` so agents can do everything a panel does (rule 14); say so in the PR if a panel still mutates state directly.
-- CLAP: only the descriptor JSON exists. Do not claim a loadable plugin until a separate cdylib crate ships one.
+- `unsafe` is allowed only in `synthcraft-ffi` and `synthcraft-clap`. Keep the host-facing logic (parameters, notes, state) in `synthcraft-core::plugin` and `params`, which stay `forbid(unsafe_code)`.
+- Plug-in parameter ids in `params.rs` are stable: never renumber or reuse one. Changing the C ABI means bumping `SC_ABI_VERSION` and updating `include/synthcraft.h` in the same commit.
+- Do not claim a plug-in works in a host that was not tried. `docs/PLUGINS.md` says what has and has not been loaded.

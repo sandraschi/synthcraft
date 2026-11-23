@@ -1,0 +1,29 @@
+[package]
+name = "synthcraft-ffi"
+description = "C ABI over the SynthCraft plugin engine, used by the CLAP plugin and the VCV Rack module"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "synthcraft_ffi"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+synthcraft-core = { path = "../synthcraft-core" }
+
+# The only crates in the workspace that may contain `unsafe`: FFI cannot be written without it.
+# Every unsafe block carries a SAFETY comment; the core engine stays `forbid(unsafe_code)`.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"

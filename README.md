@@ -20,7 +20,9 @@ SynthCraft is a 3-tier Pure-Rust ArtCraft modular audio synthesis studio and MCP
 | Dual VCO (`9` waveforms, FM/detune) + 4-Pole Resonant Ladder VCF (`4` modes) | `Implemented` | `synthcraft-core::model` |
 | ADSR Envelope + Tempo-Synced LFO + 16-Step Acid Sequencer | `Implemented` | `synthcraft-core::model` |
 | 32-Band DFT Spectrum Analyzer, Oscilloscope & RMS/Peak dBFS Metering | `Implemented` | `synthcraft-core::model` |
-| CLAP `1.2.2` Plugin Descriptor & Parameter Automation Bridge for SoundCraft | `Descriptor and parameter map only; no loadable plugin yet` | `synthcraft-core::model` |
+| CLAP `1.2.2` instrument plug-in (`SynthCraft.clap`): 22 automatable parameters, notes, state; passes `clap-validator` | `Implemented; not yet tried in a DAW` | `synthcraft-clap`, `synthcraft-core::plugin` |
+| VCV Rack module (polyphonic V/Oct and gate, CV inputs, bank loading) over a C ABI | `Builds and links against the Rack SDK; not yet loaded in Rack` | `rack/`, `synthcraft-ffi` |
+| CLAP descriptor and parameter map export for SoundCraft | `Implemented` | `synthcraft-core::model` |
 | RIFF PCM `.wav` Renderer + BPM/Camelot Stem & Riser Exporter for DJCraft | `Implemented` | `synthcraft-core::model` |
 | Bundled SQLite Persistence (`%LOCALAPPDATA%\synthcraft\synthcraft.db`), schema v2, backup before migration, bad rows quarantined, saves off the UI thread | `Implemented` | `synthcraft-core::db`, `synthcraft-app::saver` |
 | Live audio (cpal) and MIDI input (midir) through the same `SynthRt` engine as offline rendering | `Implemented` | `synthcraft-core::rt`, `synthcraft-app` |
@@ -62,6 +64,17 @@ synthcraft-mcp fetch-bank vsco2ce-cello-section-sus
 Then enter the printed `.sfz` path in the sample bank field of the rack. Sample files are never stored in this repository; `banks/manifest.json` pins source commit, SHA-256 and licence. Bring your own SF2/SFZ files for anything else.
 
 See `docs/SAMPLES_AND_M1.md` for licensing rules, adding packs and the M1 question, and `docs/ROADMAP.md` for plans (CLAP, VCV Rack module, features).
+
+## Plug-ins
+
+SynthCraft runs as a CLAP instrument and as a VCV Rack module, on the same engine as the desktop app.
+
+```
+cargo build --release -p synthcraft-clap
+just clap-install        # copies SynthCraft.clap to %LOCALAPPDATA%\Programs\Common\CLAP
+```
+
+The Rack module is built from `rack/` against the Rack SDK. Full details, parameter ids, limits and what has been verified are in `docs/PLUGINS.md`.
 
 ## License
 

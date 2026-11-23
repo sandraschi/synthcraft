@@ -6,17 +6,20 @@ Status: 2026-11-23. Estimates assume AI-assisted development (days, not weeks).
 
 Live audio and MIDI, one shared `SynthRt` engine for live and offline, sampler (WAV, SFZ, SF2, loops, automatic sustain loops), pad oscillator, chorus, reverb, persistence v2, agent sandbox, free bank downloader, panel edits as `Command`s, 23 MCP tools, CI with cargo-deny.
 
+## Done since
+
+FFI shim (`synthcraft-ffi`), CLAP plug-in (`synthcraft-clap`, passes `clap-validator`) and a VCV Rack module (`rack/`, builds and links against the Rack SDK). Details and what is still unverified: `docs/PLUGINS.md`.
+
 ## Next, in the order I would do it
 
-1. **FFI shim crate (about 1 day).** A new crate `synthcraft-ffi` (`staticlib`, the only place `unsafe` is allowed, as with the CLAP plan) that exposes a small C ABI around `SynthRt`: create and free with a sample rate, note on and off with velocity, set parameter by id, process a block of frames into left and right buffers, load a bank by path. Both plugins below sit on this, so write it first and test it from a plain C program.
-2. **CLAP plugin (about 2 to 3 days).** Thin cdylib on the shim, exporting the parameter table that already exists in `export_clap_descriptor`. Tests: load in a CLAP host (clap-validator), play notes, automate a parameter, save and restore state.
-3. **VCV Rack module (about 2 to 4 days, after the shim).** See below.
-4. **AI2-style layering in the sampler (about 1 to 2 days).** Overlapping zones, one-shot attack zones plus looped sustain; see `docs/SAMPLES_AND_M1.md`.
-5. **Feature work** from the list below.
+1. **Try both plug-ins in real hosts (hours).** A DAW for the CLAP, Rack for the module. Fix whatever turns up.
+2. **AI2-style layering in the sampler (about 1 to 2 days).** Overlapping zones, one-shot attack zones plus looped sustain; see `docs/SAMPLES_AND_M1.md`.
+3. **Release assets.** `SynthCraft.clap` as a plain file beside the exes, and a `.vcvplugin` per platform built in CI.
+4. **Stereo engine output**, then the feature work below.
 
-## VCV Rack module
+## VCV Rack module (design notes, built)
 
-Feasible. Rack plugins are C++ built against the Rack SDK; the plugin tutorial says they are written in C++11 and the SDK has a helper script that scaffolds a module. So the module is a small C++ wrapper that calls the Rust engine through the C ABI from the shim crate.
+Feasible, and now built (see `docs/PLUGINS.md`). Rack plugins are C++ built against the Rack SDK; the plugin tutorial says they are written in C++11 and the SDK has a helper script that scaffolds a module. So the module is a small C++ wrapper that calls the Rust engine through the C ABI from the shim crate.
 
 Design:
 

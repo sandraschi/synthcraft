@@ -1,0 +1,23 @@
+{
+  "slug": "SynthCraft",
+  "name": "SynthCraft",
+  "version": "2.0.0",
+  "license": "MIT",
+  "brand": "Sandra Schipal",
+  "author": "Sandra Schipal",
+  "authorEmail": "sandra@sandraschi.dev",
+  "authorUrl": "https://github.com/sandraschi",
+  "pluginUrl": "https://github.com/sandraschi/synthcraft",
+  "manualUrl": "https://github.com/sandraschi/synthcraft/blob/main/rack/README.md",
+  "sourceUrl": "https://github.com/sandraschi/synthcraft",
+  "changelogUrl": "https://github.com/sandraschi/synthcraft/blob/main/CHANGELOG.md",
+  "donateUrl": "",
+  "modules": [
+    {
+      "slug": "SynthCraft",
+      "name": "SynthCraft",
+      "description": "Polyphonic subtractive, PCM and sample-bank synthesizer",
+      "tags": ["Synth voice", "Polyphonic"]
+    }
+  ]
+}

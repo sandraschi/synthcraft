@@ -169,7 +169,11 @@ fn classify_layer(name: &str) -> u8 {
         || name.ends_with("-ui-egui")
     {
         6
-    } else if name.ends_with("-mcp") || name.ends_with("-cli") {
+    } else if name.ends_with("-mcp")
+        || name.ends_with("-cli")
+        || name.ends_with("-ffi")
+        || name.ends_with("-clap")
+    {
         5
     } else if name.ends_with("-core") {
         1

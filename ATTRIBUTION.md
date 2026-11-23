@@ -11,6 +11,7 @@ SynthCraft is dual-licensed under `MIT OR Apache-2.0` and authored by Sandra Sch
 
 - `egui` / `eframe` / `egui_kittest` 0.37 -- Emil Ernerfeldt & Embark Studios (`MIT OR Apache-2.0`)
 - `rusqlite` 0.41 (`bundled` SQLite) -- The rusqlite Developers (`MIT`)
+- `clap-sys` 0.5 -- Micah Johnston and Robbert van der Helm (`MIT OR Apache-2.0`), raw bindings for the CLAP plug-in API
 - `clap` 4.5 -- clap Contributors (`MIT OR Apache-2.0`)
 - `serde` / `serde_json` 1.0 -- Erick Tryzelaar & David Tolnay (`MIT OR Apache-2.0`)
 - `thiserror` 2.0 -- David Tolnay (`MIT OR Apache-2.0`)
@@ -18,6 +19,7 @@ SynthCraft is dual-licensed under `MIT OR Apache-2.0` and authored by Sandra Sch
 ## Bundled Assets
 
 - `assets/synth.svg` -- Original vector modular synthesizer waveform & filter icon authored for SynthCraft (`CC0-1.0 / MIT`).
+- `rack/res/SynthCraft.svg` -- Original plain panel background for the VCV Rack module, authored for SynthCraft by Sandra Schipal (`MIT OR Apache-2.0`).
 
 ## Downloadable Sample Banks (not stored in this repository)
 

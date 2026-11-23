@@ -1,0 +1,31 @@
+[package]
+name = "synthcraft-clap"
+description = "SynthCraft as a CLAP instrument plug-in"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "synthcraft_clap"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+clap-sys = "0.5"
+synthcraft-core = { path = "../synthcraft-core" }
+
+# Plug-in ABI code needs `unsafe`; every block carries a SAFETY comment. The engine itself
+# (synthcraft-core) stays `forbid(unsafe_code)`.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"

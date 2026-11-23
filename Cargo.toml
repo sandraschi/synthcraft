@@ -2,6 +2,8 @@
 members = [
     "crates/synthcraft-core",
     "crates/synthcraft-mcp",
+    "crates/synthcraft-ffi",
+    "crates/synthcraft-clap",
     "crates/synthcraft-app",
 ]
 exclude = ["xtask"]

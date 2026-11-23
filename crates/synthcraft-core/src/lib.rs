@@ -12,6 +12,8 @@ pub mod edit;
 pub mod error;
 pub mod midi;
 pub mod model;
+pub mod params;
+pub mod plugin;
 pub mod rompler;
 pub mod rt;
 pub mod sampler;

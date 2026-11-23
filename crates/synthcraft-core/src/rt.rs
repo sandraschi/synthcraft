@@ -154,6 +154,11 @@ impl SynthRt {
         &self.patch
     }
 
+    /// Edit the patch in place. Does not allocate; the engine reads the patch every sample.
+    pub fn patch_mut(&mut self) -> &mut SynthPatch {
+        &mut self.patch
+    }
+
     /// Swap the patch without disturbing sounding voices. Returns the old patch so the caller
     /// can drop it off the audio thread.
     pub fn replace_patch(&mut self, patch: SynthPatch) -> SynthPatch {
