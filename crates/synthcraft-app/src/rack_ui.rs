@@ -305,6 +305,7 @@ pub fn render_m1_and_extreme_dsp(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     if changed {
         app.persist_state();
     }
+    render_sampler_and_fx(app, ui);
 
     if app.subpage == 1 {
         ui.add_space(6.0);
@@ -597,4 +598,114 @@ pub fn render_demo_showcase(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             rep.estimated_pitch_hz
         ),
     );
+}
+
+fn banks_dir() -> std::path::PathBuf {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    home.join("Documents").join("SynthCraft").join("Banks")
+}
+
+/// Sample bank layer and master effects for the active patch.
+fn render_sampler_and_fx(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
+    let pal = app.skin.palette();
+    ui.separator();
+    ui.heading("Sample bank layer and master effects");
+    ui.label(
+        "Load an .sf2 (add #N for preset N), an .sfz, a .wav, or a folder of wavs named by note (pad_C3.wav). Put banks in the Banks folder below to list them here.",
+    );
+    let mut changed = false;
+    let mut load: Option<String> = None;
+    ui.horizontal(|ui| {
+        ui.label("Bank:");
+        ui.add(
+            egui::TextEdit::singleline(&mut app.bank_input)
+                .desired_width(460.0)
+                .hint_text("C:\\path\\to\\bank.sf2"),
+        );
+        if ui.button("Load").clicked() && !app.bank_input.trim().is_empty() {
+            load = Some(app.bank_input.trim().to_string());
+        }
+        if ui.button("Unload").clicked() {
+            app.engine.active_patch_mut().sampler.bank = None;
+            changed = true;
+        }
+        if ui.button("List SF2 presets").clicked() {
+            let spec = app.bank_input.trim();
+            let path = spec.rsplit_once('#').map_or(spec, |(p, _)| p);
+            match synthcraft_core::sampler::list_sf2_presets(std::path::Path::new(path)) {
+                Ok(v) => app.sf2_presets = v,
+                Err(e) => app.bank_status = format!("Preset list failed: {e}"),
+            }
+        }
+    });
+    let dir = banks_dir();
+    ui.horizontal_wrapped(|ui| {
+        ui.label(format!("Banks folder: {}", dir.display()));
+        if ui.button("Create folder").clicked() {
+            let _ = std::fs::create_dir_all(&dir);
+        }
+    });
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        ui.horizontal_wrapped(|ui| {
+            for e in rd.filter_map(Result::ok) {
+                let p = e.path();
+                let ext = p
+                    .extension()
+                    .map(|x| x.to_string_lossy().to_ascii_lowercase())
+                    .unwrap_or_default();
+                if p.is_dir() || matches!(ext.as_str(), "sf2" | "sfz" | "wav") {
+                    let label = p
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    if ui.button(label).clicked() {
+                        load = Some(p.to_string_lossy().into_owned());
+                    }
+                }
+            }
+        });
+    }
+    if !app.sf2_presets.is_empty() {
+        let base = app
+            .bank_input
+            .rsplit_once('#')
+            .map_or(app.bank_input.clone(), |(p, _)| p.to_string());
+        egui::ScrollArea::vertical()
+            .max_height(140.0)
+            .id_salt("sf2_presets")
+            .show(ui, |ui| {
+                for (i, name) in app.sf2_presets.iter().enumerate() {
+                    if ui
+                        .selectable_label(false, format!("{i:>3}  {name}"))
+                        .clicked()
+                    {
+                        load = Some(format!("{base}#{i}"));
+                    }
+                }
+            });
+    }
+    if let Some(spec) = load {
+        app.bank_input = spec.clone();
+        app.engine.active_patch_mut().sampler.bank = Some(spec);
+        changed = true;
+    }
+    if !app.bank_status.is_empty() {
+        ui.label(&app.bank_status);
+    }
+    {
+        let p = app.engine.active_patch_mut();
+        ui.horizontal(|ui| {
+            changed |= rotary_knob(ui, &pal, "SAMPLE MIX", &mut p.sampler.mix, 0.0, 1.0, "%");
+            changed |= rotary_knob(ui, &pal, "CHORUS", &mut p.fx.chorus_mix, 0.0, 1.0, "%");
+            changed |= rotary_knob(ui, &pal, "REVERB", &mut p.fx.reverb_mix, 0.0, 1.0, "%");
+            changed |= rotary_knob(ui, &pal, "DECAY", &mut p.fx.reverb_decay_s, 0.3, 20.0, "s");
+            changed |= rotary_knob(ui, &pal, "DAMP", &mut p.fx.reverb_damping, 0.0, 0.95, "%");
+        });
+    }
+    if changed {
+        app.persist_state();
+    }
 }

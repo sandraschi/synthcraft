@@ -6,10 +6,14 @@
 //!
 //! The engine owns no threads and does no I/O. `process` does not allocate.
 
-use crate::dsp::{Adsr, DcBlocker, Ladder, Osc};
+use crate::dsp::{Adsr, Chorus, DcBlocker, Ladder, Osc, Reverb};
 use crate::model::midi_to_freq_hz as midi_hz;
 use crate::model::SynthPatch;
+use crate::sampler::SampleBank;
 use std::f32::consts::TAU;
+use std::sync::Arc;
+
+const NO_ZONE: usize = usize::MAX;
 
 pub const MAX_VOICES: usize = 16;
 const GLIDE_MS: f32 = 55.0;
@@ -29,6 +33,9 @@ struct Voice {
     osc2: Osc,
     layer_m1_phase: f64,
     layer_x_phase: f64,
+    zone: usize,
+    s_pos: f64,
+    s_step: f32,
     time_s: f32,
     env: Adsr,
     filter: Ladder,
@@ -50,6 +57,9 @@ impl Voice {
             osc2: Osc::new(0x9E37_79B9 ^ (i as u32 * 104_729 + 3)),
             layer_m1_phase: 0.0,
             layer_x_phase: 0.0,
+            zone: NO_ZONE,
+            s_pos: 0.0,
+            s_step: 0.0,
             time_s: 0.0,
             env: Adsr::default(),
             filter: Ladder::default(),
@@ -93,6 +103,9 @@ struct Sequencer {
 pub struct SynthRt {
     sr: f32,
     patch: SynthPatch,
+    bank: Option<Arc<SampleBank>>,
+    chorus: Chorus,
+    reverb: Reverb,
     voices: [Voice; MAX_VOICES],
     seq: Sequencer,
     counter: u64,
@@ -119,6 +132,9 @@ impl SynthRt {
             q_s: patch.resonance_q,
             gain_s: patch.master_gain,
             patch,
+            bank: None,
+            chorus: Chorus::new(sr),
+            reverb: Reverb::new(sr),
             voices,
             seq: Sequencer::default(),
             counter: 0,
@@ -147,6 +163,19 @@ impl SynthRt {
     /// Exchange the patch with `other` in place (no allocation, no drop), for the audio thread.
     pub fn swap_patch(&mut self, other: &mut SynthPatch) {
         std::mem::swap(&mut self.patch, other);
+    }
+
+    /// Install (or clear) the sample bank. Sounding voices drop their zone; new notes pick
+    /// zones from the new bank. Returns the old bank so the caller can drop it off-thread.
+    pub fn set_bank(&mut self, bank: Option<Arc<SampleBank>>) -> Option<Arc<SampleBank>> {
+        for v in &mut self.voices {
+            v.zone = NO_ZONE;
+        }
+        std::mem::replace(&mut self.bank, bank)
+    }
+
+    pub fn has_bank(&self) -> bool {
+        self.bank.is_some()
     }
 
     pub fn set_options(&mut self, opts: RtOptions) {
@@ -241,6 +270,18 @@ impl SynthRt {
         v.time_s = 0.0;
         v.layer_m1_phase = 0.0;
         v.layer_x_phase = 0.0;
+        v.zone = NO_ZONE;
+        if let Some(bank) = self.bank.as_deref() {
+            if let Some(zi) = bank.find(note, v.vel) {
+                if let Some(z) = bank.zones.get(zi) {
+                    let root_hz = midi_hz(z.root_key) * (self.opts.a4_hz / 440.0);
+                    v.zone = zi;
+                    v.s_pos = 0.0;
+                    v.s_step = z.sample_rate / self.sr * 2.0_f32.powf(z.tune_cents / 1200.0)
+                        / root_hz.max(1.0);
+                }
+            }
+        }
         if !was_active {
             v.osc1.reset();
             v.osc2.reset();
@@ -351,6 +392,8 @@ impl SynthRt {
         let smooth = 1.0 - (-1.0 / (0.008 * sr)).exp();
         let step_len = 60.0 / self.patch.bpm.clamp(40.0, 240.0) * sr * 0.25;
         let headroom = 10.0_f32.powf(self.opts.headroom_db / 20.0);
+        let fx = self.patch.fx;
+        self.reverb.set(fx.reverb_decay_s, fx.reverb_damping);
 
         for sample_out in out.iter_mut() {
             if self.seq.playing {
@@ -376,6 +419,11 @@ impl SynthRt {
             let mix = p.vco_mix.clamp(0.0, 1.0);
             let drive_in = 1.0 + p.drive_saturation.clamp(0.0, 3.0) * 0.8;
             let drive_out = 1.0 + p.drive_saturation.clamp(0.0, 3.0) * 1.2;
+            let sampler_mix = if self.bank.is_some() {
+                p.sampler.mix.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
             let mut sum = 0.0_f32;
 
             for v in self.voices.iter_mut().filter(|v| v.active) {
@@ -411,6 +459,21 @@ impl SynthRt {
                     let m = p.m1_layer_mix.clamp(0.0, 1.0);
                     raw = raw * (1.0 - m) + pcm * m;
                 }
+                if sampler_mix > 0.0 {
+                    let mut smp = 0.0;
+                    if let Some(z) = self.bank.as_deref().and_then(|b| b.zones.get(v.zone)) {
+                        smp = z.read(v.s_pos) * z.gain;
+                        v.s_pos += f64::from(f * self.bend_ratio * v.s_step);
+                        match z.loop_range {
+                            Some((ls, le)) if v.s_pos >= le as f64 && le > ls => {
+                                v.s_pos -= (le - ls) as f64;
+                            }
+                            None if v.s_pos >= z.len() as f64 => v.zone = NO_ZONE,
+                            _ => {}
+                        }
+                    }
+                    raw = raw * (1.0 - sampler_mix) + smp * sampler_mix;
+                }
                 v.time_s += 1.0 / sr;
 
                 let octaves = env * p.env_mod_depth.clamp(0.0, 1.0) * 3.0 * acc + lfo * 1.2;
@@ -421,7 +484,14 @@ impl SynthRt {
                 sum += (filtered * drive_out).tanh() * env * v.vel * acc;
             }
 
-            let level = sum * self.gain_s.clamp(0.0, 1.0) * headroom;
+            let mut level = sum * self.gain_s.clamp(0.0, 1.0) * headroom;
+            if fx.chorus_mix > 0.001 {
+                level = self.chorus.process(level, fx.chorus_mix.clamp(0.0, 1.0));
+            }
+            if fx.reverb_mix > 0.001 {
+                let m = fx.reverb_mix.clamp(0.0, 1.0);
+                level = level * (1.0 - 0.4 * m) + self.reverb.process(level) * m;
+            }
             let mono = if self.opts.dc_blocker {
                 self.dc.process(level)
             } else {

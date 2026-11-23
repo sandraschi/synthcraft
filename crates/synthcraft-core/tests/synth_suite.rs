@@ -382,3 +382,166 @@ fn a_sounding_sequencer_step_stops_when_playback_stops() {
     rt.process(&mut tail);
     assert_eq!(rt.active_voices(), 0);
 }
+
+// ---------------------------------------------------------------- sampler, pad, fx
+
+fn looped_sine_bank(root: u8) -> std::sync::Arc<synthcraft_core::sampler::SampleBank> {
+    use synthcraft_core::sampler::{SampleBank, Zone};
+    let sr = 32_000.0_f32;
+    let f = 440.0 * 2.0_f32.powf((f32::from(root) - 69.0) / 12.0);
+    // A whole number of cycles so the loop is seamless.
+    let cycles = 64.0_f32;
+    let n = (cycles * sr / f).round() as usize;
+    let data: Vec<f32> = (0..n)
+        .map(|i| (std::f32::consts::TAU * cycles * i as f32 / n as f32).sin() * 0.8)
+        .collect();
+    std::sync::Arc::new(SampleBank {
+        name: "test".into(),
+        zones: vec![Zone {
+            data: data.into(),
+            sample_rate: sr * (cycles * sr / f) / n as f32,
+            key_lo: 0,
+            key_hi: 127,
+            vel_lo: 0,
+            vel_hi: 127,
+            root_key: root,
+            tune_cents: 0.0,
+            gain: 1.0,
+            loop_range: Some((0, n)),
+        }],
+    })
+}
+
+fn pitch_of(x: &[f32]) -> f32 {
+    autocorrelation_pitch(x, SR)
+}
+
+#[test]
+fn sampler_layer_plays_at_the_requested_pitch_and_sustains() {
+    let mut p = plain_patch();
+    p.sampler.mix = 1.0;
+    p.cutoff_hz = 15_000.0;
+    for (note, want) in [(57u8, 220.0_f32), (69, 440.0), (81, 880.0)] {
+        let mut rt = SynthRt::new(SR, p.clone());
+        rt.set_bank(Some(looped_sine_bank(57)));
+        rt.note_on(note, 1.0);
+        let mut buf = vec![0.0; 24_000];
+        rt.process(&mut buf);
+        let tail = &buf[12_000..];
+        let hz = pitch_of(tail);
+        assert!(
+            (hz / want - 1.0).abs() < 0.015,
+            "note {note}: {hz} vs {want}"
+        );
+        assert!(rms(tail) > 0.1, "looped zone must sustain");
+    }
+}
+
+#[test]
+fn sampler_layer_is_silent_without_a_bank_and_oneshot_ends() {
+    use synthcraft_core::sampler::{SampleBank, Zone};
+    let mut p = plain_patch();
+    p.sampler.mix = 1.0;
+    let mut rt = SynthRt::new(SR, p.clone());
+    rt.note_on(60, 1.0);
+    let mut buf = vec![0.0; 4800];
+    rt.process(&mut buf);
+    // No bank installed: the layer is bypassed and the oscillators sound.
+    assert!(rms(&buf[2400..]) > 0.05);
+
+    let blip = SampleBank {
+        name: "blip".into(),
+        zones: vec![Zone {
+            data: vec![0.5; 480].into(),
+            sample_rate: 48_000.0,
+            key_lo: 0,
+            key_hi: 127,
+            vel_lo: 0,
+            vel_hi: 127,
+            root_key: 60,
+            tune_cents: 0.0,
+            gain: 1.0,
+            loop_range: None,
+        }],
+    };
+    let mut rt = SynthRt::new(SR, p);
+    rt.set_bank(Some(std::sync::Arc::new(blip)));
+    rt.note_on(60, 1.0);
+    let mut buf = vec![0.0; 9600];
+    rt.process(&mut buf);
+    assert!(rms(&buf[..400]) > 0.1);
+    assert!(rms(&buf[4800..]) < 0.01, "one-shot sample must end");
+}
+
+#[test]
+fn atmospheric_pad_is_pitched_evolving_and_clean() {
+    let mut p = plain_patch();
+    p.vco1_wave = WaveformKind::AtmoPad;
+    p.vco2_wave = WaveformKind::AtmoPad;
+    p.vco_mix = 0.5;
+    p.cutoff_hz = 9000.0;
+    p.attack_ms = 400.0;
+    p.release_ms = 900.0;
+    let mut rt = SynthRt::new(SR, p);
+    rt.note_on(57, 0.9);
+    let mut buf = vec![0.0; 48_000 * 6];
+    rt.process(&mut buf);
+    assert!(buf.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    let tail = &buf[48_000 * 2..48_000 * 2 + 8192];
+    let hz = pitch_of(tail);
+    assert!((hz / 220.0 - 1.0).abs() < 0.03, "pad pitch {hz}");
+    // The timbre must move: window RMS and zero-crossing density both vary over time.
+    let wins: Vec<f32> = (2..6)
+        .map(|s| rms(&buf[48_000 * s..48_000 * s + 4800]))
+        .collect();
+    let (lo, hi) = wins
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(l, h), v| (l.min(*v), h.max(*v)));
+    assert!(hi / lo > 1.02, "pad level should drift, got {wins:?}");
+    let dc = buf[48_000 * 2..].iter().sum::<f32>() / (buf.len() - 96_000) as f32;
+    assert!(dc.abs() < 0.01, "dc {dc}");
+}
+
+#[test]
+fn reverb_adds_a_decaying_tail_and_chorus_changes_the_signal() {
+    let mut dry = plain_patch();
+    dry.release_ms = 20.0;
+    let mut wet = dry.clone();
+    wet.fx.reverb_mix = 0.6;
+    wet.fx.reverb_decay_s = 2.5;
+    let (_, tail_dry) = render_held(&dry, 57, 300, 1500);
+    let (_, tail_wet) = render_held(&wet, 57, 300, 1500);
+    let at = |x: &[f32], ms: usize| rms(&x[ms * 48..(ms + 100) * 48]);
+    assert!(at(&tail_dry, 600) < 1e-4);
+    assert!(at(&tail_wet, 600) > 0.01, "reverb tail missing");
+    assert!(at(&tail_wet, 1300) < at(&tail_wet, 300), "tail must decay");
+    assert!(tail_wet.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+
+    let mut ch = dry.clone();
+    ch.fx.chorus_mix = 1.0;
+    let (a, _) = render_held(&dry, 57, 500, 10);
+    let (b, _) = render_held(&ch, 57, 500, 10);
+    let diff: f32 = a.iter().zip(&b).map(|(x, y)| (x - y).abs()).sum::<f32>() / a.len() as f32;
+    assert!(diff > 0.01, "chorus had no audible effect");
+}
+
+#[test]
+fn ambient_factory_patches_are_audible_unclipped_and_dc_free() {
+    use synthcraft_core::synthesize_audio_buffer;
+    let eng = SynthEngine::factory_seed();
+    for id in ["ambient_glass_choir", "ambient_slow_tide"] {
+        let found = eng.patches.iter().find(|p| p.id == id);
+        assert!(found.is_some(), "missing factory patch {id}");
+        let Some(p) = found else {
+            continue;
+        };
+        let buf = synthesize_audio_buffer(p, 48_000, 10_000);
+        let peak = buf.iter().fold(0.0_f32, |m, s| m.max(s.abs()));
+        let level = rms(&buf[48_000 * 4..]);
+        let dc = buf[48_000 * 4..].iter().sum::<f32>() / (buf.len() - 48_000 * 4) as f32;
+        eprintln!("{id}: peak {peak:.3} rms {level:.4} dc {dc:.5}");
+        assert!(peak > 0.1 && peak < 0.99, "{id} peak {peak}");
+        assert!(level > 0.05, "{id} rms {level}");
+        assert!(dc.abs() < 0.01, "{id} dc {dc}");
+    }
+}

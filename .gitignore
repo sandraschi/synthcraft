@@ -13,3 +13,4 @@
 *.db-shm
 *.wav
 *.clap
+/xtask/target

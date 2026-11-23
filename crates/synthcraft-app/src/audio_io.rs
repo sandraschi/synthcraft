@@ -10,6 +10,7 @@ use cpal::{BufferSize, FromSample, SampleFormat, SizedSample, StreamConfig};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
+use synthcraft_core::sampler::SampleBank;
 use synthcraft_core::{RtOptions, SynthPatch, SynthRt};
 
 pub const SCOPE_LEN: usize = 8192;
@@ -24,6 +25,9 @@ pub enum AudioMsg {
     Play(bool),
     Patch(Box<SynthPatch>),
     Options(RtOptions),
+    /// Install a decoded sample bank. The bank cache keeps a second reference, so dropping
+    /// the old one here never frees memory on the audio thread.
+    Bank(Option<Arc<SampleBank>>),
 }
 
 /// Shared read-only view of what the callback is doing, for meters and the scope.
@@ -256,6 +260,9 @@ impl AudioHandle {
                             AudioMsg::ModWheel(v) => rt.set_mod_wheel(v),
                             AudioMsg::Play(p) => rt.set_playing(p),
                             AudioMsg::Options(o) => rt.set_options(o),
+                            AudioMsg::Bank(b) => {
+                                let _ = rt.set_bank(b);
+                            }
                             AudioMsg::Patch(mut boxed) => {
                                 rt.swap_patch(&mut boxed);
                                 let _ = ret_tx.send(boxed);

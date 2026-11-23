@@ -21,6 +21,7 @@ pub enum WaveformKind {
     SuperSaw,
     WhiteNoise,
     SubOctave,
+    AtmoPad,
 }
 
 impl WaveformKind {
@@ -34,6 +35,7 @@ impl WaveformKind {
             Self::SuperSaw => "supersaw",
             Self::WhiteNoise => "white_noise",
             Self::SubOctave => "sub_octave",
+            Self::AtmoPad => "atmo_pad",
         }
     }
 
@@ -47,6 +49,7 @@ impl WaveformKind {
             "supersaw" | "super_saw" => Some(Self::SuperSaw),
             "white_noise" | "noise" => Some(Self::WhiteNoise),
             "sub_octave" | "sub" => Some(Self::SubOctave),
+            "atmo_pad" | "pad" | "atmo" => Some(Self::AtmoPad),
             _ => None,
         }
     }
@@ -89,6 +92,7 @@ impl WaveformKind {
                 ((x & 0xFFFF) as f32 / 32768.0) - 1.0
             }
             Self::SubOctave => (PI * phase).sin(),
+            Self::AtmoPad => (2.0 * PI * phase).sin(),
         }
     }
 }
@@ -167,7 +171,40 @@ pub struct SynthPatch {
     pub extreme_dsp: ExtremeDspMode,
     #[serde(default = "default_half")]
     pub extreme_morph: f32,
+    #[serde(default)]
+    pub sampler: SamplerParams,
+    #[serde(default)]
+    pub fx: FxParams,
     pub steps: Vec<SequencerStep>,
+}
+
+/// Sample bank layer: a bank spec (see `sampler::load_bank`) and how much of it to mix in.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SamplerParams {
+    pub bank: Option<String>,
+    pub mix: f32,
+}
+
+/// Master effects applied after the voices. All zero means bypassed.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FxParams {
+    pub chorus_mix: f32,
+    pub reverb_mix: f32,
+    pub reverb_decay_s: f32,
+    pub reverb_damping: f32,
+}
+
+impl Default for FxParams {
+    fn default() -> Self {
+        Self {
+            chorus_mix: 0.0,
+            reverb_mix: 0.0,
+            reverb_decay_s: 3.0,
+            reverb_damping: 0.5,
+        }
+    }
 }
 
 fn default_half() -> f32 {
@@ -215,6 +252,10 @@ pub fn synthesize_audio_buffer(patch: &SynthPatch, sample_rate: u32, duration_ms
         ((f64::from(sr) * f64::from(duration_ms.clamp(20, 15000))) / 1000.0).round() as usize;
     let mut out = vec![0.0_f32; total];
     let mut rt = crate::rt::SynthRt::new(sr as f32, patch.clone());
+    if let Some(spec) = patch.sampler.bank.as_deref() {
+        // A bank that fails to load renders as the plain synth; the UI reports the error.
+        rt.set_bank(crate::sampler::load_cached(spec).ok());
+    }
     rt.set_playing(true);
     for chunk in out.chunks_mut(512) {
         rt.process(chunk);

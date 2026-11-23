@@ -60,6 +60,12 @@ pub enum HelpTab {
     TechnicalInfo,
 }
 
+/// Result of a background bank load: the requested spec and the decoded bank or an error.
+pub type BankResult = (
+    String,
+    Result<std::sync::Arc<synthcraft_core::sampler::SampleBank>, String>,
+);
+
 pub struct SynthCraftApp {
     pub engine: SynthEngine,
     pub db_path: PathBuf,
@@ -97,6 +103,13 @@ pub struct SynthCraftApp {
     pub midi_rx: Receiver<MidiEvent>,
     pub repaint_ctx: Option<egui::Context>,
     pub last_patch_json: String,
+    pub bank_input: String,
+    pub bank_status: String,
+    pub bank_loaded_spec: Option<String>,
+    pub bank_loading: Option<String>,
+    pub bank_tx: std::sync::mpsc::Sender<BankResult>,
+    pub bank_rx: std::sync::mpsc::Receiver<BankResult>,
+    pub sf2_presets: Vec<String>,
     pub last_opts: Option<synthcraft_core::RtOptions>,
     pub held_ui_note: Option<u8>,
     pub kbd_down: HashMap<egui::Key, u8>,
@@ -114,6 +127,7 @@ impl SynthCraftApp {
     pub fn with_db_path(db_path: PathBuf) -> Self {
         let engine = SynthEngine::open_or_seed(&db_path).unwrap_or_default();
         let (midi_tx, midi_rx) = channel();
+        let (bank_tx, bank_rx) = channel();
         let midi_shared = MidiShared::new(
             engine.midi_hw.midi_channel,
             engine.midi_hw.pitch_bend_semitones,
@@ -156,6 +170,13 @@ impl SynthCraftApp {
             midi_rx,
             repaint_ctx: None,
             last_patch_json: String::new(),
+            bank_input: String::new(),
+            bank_status: String::new(),
+            bank_loaded_spec: None,
+            bank_loading: None,
+            bank_tx,
+            bank_rx,
+            sf2_presets: Vec::new(),
             last_opts: None,
             held_ui_note: None,
             kbd_down: HashMap::new(),
@@ -696,6 +717,7 @@ impl SynthCraftApp {
                             WaveformKind::SuperSaw,
                             WaveformKind::WhiteNoise,
                             WaveformKind::SubOctave,
+                            WaveformKind::AtmoPad,
                         ] {
                             if ui.selectable_label(p.vco1_wave == w, w.as_str()).clicked() {
                                 p.vco1_wave = w;
@@ -714,6 +736,7 @@ impl SynthCraftApp {
                             WaveformKind::SuperSaw,
                             WaveformKind::WhiteNoise,
                             WaveformKind::SubOctave,
+                            WaveformKind::AtmoPad,
                         ] {
                             if ui.selectable_label(p.vco2_wave == w, w.as_str()).clicked() {
                                 p.vco2_wave = w;

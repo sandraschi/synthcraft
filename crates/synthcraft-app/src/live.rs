@@ -179,6 +179,7 @@ impl SynthCraftApp {
         let json = serde_json::to_string(self.engine.active_patch()).unwrap_or_default();
         let patch_changed = json != self.last_patch_json;
         let opts_changed = self.last_opts != Some(opts);
+        self.sync_bank();
         let Some(a) = &self.audio else {
             return;
         };
@@ -205,6 +206,61 @@ impl SynthCraftApp {
             std::sync::atomic::Ordering::Relaxed,
         );
         ctx.request_repaint_after(Duration::from_millis(33));
+    }
+
+    /// Keep the audio thread's sample bank in step with the active patch. Decoding happens on a
+    /// worker thread; the finished bank is handed to the audio thread through a message.
+    fn sync_bank(&mut self) {
+        while let Ok((spec, res)) = self.bank_rx.try_recv() {
+            if self.bank_loading.as_deref() == Some(spec.as_str()) {
+                self.bank_loading = None;
+            }
+            self.bank_loaded_spec = Some(spec.clone());
+            match res {
+                Ok(bank) => {
+                    self.bank_status = format!(
+                        "Loaded '{}': {} zones, {} frames",
+                        bank.name,
+                        bank.zones.len(),
+                        bank.total_frames()
+                    );
+                    if let Some(a) = &self.audio {
+                        a.send(AudioMsg::Bank(Some(bank)));
+                    }
+                }
+                Err(e) => {
+                    self.bank_status = format!("Bank load failed: {e}");
+                    if let Some(a) = &self.audio {
+                        a.send(AudioMsg::Bank(None));
+                    }
+                }
+            }
+        }
+        let want = self.engine.active_patch().sampler.bank.clone();
+        let settled = want == self.bank_loaded_spec;
+        let in_flight = want.is_some() && want == self.bank_loading;
+        if settled || in_flight {
+            return;
+        }
+        match want {
+            None => {
+                self.bank_loaded_spec = None;
+                self.bank_loading = None;
+                if let Some(a) = &self.audio {
+                    a.send(AudioMsg::Bank(None));
+                }
+            }
+            Some(spec) => {
+                self.bank_loading = Some(spec.clone());
+                self.bank_status = format!("Loading {spec} ...");
+                let tx = self.bank_tx.clone();
+                std::thread::spawn(move || {
+                    let res =
+                        synthcraft_core::sampler::load_cached(&spec).map_err(|e| e.to_string());
+                    let _ = tx.send((spec, res));
+                });
+            }
+        }
     }
 
     fn apply_midi_controller(&mut self, ev: MidiEvent) {

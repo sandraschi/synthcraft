@@ -12,13 +12,14 @@ pub mod midi;
 pub mod model;
 pub mod rompler;
 pub mod rt;
+pub mod sampler;
 
 pub use db::{default_db_path, load_from_db, save_to_db};
 pub use error::SynthError;
 pub use model::{
     analyze_patch_spectrum, export_clap_descriptor, export_djcraft_stem_manifest, midi_to_freq_hz,
-    synthesize_audio_buffer, write_wav_file, ClapParameterSpec, FilterMode, SequencerStep,
-    SpectrumAnalysisReport, SynthPatch, WaveformKind,
+    synthesize_audio_buffer, write_wav_file, ClapParameterSpec, FilterMode, FxParams,
+    SamplerParams, SequencerStep, SpectrumAnalysisReport, SynthPatch, WaveformKind,
 };
 pub use rompler::{
     builtin_demo_showcases, builtin_midi_depot, default_rack_cables, export_midi_smf_file,
@@ -55,12 +56,29 @@ impl Default for SynthEngine {
 
 impl SynthEngine {
     pub fn open_or_seed(path: &Path) -> Result<Self, SynthError> {
-        if let Some(loaded) = load_from_db(path)? {
+        if let Some(mut loaded) = load_from_db(path)? {
+            if loaded.add_missing_factory_patches() {
+                save_to_db(&loaded, path)?;
+            }
             return Ok(loaded);
         }
         let seeded = Self::factory_seed();
         save_to_db(&seeded, path)?;
         Ok(seeded)
+    }
+
+    /// Append factory patches that an older database does not have yet. Existing patches are
+    /// never touched. Returns true when something was added.
+    pub fn add_missing_factory_patches(&mut self) -> bool {
+        let seed = Self::factory_seed();
+        let mut added = false;
+        for p in seed.patches {
+            if !self.patches.iter().any(|q| q.id == p.id) {
+                self.patches.push(p);
+                added = true;
+            }
+        }
+        added
     }
 
     pub fn save_db(&self, path: &Path) -> Result<(), SynthError> {
@@ -84,7 +102,7 @@ impl SynthEngine {
                 .collect()
         };
 
-        let patches = vec![
+        let mut patches = vec![
             SynthPatch {
                 id: "vienna_acid_303".into(),
                 name: "Vienna Acid 303 Bassline".into(),
@@ -113,6 +131,8 @@ impl SynthEngine {
                 m1_layer_mix: 0.50,
                 extreme_dsp: ExtremeDspMode::Off,
                 extreme_morph: 0.50,
+                sampler: SamplerParams::default(),
+                fx: FxParams::default(),
                 steps: mk_steps(&[
                     45, 45, 57, 45, 48, 45, 55, 52, 45, 45, 60, 45, 50, 52, 55, 57,
                 ]),
@@ -145,6 +165,8 @@ impl SynthEngine {
                 m1_layer_mix: 0.25,
                 extreme_dsp: ExtremeDspMode::WavetableMorph,
                 extreme_morph: 0.65,
+                sampler: SamplerParams::default(),
+                fx: FxParams::default(),
                 steps: mk_steps(&[
                     41, 41, 41, 41, 44, 44, 44, 44, 39, 39, 39, 39, 36, 36, 39, 41,
                 ]),
@@ -177,6 +199,8 @@ impl SynthEngine {
                 m1_layer_mix: 0.45,
                 extreme_dsp: ExtremeDspMode::Off,
                 extreme_morph: 0.40,
+                sampler: SamplerParams::default(),
+                fx: FxParams::default(),
                 steps: mk_steps(&[
                     51, 51, 58, 51, 54, 51, 61, 58, 51, 51, 58, 54, 51, 54, 58, 63,
                 ]),
@@ -209,6 +233,8 @@ impl SynthEngine {
                 m1_layer_mix: 0.55,
                 extreme_dsp: ExtremeDspMode::KarplusStrongPluck,
                 extreme_morph: 0.50,
+                sampler: SamplerParams::default(),
+                fx: FxParams::default(),
                 steps: mk_steps(&[
                     64, 67, 71, 76, 74, 71, 67, 64, 66, 69, 71, 74, 71, 69, 66, 64,
                 ]),
@@ -241,6 +267,8 @@ impl SynthEngine {
                 m1_layer_mix: 0.0,
                 extreme_dsp: ExtremeDspMode::PhaseDistortionCz,
                 extreme_morph: 0.70,
+                sampler: SamplerParams::default(),
+                fx: FxParams::default(),
                 steps: mk_steps(&[
                     57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
                 ]),
@@ -273,11 +301,15 @@ impl SynthEngine {
                 m1_layer_mix: 0.65,
                 extreme_dsp: ExtremeDspMode::GranularCloud,
                 extreme_morph: 0.55,
+                sampler: SamplerParams::default(),
+                fx: FxParams::default(),
                 steps: mk_steps(&[
                     57, 57, 61, 61, 64, 64, 69, 69, 68, 68, 64, 64, 61, 61, 57, 57,
                 ]),
             },
         ];
+
+        patches.extend(ambient_patches(&mk_steps));
 
         Self {
             active_patch_id: "vienna_acid_303".into(),
@@ -665,6 +697,86 @@ impl Command {
     }
 }
 
+/// Slow atmospheric patches built on the pad oscillator and the master effects.
+fn ambient_patches(mk_steps: &dyn Fn(&[u8]) -> Vec<SequencerStep>) -> Vec<SynthPatch> {
+    let base = SynthPatch {
+        id: String::new(),
+        name: String::new(),
+        category: "Ambient Pad".into(),
+        bpm: 60.0,
+        camelot_key: "8A Am".into(),
+        vco1_wave: WaveformKind::AtmoPad,
+        vco2_wave: WaveformKind::AtmoPad,
+        vco2_detune_cents: 7.0,
+        vco_mix: 0.5,
+        fm_index: 0.0,
+        pulse_width: 0.5,
+        filter_mode: FilterMode::LowPass24dB,
+        cutoff_hz: 2600.0,
+        resonance_q: 1.2,
+        env_mod_depth: 0.15,
+        attack_ms: 1800.0,
+        decay_ms: 1200.0,
+        sustain_level: 0.85,
+        release_ms: 3200.0,
+        lfo_rate_hz: 0.12,
+        lfo_depth: 0.15,
+        drive_saturation: 0.1,
+        master_gain: 0.9,
+        m1_program: None,
+        m1_layer_mix: 0.5,
+        extreme_dsp: ExtremeDspMode::Off,
+        extreme_morph: 0.5,
+        sampler: SamplerParams::default(),
+        fx: FxParams {
+            chorus_mix: 0.6,
+            reverb_mix: 0.5,
+            reverb_decay_s: 6.0,
+            reverb_damping: 0.45,
+        },
+        steps: mk_steps(&[
+            57, 57, 57, 57, 57, 57, 57, 57, 64, 64, 64, 64, 64, 64, 64, 64,
+        ])
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut s)| {
+            // Two long legato chords per bar: only steps 0 and 8 retrigger.
+            s.gate_pct = 1.0;
+            s.slide = i % 8 != 0;
+            s.accent = false;
+            s
+        })
+        .collect(),
+    };
+    let mut glass = base.clone();
+    glass.id = "ambient_glass_choir".into();
+    glass.name = "Glass Choir Atmosphere".into();
+    let mut tide = base.clone();
+    tide.id = "ambient_slow_tide".into();
+    tide.name = "Slow Tide".into();
+    tide.vco1_wave = WaveformKind::SuperSaw;
+    tide.vco_mix = 0.35;
+    tide.cutoff_hz = 1400.0;
+    tide.lfo_rate_hz = 0.07;
+    tide.lfo_depth = 0.35;
+    tide.attack_ms = 2500.0;
+    tide.release_ms = 4200.0;
+    tide.fx.chorus_mix = 0.4;
+    tide.fx.reverb_mix = 0.6;
+    tide.fx.reverb_decay_s = 9.0;
+    let mut sampled = base;
+    sampled.id = "ambient_sample_pad".into();
+    sampled.name = "Sample Bank Pad (load a bank on workbench 4)".into();
+    sampled.category = "Sampler / Ambient".into();
+    sampled.sampler.mix = 1.0;
+    sampled.cutoff_hz = 12000.0;
+    sampled.attack_ms = 600.0;
+    sampled.release_ms = 2500.0;
+    sampled.fx.chorus_mix = 0.4;
+    sampled.fx.reverb_mix = 0.35;
+    vec![glass, tide, sampled]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -672,9 +784,9 @@ mod tests {
     #[test]
     fn synthesizer_produces_non_silent_bounded_pcm_for_all_factory_patches() {
         let eng = SynthEngine::factory_seed();
-        assert_eq!(eng.patches.len(), 6);
+        assert_eq!(eng.patches.len(), 9);
         for p in &eng.patches {
-            let buf = synthesize_audio_buffer(p, 48000, 120);
+            let buf = synthesize_audio_buffer(p, 48000, 120 + 2 * p.attack_ms as u32);
             assert!(!buf.is_empty());
             assert!(buf.iter().all(|&s| (-1.0..=1.0).contains(&s)));
             let max_amp = buf.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
@@ -738,7 +850,7 @@ mod tests {
         assert!(loaded.is_some());
         if let Some(l) = loaded {
             assert_eq!(l.active_patch_id, "goliath_reese_sub");
-            assert_eq!(l.patches.len(), 6);
+            assert_eq!(l.patches.len(), 9);
         }
     }
 }

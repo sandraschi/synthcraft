@@ -34,6 +34,9 @@ pub struct Osc {
     flip: f32,
     rng: u32,
     ss_phase: [f32; 7],
+    pad_ph: [f32; 12],
+    pad_lfo: [f32; 6],
+    breath: f32,
 }
 
 impl Osc {
@@ -42,12 +45,20 @@ impl Osc {
         for (i, p) in ss_phase.iter_mut().enumerate() {
             *p = (i as f32 * 0.137 + 0.05).rem_euclid(1.0);
         }
-        Self {
+        let mut o = Self {
             phase: 0.0,
             flip: 1.0,
             rng: seed.max(1),
             ss_phase,
+            pad_ph: [0.0; 12],
+            pad_lfo: [0.0; 6],
+            breath: 0.0,
+        };
+        for k in 0..6 {
+            let r = o.next_noise();
+            o.pad_lfo[k] = (r * 0.5 + 0.5).clamp(0.0, 0.999);
         }
+        o
     }
 
     pub fn reset(&mut self) {
@@ -56,6 +67,47 @@ impl Osc {
         for (i, p) in self.ss_phase.iter_mut().enumerate() {
             *p = (i as f32 * 0.137 + 0.05).rem_euclid(1.0);
         }
+        self.pad_ph = [0.0; 12];
+        self.breath = 0.0;
+    }
+
+    /// Evolving atmospheric pad: six harmonics, each a detuned pair whose level and detune
+    /// drift on their own slow LFOs, plus a breath of low-passed noise.
+    fn pad_tick(&mut self, freq: f32, sr: f32) -> f32 {
+        const HARM: [f32; 6] = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0];
+        const WEIGHT: [f32; 6] = [1.0, 0.555, 0.393, 0.308, 0.218, 0.171];
+        let mut acc = 0.0_f32;
+        let mut norm = 0.0_f32;
+        for k in 0..6 {
+            self.pad_lfo[k] += (0.045 + 0.037 * k as f32) / sr;
+            if self.pad_lfo[k] >= 1.0 {
+                self.pad_lfo[k] -= 1.0;
+            }
+            let l = (TAU * self.pad_lfo[k]).sin();
+            let f = freq * HARM[k];
+            if f > sr * 0.45 {
+                continue;
+            }
+            let cents = 5.0 + 2.0 * k as f32 + 3.0 * l;
+            let spread = cents * 5.776e-4;
+            self.pad_ph[2 * k] += f * (1.0 + spread) / sr;
+            self.pad_ph[2 * k + 1] += f * (1.0 - spread) / sr;
+            for j in 0..2 {
+                let p = &mut self.pad_ph[2 * k + j];
+                if *p >= 1.0 {
+                    *p -= 1.0;
+                }
+            }
+            let amp = (0.55 + 0.45 * l) * WEIGHT[k];
+            acc += amp
+                * 0.5
+                * ((TAU * self.pad_ph[2 * k]).sin() + (TAU * self.pad_ph[2 * k + 1]).sin());
+            norm += WEIGHT[k];
+        }
+        let n = self.next_noise();
+        self.breath += 0.12 * (n - self.breath);
+        let breath_amp = 0.06 * (0.6 + 0.4 * (TAU * self.pad_lfo[0]).sin());
+        acc / norm.max(1e-3) * 1.8 + self.breath * breath_amp * 3.0
     }
 
     fn next_noise(&mut self) -> f32 {
@@ -93,6 +145,7 @@ impl Osc {
             WaveformKind::Triangle => 1.0 - 4.0 * (p - 0.5).abs(),
             WaveformKind::WhiteNoise => self.next_noise(),
             WaveformKind::SubOctave => (PI * p).sin() * self.flip,
+            WaveformKind::AtmoPad => self.pad_tick(freq, sr),
             WaveformKind::SuperSaw => {
                 let mut acc = 0.0_f32;
                 let mut norm = 0.0_f32;
@@ -412,4 +465,147 @@ pub fn log_bands(mag_db: &[f32], bin_hz: f32) -> Vec<(f32, f32)> {
             )
         })
         .collect()
+}
+
+/// Two-tap modulated-delay chorus.
+#[derive(Debug, Clone)]
+pub struct Chorus {
+    buf: Vec<f32>,
+    w: usize,
+    ph: [f32; 2],
+    sr: f32,
+}
+
+impl Chorus {
+    pub fn new(sr: f32) -> Self {
+        Self {
+            buf: vec![0.0; (sr * 0.05) as usize + 8],
+            w: 0,
+            ph: [0.0, 0.5],
+            sr,
+        }
+    }
+
+    pub fn process(&mut self, x: f32, mix: f32) -> f32 {
+        let len = self.buf.len();
+        if let Some(slot) = self.buf.get_mut(self.w) {
+            *slot = x;
+        }
+        let mut wet = 0.0_f32;
+        for (i, rate) in [0.31_f32, 0.43].into_iter().enumerate() {
+            self.ph[i] += rate / self.sr;
+            if self.ph[i] >= 1.0 {
+                self.ph[i] -= 1.0;
+            }
+            let delay = (0.013 + 0.004 * (TAU * self.ph[i]).sin()) * self.sr;
+            let pos = (self.w as f32 - delay).rem_euclid(len as f32);
+            let i0 = pos.floor() as usize % len;
+            let i1 = (i0 + 1) % len;
+            let fr = pos - pos.floor();
+            let a = self.buf.get(i0).copied().unwrap_or(0.0);
+            let b = self.buf.get(i1).copied().unwrap_or(0.0);
+            wet += a + (b - a) * fr;
+        }
+        self.w = (self.w + 1) % len;
+        x * (1.0 - 0.5 * mix) + wet * 0.5 * mix * 0.75
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Comb {
+    buf: Vec<f32>,
+    i: usize,
+    store: f32,
+}
+
+#[derive(Debug, Clone)]
+struct Allpass {
+    buf: Vec<f32>,
+    i: usize,
+}
+
+const COMB_TUNING: [f32; 8] = [
+    1116.0, 1188.0, 1277.0, 1356.0, 1422.0, 1491.0, 1557.0, 1617.0,
+];
+const ALLPASS_TUNING: [f32; 4] = [556.0, 441.0, 341.0, 225.0];
+
+/// Mono Freeverb-style reverb with a decay time (RT60) control and high-frequency damping.
+#[derive(Debug, Clone)]
+pub struct Reverb {
+    combs: Vec<Comb>,
+    allpass: Vec<Allpass>,
+    gains: [f32; 8],
+    sr: f32,
+    decay: f32,
+    damp: f32,
+}
+
+impl Reverb {
+    pub fn new(sr: f32) -> Self {
+        let scale = sr / 44100.0;
+        let mut r = Self {
+            combs: COMB_TUNING
+                .iter()
+                .map(|t| Comb {
+                    buf: vec![0.0; (t * scale).round().max(2.0) as usize],
+                    i: 0,
+                    store: 0.0,
+                })
+                .collect(),
+            allpass: ALLPASS_TUNING
+                .iter()
+                .map(|t| Allpass {
+                    buf: vec![0.0; (t * scale).round().max(2.0) as usize],
+                    i: 0,
+                })
+                .collect(),
+            gains: [0.8; 8],
+            sr,
+            decay: -1.0,
+            damp: 0.5,
+        };
+        r.set(3.0, 0.5);
+        r
+    }
+
+    /// `rt60_s` in seconds (0.2..=20), `damping` 0..=1 (more = darker tail).
+    pub fn set(&mut self, rt60_s: f32, damping: f32) {
+        let rt = rt60_s.clamp(0.2, 20.0);
+        self.damp = damping.clamp(0.0, 0.95);
+        if (rt - self.decay).abs() < 1e-4 {
+            return;
+        }
+        self.decay = rt;
+        for (g, c) in self.gains.iter_mut().zip(&self.combs) {
+            *g = 10.0_f32
+                .powf(-3.0 * c.buf.len() as f32 / (rt * self.sr))
+                .min(0.985);
+        }
+    }
+
+    pub fn process(&mut self, x: f32) -> f32 {
+        let input = x * 0.015;
+        let mut sum = 0.0_f32;
+        for (c, g) in self.combs.iter_mut().zip(self.gains) {
+            let n = c.buf.len();
+            let out = c.buf.get(c.i).copied().unwrap_or(0.0);
+            c.store = out * (1.0 - self.damp) + c.store * self.damp;
+            if let Some(slot) = c.buf.get_mut(c.i) {
+                *slot = input + c.store * g;
+            }
+            c.i = (c.i + 1) % n;
+            sum += out;
+        }
+        for a in &mut self.allpass {
+            let n = a.buf.len();
+            let bo = a.buf.get(a.i).copied().unwrap_or(0.0);
+            let out = -sum + bo;
+            if let Some(slot) = a.buf.get_mut(a.i) {
+                *slot = sum + bo * 0.5;
+            }
+            a.i = (a.i + 1) % n;
+            sum = out;
+        }
+        sum * 3.0
+    }
 }
