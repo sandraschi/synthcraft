@@ -5,6 +5,7 @@ mod app;
 mod controls;
 mod help_docs;
 mod rack_ui;
+mod settings_ui;
 mod subapps;
 
 use app::SynthCraftApp;

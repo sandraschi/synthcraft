@@ -3,6 +3,7 @@
 use crate::controls::{
     illuminated_step_pad, lcd_display_banner, rotary_knob, vertical_fader, SynthLayout, SynthSkin,
 };
+use crate::settings_ui::StudioSettings;
 use crate::subapps;
 use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 use std::path::PathBuf;
@@ -41,6 +42,7 @@ pub enum Page {
     DjcraftForge,
     Chat,
     Help,
+    Settings,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +64,7 @@ pub struct SynthCraftApp {
     pub dark_mode: bool,
     pub skin: SynthSkin,
     pub layout_mode: SynthLayout,
+    pub settings: StudioSettings,
     pub zoom_factor: f32,
     pub status_line: String,
     // Workbench 3: Scope & Spectrum
@@ -98,6 +101,7 @@ impl SynthCraftApp {
             dark_mode: true,
             skin: SynthSkin::ObsidianVcv,
             layout_mode: SynthLayout::WorkbenchSplit,
+            settings: StudioSettings::default(),
             zoom_factor: 1.0,
             status_line: format!(
                 "SynthCraft v{APP_VERSION} ready -- CLAP 1.2.2 (dev.sandraschi.synthcraft) & DJCraft Stem Forge"
@@ -171,6 +175,9 @@ impl SynthCraftApp {
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::K)) {
             self.show_palette = !self.show_palette;
         }
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Comma)) {
+            self.goto(Page::Settings, 0);
+        }
     }
 
     pub fn render_menu_bar(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
@@ -181,6 +188,13 @@ impl SynthCraftApp {
                     self.status_line = format!("Saved to {}", self.db_path.display());
                     ui.close();
                 }
+                if ui
+                    .button("Studio Settings & Preferences (Ctrl+,)")
+                    .clicked()
+                {
+                    self.goto(Page::Settings, 0);
+                    ui.close();
+                }
                 if ui.button("Reset Factory Patches").clicked() {
                     self.engine = SynthEngine::factory_seed();
                     self.persist();
@@ -188,6 +202,13 @@ impl SynthCraftApp {
                 }
             });
             ui.menu_button("Edit", |ui| {
+                if ui
+                    .button("Studio Settings & Preferences (Ctrl+,)")
+                    .clicked()
+                {
+                    self.goto(Page::Settings, 0);
+                    ui.close();
+                }
                 if ui.button("Randomize Acid Sequence").clicked() {
                     let scale = [45_u8, 48, 50, 52, 55, 57, 60, 62];
                     let p = self.engine.active_patch_mut();
@@ -301,6 +322,7 @@ impl SynthCraftApp {
                     ("Oscilloscope & Spectrum", Page::ScopeSpectrum, 0),
                     ("CLAP & SoundCraft Bridge", Page::ClapSoundcraft, 0),
                     ("DJCraft Stem & WAV Forge", Page::DjcraftForge, 0),
+                    ("Studio Settings & Preferences (Ctrl+,)", Page::Settings, 0),
                     ("Chat", Page::Chat, 0),
                     ("Help (F1)", Page::Help, 0),
                 ] {
@@ -348,6 +370,13 @@ impl SynthCraftApp {
                         AppLocale::En => AppLocale::De,
                         AppLocale::De => AppLocale::En,
                     };
+                }
+                if ui
+                    .selectable_label(self.page == Page::Settings, "Settings")
+                    .on_hover_text("Open 6-Tab Studio Settings & Preferences (Ctrl+,)")
+                    .clicked()
+                {
+                    self.goto(Page::Settings, 0);
                 }
             });
         });
@@ -438,11 +467,12 @@ impl SynthCraftApp {
                 self.render_lcd_header(ui);
                 ui.add_space(6.0);
 
-                // Special pages (Help & Chat) always render directly when opened via menu/F1
-                if matches!(self.page, Page::Help | Page::Chat) {
+                // Special pages (Help, Chat, Settings) always render directly when opened
+                if matches!(self.page, Page::Help | Page::Chat | Page::Settings) {
                     match self.page {
                         Page::Chat => self.render_chat(ui),
                         Page::Help => self.render_help_view(ui),
+                        Page::Settings => crate::settings_ui::render_studio_settings(self, ui),
                         _ => {}
                     }
                     return;
@@ -460,6 +490,7 @@ impl SynthCraftApp {
                         Page::DjcraftForge => self.render_djcraft_forge(ui),
                         Page::Chat => self.render_chat(ui),
                         Page::Help => self.render_help_view(ui),
+                        Page::Settings => crate::settings_ui::render_studio_settings(self, ui),
                     },
                     SynthLayout::EurorackBay => {
                         crate::rack_ui::render_vcv_eurorack_canvas(self, ui);
@@ -1102,7 +1133,7 @@ impl eframe::App for SynthCraftApp {
             });
         });
         if self.layout_mode == SynthLayout::WorkbenchSplit
-            || matches!(self.page, Page::Help | Page::Chat)
+            || matches!(self.page, Page::Help | Page::Chat | Page::Settings)
         {
             egui::Panel::left("synthcraft_sidebar")
                 .default_size(225.0)
@@ -1132,9 +1163,9 @@ mod tests {
     #[test]
     fn subapp_registry_exposes_all_six_workbenches() {
         let reg = subapps::registry();
-        assert_eq!(reg.len(), 9);
+        assert_eq!(reg.len(), 10);
         let total_subpages: usize = reg.iter().map(|w| w.subpages().len()).sum();
-        assert_eq!(total_subpages, 17);
+        assert_eq!(total_subpages, 23);
     }
 
     #[test]

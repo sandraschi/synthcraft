@@ -176,7 +176,46 @@ const ASSISTANT_SUBS: &[SubPage] = &[
     },
 ];
 
-static WORKBENCHES: [CraftWorkbench; 9] = [
+const SETTINGS_SUBS: &[SubPage] = &[
+    SubPage {
+        page: Page::Settings,
+        sub: 0,
+        en: "Audio Driver & DSP Oversampling",
+        de: "Audio-Treiber & DSP-Oversampling",
+    },
+    SubPage {
+        page: Page::Settings,
+        sub: 1,
+        en: "MIDI Hardware, Clock & MPE",
+        de: "MIDI-Hardware, Clock & MPE",
+    },
+    SubPage {
+        page: Page::Settings,
+        sub: 2,
+        en: "Skins, Layouts & Knob Physics",
+        de: "Skins, Layouts & Regler-Physik",
+    },
+    SubPage {
+        page: Page::Settings,
+        sub: 3,
+        en: "Korg M1 DAC & Extreme DSP Tuning",
+        de: "Korg M1 DAC & Extreme-DSP-Kalibrierung",
+    },
+    SubPage {
+        page: Page::Settings,
+        sub: 4,
+        en: "CLAP, SoundCraft & DJCraft Paths",
+        de: "CLAP, SoundCraft & DJCraft-Pfade",
+    },
+    SubPage {
+        page: Page::Settings,
+        sub: 5,
+        en: "AI Assistant, MCP & SQLite DB",
+        de: "KI-Assistent, MCP & SQLite-DB",
+    },
+];
+
+static WORKBENCHES: [CraftWorkbench; 10] = [
     CraftWorkbench {
         id: "modular_rack",
         en: "1. VCV 2 Eurorack & VCO/VCF",
@@ -230,6 +269,12 @@ static WORKBENCHES: [CraftWorkbench; 9] = [
         en: "9. Assistant & Help",
         de: "9. Assistent & Hilfe",
         subpages: ASSISTANT_SUBS,
+    },
+    CraftWorkbench {
+        id: "studio_settings",
+        en: "10. Studio Settings & Prefs",
+        de: "10. Studio-Einstellungen",
+        subpages: SETTINGS_SUBS,
     },
 ];
 
