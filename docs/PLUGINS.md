@@ -82,7 +82,7 @@ Fetch free banks with `synthcraft-mcp fetch-bank <id>` (see `docs/SAMPLES_AND_M1
 
 Not verified: loading in a real DAW. `clap-validator` is strict about the ABI but it is not Bitwig or Reaper. Do that once and report problems.
 
-Known limits: mono engine (both channels carry the same signal), no GUI, no MPE, no per-note modulation, no preset discovery, no sequencer sync to host transport (the internal sequencer is not exposed to the host).
+Known limits: no GUI yet, no MPE, no per-note modulation, no preset discovery, no sequencer sync to host transport (the internal sequencer is not exposed to the host). True stereo output (voice spread, stereo chorus, decorrelated reverb) is implemented.
 
 ## VCV Rack module
 

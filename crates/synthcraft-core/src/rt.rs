@@ -139,6 +139,7 @@ pub struct SynthRt {
     q_s: f32,
     gain_s: f32,
     opts: RtOptions,
+    routing: crate::rompler::RackRouting,
 }
 
 impl SynthRt {
@@ -170,6 +171,7 @@ impl SynthRt {
             bend_ratio: 1.0,
             mod_wheel: 0.0,
             opts: RtOptions::default(),
+            routing: crate::rompler::RackRouting::default(),
         }
     }
 
@@ -222,6 +224,14 @@ impl SynthRt {
 
     pub fn options(&self) -> RtOptions {
         self.opts
+    }
+
+    pub fn set_routing(&mut self, routing: crate::rompler::RackRouting) {
+        self.routing = routing;
+    }
+
+    pub fn routing(&self) -> crate::rompler::RackRouting {
+        self.routing
     }
 
     fn hz(&self, note: u8) -> f32 {
@@ -509,12 +519,14 @@ impl SynthRt {
                 }
                 let acc = if v.accent { 1.35 } else { 1.0 };
 
+                let r = self.routing;
                 let s2 = v
                     .osc2
                     .tick(p.vco2_wave, f * detune_ratio, sr, p.pulse_width, 0.0);
-                let fm = s2 * p.fm_index.clamp(0.0, 4.0) * 0.08;
+                let fm = s2 * p.fm_index.clamp(0.0, 4.0) * 0.08 * r.vco2_to_fm
+                    + lfo * r.lfo_to_fm * 0.15;
                 let s1 = v.osc1.tick(p.vco1_wave, f, sr, p.pulse_width, fm);
-                let mut raw = s1 * (1.0 - mix) + s2 * mix;
+                let mut raw = s1 * (1.0 - mix) * r.vco1_to_vcf + s2 * (mix + r.vco2_to_vcf * 0.5);
 
                 let dphase = f64::from(f / sr);
                 if p.extreme_dsp != crate::rompler::ExtremeDspMode::Off {
@@ -527,7 +539,7 @@ impl SynthRt {
                 if let Some(m1) = p.m1_program {
                     v.layer_m1_phase += dphase;
                     let pcm = m1.sample_pcm(v.layer_m1_phase as f32, v.time_s);
-                    let m = p.m1_layer_mix.clamp(0.0, 1.0);
+                    let m = (p.m1_layer_mix * r.pcm_to_vcf).clamp(0.0, 1.0);
                     raw = raw * (1.0 - m) + pcm * m;
                 }
                 let mut layer_pan = 0.0_f32;
@@ -565,13 +577,16 @@ impl SynthRt {
                 }
                 v.time_s += 1.0 / sr;
 
-                let octaves =
-                    env * p.env_mod_depth.clamp(0.0, 1.0) * 3.0 * acc + lfo * 1.2 + d_cut * 1.5;
+                let octaves = env * p.env_mod_depth.clamp(0.0, 1.0) * 3.0 * acc
+                    + env * r.adsr_to_cutoff * 2.5
+                    + lfo * 1.2 * r.lfo_to_cutoff
+                    + d_cut * 1.5;
                 let cutoff = self.cutoff_s * 2.0_f32.powf(octaves);
                 let filtered =
                     v.filter
                         .process(raw * drive_in, cutoff, sr, self.q_s, p.filter_mode);
-                let x = (filtered * drive_out).tanh() * env * v.vel * acc;
+                let vca_in = filtered * r.vcf_to_vca + raw * r.direct_to_vca;
+                let x = (vca_in * drive_out).tanh() * env * r.adsr_to_vca * v.vel * acc;
                 let pan = (v.pan * spread + layer_pan).clamp(-1.0, 1.0);
                 if pan == 0.0 {
                     sum_l += x;

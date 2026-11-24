@@ -319,7 +319,7 @@ impl ExtremeDspMode {
 }
 
 /// Virtual Eurorack / patch cable connecting two 3U module jacks.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RackCable {
     pub id: String,
     pub from_module: String,
@@ -328,6 +328,113 @@ pub struct RackCable {
     pub to_jack: String,
     pub color_name: String,
     pub gain: f32,
+}
+
+/// Allocation-free routing gains derived from the 3U rack's patch cables.
+///
+/// `RackRouting::default()` matches [`default_rack_cables()`] so unpatched `SynthRt`
+/// instances (CLAP, VCV Rack, offline tests) keep identical default signal flow.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RackRouting {
+    pub vco1_to_vcf: f32,
+    pub vco2_to_fm: f32,
+    pub vco2_to_vcf: f32,
+    pub pcm_to_vcf: f32,
+    pub lfo_to_cutoff: f32,
+    pub lfo_to_fm: f32,
+    pub adsr_to_vca: f32,
+    pub adsr_to_cutoff: f32,
+    pub vcf_to_vca: f32,
+    pub direct_to_vca: f32,
+}
+
+impl Default for RackRouting {
+    fn default() -> Self {
+        Self {
+            vco1_to_vcf: 1.0,
+            vco2_to_fm: 1.0,
+            vco2_to_vcf: 0.0,
+            pcm_to_vcf: 1.0,
+            lfo_to_cutoff: 1.0,
+            lfo_to_fm: 0.0,
+            adsr_to_vca: 1.0,
+            adsr_to_cutoff: 0.0,
+            vcf_to_vca: 1.0,
+            direct_to_vca: 0.0,
+        }
+    }
+}
+
+fn canonical_module(m: &str) -> &str {
+    match m {
+        "LFO-MOD" | "ADSR-ENV" => "LFO / ADSR",
+        other => other,
+    }
+}
+
+impl RackRouting {
+    /// Compute live DSP routing gains from the current 3U patch cables.
+    pub fn from_cables(cables: &[RackCable]) -> Self {
+        let mut r = Self {
+            vco1_to_vcf: 0.0,
+            vco2_to_fm: 0.0,
+            vco2_to_vcf: 0.0,
+            pcm_to_vcf: 0.0,
+            lfo_to_cutoff: 0.0,
+            lfo_to_fm: 0.0,
+            adsr_to_vca: 0.0,
+            adsr_to_cutoff: 0.0,
+            vcf_to_vca: 0.0,
+            direct_to_vca: 0.0,
+        };
+        for c in cables {
+            let fm = canonical_module(&c.from_module);
+            let tm = canonical_module(&c.to_module);
+            let g = c.gain.clamp(0.0, 2.0);
+            match (fm, c.from_jack.as_str(), tm, c.to_jack.as_str()) {
+                ("VCO-1", "SAW OUT", "VCF-LADDER", "AUDIO IN" | "AUX IN") => {
+                    r.vco1_to_vcf = (r.vco1_to_vcf + g).clamp(0.0, 2.0);
+                }
+                ("VCO-2 / X-DSP", "DSP OUT", "VCO-1", "FM CV") => {
+                    // Default cable gain is 0.5 -> normalized to 1.0 so existing patches match.
+                    r.vco2_to_fm = (r.vco2_to_fm + g * 2.0).clamp(0.0, 2.0);
+                }
+                ("VCO-2 / X-DSP", "DSP OUT", "VCF-LADDER", "AUDIO IN" | "AUX IN") => {
+                    r.vco2_to_vcf = (r.vco2_to_vcf + g).clamp(0.0, 2.0);
+                }
+                ("PCM-WORKSTATION", "AI2 ROM OUT", "VCF-LADDER", "AUX IN" | "AUDIO IN") => {
+                    // Default cable gain is 0.85 -> normalized to 1.0.
+                    r.pcm_to_vcf = (r.pcm_to_vcf + g / 0.85).clamp(0.0, 2.0);
+                }
+                ("LFO / ADSR", "SINE OUT", "VCF-LADDER", "CUTOFF CV") => {
+                    // Default cable gain is 0.4 -> normalized to 1.0.
+                    r.lfo_to_cutoff = (r.lfo_to_cutoff + g / 0.4).clamp(0.0, 2.0);
+                }
+                ("LFO / ADSR", "SINE OUT", "VCO-1", "FM CV") => {
+                    r.lfo_to_fm = (r.lfo_to_fm + g).clamp(0.0, 2.0);
+                }
+                ("LFO / ADSR", "ENV OUT", "VCA-MASTER", "GAIN CV") => {
+                    r.adsr_to_vca = (r.adsr_to_vca + g).clamp(0.0, 2.0);
+                }
+                ("LFO / ADSR", "ENV OUT", "VCF-LADDER", "CUTOFF CV") => {
+                    r.adsr_to_cutoff = (r.adsr_to_cutoff + g).clamp(0.0, 2.0);
+                }
+                ("VCF-LADDER", "LP24 OUT", "VCA-MASTER", "SIGNAL IN") => {
+                    r.vcf_to_vca = (r.vcf_to_vca + g).clamp(0.0, 2.0);
+                }
+                (
+                    "VCO-1" | "VCO-2 / X-DSP" | "PCM-WORKSTATION",
+                    "SAW OUT" | "DSP OUT" | "AI2 ROM OUT",
+                    "VCA-MASTER",
+                    "SIGNAL IN",
+                ) => {
+                    r.direct_to_vca = (r.direct_to_vca + g).clamp(0.0, 2.0);
+                }
+                _ => {}
+            }
+        }
+        r
+    }
 }
 
 /// MIDI Depot clip entry with note sequence and Standard MIDI File (`.mid`) export.

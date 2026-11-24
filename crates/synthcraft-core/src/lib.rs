@@ -30,6 +30,7 @@ pub use model::{
 pub use rompler::{
     builtin_demo_showcases, builtin_midi_depot, default_rack_cables, export_midi_smf_file,
     DemoShowcaseItem, ExtremeDspMode, MidiDepotClip, MidiHardwareConfig, PcmProgram, RackCable,
+    RackRouting,
 };
 pub use rt::{RtOptions, SynthRt, MAX_VOICES};
 
@@ -451,6 +452,19 @@ pub enum Command {
     SetCamelotKey {
         key: String,
     },
+    ListRackCables,
+    ConnectRackCable {
+        from_module: String,
+        from_jack: String,
+        to_module: String,
+        to_jack: String,
+        color_name: Option<String>,
+        gain: Option<f32>,
+    },
+    DisconnectRackCable {
+        cable_id: String,
+    },
+    ResetRackCables,
     ResetFactoryPatches,
 }
 
@@ -768,6 +782,88 @@ impl Command {
                     "estimated_pitch_hz": rep.estimated_pitch_hz,
                 }))
             }
+            Self::ListRackCables => Ok(json!({
+                "cables": engine.rack_cables,
+                "count": engine.rack_cables.len(),
+            })),
+            Self::ConnectRackCable {
+                from_module,
+                from_jack,
+                to_module,
+                to_jack,
+                color_name,
+                gain,
+            } => {
+                if from_module.trim().is_empty()
+                    || from_jack.trim().is_empty()
+                    || to_module.trim().is_empty()
+                    || to_jack.trim().is_empty()
+                {
+                    return Err(SynthError::Validation(
+                        "Rack cable endpoints cannot be empty".into(),
+                    ));
+                }
+                if from_module == to_module && from_jack == to_jack {
+                    return Err(SynthError::Validation(
+                        "Cannot patch a jack directly to itself".into(),
+                    ));
+                }
+                let palette = ["green", "cyan", "amber", "purple", "red"];
+                let color = color_name
+                    .clone()
+                    .filter(|c| !c.trim().is_empty())
+                    .unwrap_or_else(|| palette[engine.rack_cables.len() % palette.len()].into());
+                let g = gain.unwrap_or(1.0).clamp(0.0, 2.0);
+                // Replace if an identical endpoint pair already exists, otherwise append.
+                if let Some(existing) = engine.rack_cables.iter_mut().find(|c| {
+                    c.from_module == *from_module
+                        && c.from_jack == *from_jack
+                        && c.to_module == *to_module
+                        && c.to_jack == *to_jack
+                }) {
+                    existing.color_name = color;
+                    existing.gain = g;
+                    let updated = existing.clone();
+                    return Ok(json!({ "cable": updated, "count": engine.rack_cables.len() }));
+                }
+                let mut seq = engine.rack_cables.len() + 1;
+                let id = loop {
+                    let candidate = format!("cab_{seq}");
+                    if !engine.rack_cables.iter().any(|c| c.id == candidate) {
+                        break candidate;
+                    }
+                    seq += 1;
+                };
+                let cable = RackCable {
+                    id,
+                    from_module: from_module.clone(),
+                    from_jack: from_jack.clone(),
+                    to_module: to_module.clone(),
+                    to_jack: to_jack.clone(),
+                    color_name: color,
+                    gain: g,
+                };
+                engine.rack_cables.push(cable.clone());
+                Ok(json!({ "cable": cable, "count": engine.rack_cables.len() }))
+            }
+            Self::DisconnectRackCable { cable_id } => {
+                let before = engine.rack_cables.len();
+                engine.rack_cables.retain(|c| c.id != *cable_id);
+                if engine.rack_cables.len() == before {
+                    return Err(SynthError::NotFound(format!("Rack cable '{cable_id}'")));
+                }
+                Ok(json!({
+                    "removed": cable_id,
+                    "count": engine.rack_cables.len(),
+                }))
+            }
+            Self::ResetRackCables => {
+                engine.rack_cables = default_rack_cables();
+                Ok(json!({
+                    "reset": true,
+                    "count": engine.rack_cables.len(),
+                }))
+            }
             Self::ResetFactoryPatches => {
                 *engine = SynthEngine::factory_seed();
                 Ok(json!({
@@ -936,5 +1032,57 @@ mod tests {
             assert_eq!(l.active_patch_id, "goliath_reese_sub");
             assert_eq!(l.patches.len(), 9);
         }
+    }
+
+    #[test]
+    fn rack_cable_commands_and_dsp_routing_affect_audio() {
+        let mut eng = SynthEngine::factory_seed();
+        let default_r = RackRouting::from_cables(&eng.rack_cables);
+        assert_eq!(default_r, RackRouting::default());
+
+        // Disconnect VCF -> VCA signal cable: engine should go silent.
+        let res = Command::DisconnectRackCable {
+            cable_id: "cab_vcf_vca".into(),
+        }
+        .dispatch(&mut eng);
+        assert!(res.is_ok());
+
+        let mut rt = SynthRt::new(48000.0, eng.active_patch().clone());
+        rt.set_routing(RackRouting::from_cables(&eng.rack_cables));
+        rt.note_on(60, 0.9);
+        let mut silent = vec![0.0_f32; 512];
+        rt.process(&mut silent);
+        let silent_peak = silent.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
+        assert!(
+            silent_peak < 1e-4,
+            "expected silence without VCA signal cable, got {silent_peak}"
+        );
+
+        // Direct bypass patch: VCO-1 SAW OUT -> VCA-MASTER SIGNAL IN restores signal.
+        let patched = Command::ConnectRackCable {
+            from_module: "VCO-1".into(),
+            from_jack: "SAW OUT".into(),
+            to_module: "VCA-MASTER".into(),
+            to_jack: "SIGNAL IN".into(),
+            color_name: Some("amber".into()),
+            gain: Some(1.0),
+        }
+        .dispatch(&mut eng);
+        assert!(patched.is_ok());
+        rt.set_routing(RackRouting::from_cables(&eng.rack_cables));
+        let mut loud = vec![0.0_f32; 512];
+        rt.process(&mut loud);
+        let loud_peak = loud.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
+        assert!(
+            loud_peak > 0.05,
+            "expected audible signal after direct VCA patch, got {loud_peak}"
+        );
+
+        // Reset restores default cables.
+        assert!(Command::ResetRackCables.dispatch(&mut eng).is_ok());
+        assert_eq!(
+            RackRouting::from_cables(&eng.rack_cables),
+            RackRouting::default()
+        );
     }
 }

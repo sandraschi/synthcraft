@@ -86,6 +86,9 @@ impl SynthCraftApp {
                     h.info.device, h.info.sample_rate, h.info.channels
                 );
                 self.audio_error = None;
+                let routing = synthcraft_core::RackRouting::from_cables(&self.engine.rack_cables);
+                h.send(AudioMsg::Routing(routing));
+                self.last_routing = Some(routing);
                 self.last_opts = Some(self.rt_options());
                 self.last_patch_json =
                     serde_json::to_string(self.engine.active_patch()).unwrap_or_default();
@@ -176,9 +179,11 @@ impl SynthCraftApp {
             self.apply_midi_controller(ev);
         }
         let opts = self.rt_options();
+        let routing = synthcraft_core::RackRouting::from_cables(&self.engine.rack_cables);
         let json = serde_json::to_string(self.engine.active_patch()).unwrap_or_default();
         let patch_changed = json != self.last_patch_json;
         let opts_changed = self.last_opts != Some(opts);
+        let routing_changed = self.last_routing != Some(routing);
         self.sync_bank();
         if patch_changed && !self.last_patch_json.is_empty() {
             self.dirty_since.get_or_insert_with(std::time::Instant::now);
@@ -192,6 +197,10 @@ impl SynthCraftApp {
                 self.engine.active_patch().clone(),
             )));
             self.last_patch_json = json;
+        }
+        if routing_changed {
+            a.send(AudioMsg::Routing(routing));
+            self.last_routing = Some(routing);
         }
         if opts_changed {
             a.send(AudioMsg::Options(opts));

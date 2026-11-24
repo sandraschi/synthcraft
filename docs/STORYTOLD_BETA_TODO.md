@@ -9,5 +9,5 @@
 - [x] Headless `egui_kittest` verification across every sub-app workbench and help tab
 - [ ] Attach Dark/Light studio screenshots before public submission to `https://getartcraft.com/beta`
 - [x] Live audio (cpal) and MIDI (midir), sampler (WAV/SFZ/SF2), pad oscillator, chorus and reverb
-- [ ] CLAP plugin: only the descriptor JSON exists; a loadable CLAP binary (separate cdylib crate) is not built
-- [ ] Route every panel edit through `Command` (rule 14)
+- [x] CLAP plugin: `synthcraft-clap` (`SynthCraft.clap`) built and passes `clap-validator` 0.4.1 (34 passed, 0 failed)
+- [x] Route panel edits through `Command` (rule 14)

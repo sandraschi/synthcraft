@@ -9,7 +9,7 @@ SynthCraft is a 3-tier Pure-Rust ArtCraft modular audio synthesis studio and MCP
 1. **Modular Rack & VCO/VCF** -- dual oscillators (`Sine`, `Saw`, `Square`, `Triangle`, `PulsePWM`, `SuperSaw`, `WhiteNoise`, `SubOctave`, `AtmoPad`) with detune, FM index, and 4-pole resonant ladder filter (`LowPass24dB`, `BandPass12dB`, `HighPass12dB`, `AcidResonant`).
 2. **ADSR, LFO & Step Sequencer** -- 16-step BPM-locked sequencer (`36..84` MIDI notes, velocity, gate %, accent, acid slide) plus ADSR envelope and tempo-synced LFO modulation.
 3. **Oscilloscope & Spectrum** -- 256-sample real-time waveform scope, 32-band harmonic DFT/FFT spectrum analyzer, RMS/Peak dBFS metering, crest factor, and zero-crossing pitch tracker (`Hz`).
-4. **CLAP Plugin & SoundCraft** -- native CLAP (`u-he` / Bitwig Clever Audio Plug-in `1.2.2`, ID `dev.sandraschi.synthcraft`) plugin descriptor and polyphonic parameter automation table (`0x1001..0x100C`) exported as JSON for **SoundCraft**. A loadable CLAP plugin binary is not built yet.
+4. **CLAP Plugin & SoundCraft** -- native CLAP (`u-he` / Bitwig Clever Audio Plug-in `1.2.2`, ID `dev.sandraschi.synthcraft`) instrument plug-in (`SynthCraft.clap`, passes `clap-validator`) plus polyphonic parameter automation table (`0x1001..0x1019`) exported as JSON for **SoundCraft**.
 5. **DJCraft Stem & WAV Forge** -- exports 48 kHz / 44.1 kHz 16-bit PCM `.wav` loops, risers, sub-drops, and stem metadata (`bpm`, `camelot_key`, `bars`, `cue_points`) directly compatible with **DJCraft** decks.
 6. **Assistant & 6-Tab Help** -- local-first Patch Co-Designer Chat and comprehensive 6-tab reference documentation.
 
