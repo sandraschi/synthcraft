@@ -3748,7 +3748,13 @@ name = "synthcraft-clap"
 version = "0.2.0"
 dependencies = [
  "clap-sys",
+ "egui",
+ "egui-wgpu",
+ "pollster",
+ "raw-window-handle",
  "synthcraft-core",
+ "wgpu",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

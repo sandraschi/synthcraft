@@ -1,11 +1,14 @@
 //! CLAP extensions: params, audio-ports, note-ports, state.
 
-use crate::plugin::{this, N_PARAMS};
+use crate::bridge::N_PARAMS;
+use crate::gui::GUI_EXT;
+use crate::plugin::this;
 use clap_sys::events::{clap_input_events, clap_output_events};
 use clap_sys::ext::audio_ports::{
     clap_audio_port_info, clap_plugin_audio_ports, CLAP_AUDIO_PORT_IS_MAIN, CLAP_EXT_AUDIO_PORTS,
     CLAP_PORT_STEREO,
 };
+use clap_sys::ext::gui::CLAP_EXT_GUI;
 use clap_sys::ext::note_ports::{
     clap_note_port_info, clap_plugin_note_ports, CLAP_EXT_NOTE_PORTS, CLAP_NOTE_DIALECT_CLAP,
     CLAP_NOTE_DIALECT_MIDI,
@@ -59,6 +62,8 @@ pub(crate) fn lookup(id: &CStr) -> *const c_void {
         std::ptr::from_ref(&NOTE_PORTS_EXT).cast()
     } else if id == CLAP_EXT_STATE {
         std::ptr::from_ref(&STATE_EXT).cast()
+    } else if id == CLAP_EXT_GUI {
+        std::ptr::from_ref(&GUI_EXT).cast()
     } else {
         std::ptr::null()
     }
@@ -107,7 +112,7 @@ unsafe extern "C" fn params_get_value(p: *const clap_plugin, id: clap_id, out: *
     if out.is_null() {
         return false;
     }
-    let v = f32::from_bits(pl.values[i].load(Ordering::Relaxed));
+    let v = f32::from_bits(pl.bridge.values[i].load(Ordering::Relaxed));
     // SAFETY: `out` is non-null and writable per the CLAP contract.
     unsafe { *out = f64::from(v) };
     true
@@ -166,7 +171,7 @@ unsafe extern "C" fn params_flush(
     let (Some(pl), Some(list)) = (unsafe { this(p) }, unsafe { input.as_ref() }) else {
         return;
     };
-    let Ok(mut guard) = pl.engine.try_lock() else {
+    let Ok(mut guard) = pl.bridge.engine.try_lock() else {
         return;
     };
     // SAFETY: calling the host's own callbacks with its own list.
@@ -235,7 +240,7 @@ unsafe extern "C" fn state_save(p: *const clap_plugin, stream: *const clap_ostre
         let Some(write) = st.write else {
             return false;
         };
-        let Ok(json) = pl.engine.lock().map(|e| e.state_json()) else {
+        let Ok(json) = pl.bridge.engine.lock().map(|e| e.state_json()) else {
             return false;
         };
         let Ok(json) = json else {
@@ -290,7 +295,7 @@ unsafe extern "C" fn state_load(p: *const clap_plugin, stream: *const clap_istre
         let Ok(text) = String::from_utf8(data) else {
             return false;
         };
-        let Ok(mut e) = pl.engine.lock() else {
+        let Ok(mut e) = pl.bridge.engine.lock() else {
             return false;
         };
         if e.load_state_json(&text).is_err() {

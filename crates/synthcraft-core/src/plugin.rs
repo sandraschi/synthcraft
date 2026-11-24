@@ -50,6 +50,10 @@ impl PluginEngine {
         self.rt.patch()
     }
 
+    pub fn patch_mut(&mut self) -> &mut SynthPatch {
+        self.rt.patch_mut()
+    }
+
     /// Rebuild the engine at a new rate, keeping patch and bank. Sounding notes are cut.
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
         if (sample_rate - self.rt.sample_rate()).abs() < 0.5 {

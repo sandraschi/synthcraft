@@ -11,8 +11,11 @@
 //! Threading follows the CLAP rules: `process` and `flush` run on the audio thread and never
 //! block (a busy engine yields silence for that block); everything else is main-thread.
 
+mod bridge;
 mod ext;
+mod gui;
 mod plugin;
+mod ui_view;
 
 pub use plugin::{create_for_test, ENTRY_ID};
 

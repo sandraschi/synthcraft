@@ -1,10 +1,13 @@
 //! Descriptor, factory and the plug-in object with its audio processing.
 
+use crate::bridge::{GuiBridge, UiEvent};
 use crate::ext;
+use crate::gui::GuiInstance;
 use clap_sys::events::{
-    clap_event_header, clap_event_midi, clap_event_note, clap_event_param_value,
-    CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI, CLAP_EVENT_NOTE_CHOKE, CLAP_EVENT_NOTE_OFF,
-    CLAP_EVENT_NOTE_ON, CLAP_EVENT_PARAM_VALUE,
+    clap_event_header, clap_event_midi, clap_event_note, clap_event_param_gesture,
+    clap_event_param_value, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI, CLAP_EVENT_NOTE_CHOKE,
+    CLAP_EVENT_NOTE_OFF, CLAP_EVENT_NOTE_ON, CLAP_EVENT_PARAM_GESTURE_BEGIN,
+    CLAP_EVENT_PARAM_GESTURE_END, CLAP_EVENT_PARAM_VALUE,
 };
 use clap_sys::ext::params::{clap_host_params, CLAP_EXT_PARAMS, CLAP_PARAM_RESCAN_VALUES};
 use clap_sys::factory::plugin_factory::clap_plugin_factory;
@@ -17,9 +20,7 @@ use clap_sys::process::{clap_process, CLAP_PROCESS_CONTINUE, CLAP_PROCESS_ERROR}
 use clap_sys::version::CLAP_VERSION;
 use std::ffi::{c_char, c_void, CStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Mutex;
-use synthcraft_core::params::PARAMS;
+use std::sync::{Arc, Mutex};
 use synthcraft_core::plugin::PluginEngine;
 
 /// Plug-in id reported to hosts.
@@ -85,23 +86,17 @@ unsafe extern "C" fn factory_create(
     Plugin::create(host)
 }
 
-/// Number of parameters, as a constant so the atomic mirror is a fixed array.
-pub(crate) const N_PARAMS: usize = PARAMS.len();
-
 /// The plug-in instance behind `clap_plugin.plugin_data`.
 pub(crate) struct Plugin {
     clap: clap_plugin,
     /// The host that created us; used to request a parameter rescan after state loads.
     host: *const clap_host,
-    pub(crate) engine: Mutex<PluginEngine>,
-    /// Latest value of every parameter (f32 bits), readable without touching the engine lock.
-    pub(crate) values: [AtomicU32; N_PARAMS],
+    pub(crate) bridge: Arc<GuiBridge>,
+    pub(crate) gui: Mutex<Option<GuiInstance>>,
 }
 
 impl Plugin {
     fn create(host: *const clap_host) -> *const clap_plugin {
-        let values = std::array::from_fn(|i| AtomicU32::new(PARAMS[i].default.to_bits()));
-        let engine = PluginEngine::new(48_000.0);
         let boxed = Box::new(Plugin {
             clap: clap_plugin {
                 desc: &DESCRIPTOR,
@@ -118,8 +113,8 @@ impl Plugin {
                 on_main_thread: Some(p_main_thread),
             },
             host,
-            engine: Mutex::new(engine),
-            values,
+            bridge: Arc::new(GuiBridge::new(48_000.0)),
+            gui: Mutex::new(None),
         });
         let raw = Box::into_raw(boxed);
         // SAFETY: `raw` was just produced by `Box::into_raw`, so it is valid and unique here.
@@ -153,18 +148,12 @@ impl Plugin {
 
     /// Mirror the engine's parameter values into the atomics (after a state load).
     pub(crate) fn sync_values(&self, engine: &PluginEngine) {
-        for (slot, def) in self.values.iter().zip(PARAMS) {
-            if let Some(v) = engine.get_param(def.id) {
-                slot.store(v.to_bits(), Ordering::Relaxed);
-            }
-        }
+        self.bridge.sync_values(engine);
     }
 
     fn set_value(&self, engine: &mut PluginEngine, id: u32, value: f64) {
         if let Some(v) = engine.set_param(id, value as f32) {
-            if let Some(i) = PARAMS.iter().position(|d| d.id == id) {
-                self.values[i].store(v.to_bits(), Ordering::Relaxed);
-            }
+            self.bridge.store_value_by_id(id, v);
         }
     }
 
@@ -269,7 +258,7 @@ unsafe extern "C" fn p_activate(
         let Some(pl) = (unsafe { this(p) }) else {
             return false;
         };
-        let Ok(mut e) = pl.engine.lock() else {
+        let Ok(mut e) = pl.bridge.engine.lock() else {
             return false;
         };
         e.set_sample_rate(sample_rate as f32);
@@ -296,7 +285,7 @@ unsafe extern "C" fn p_stop(_p: *const clap_plugin) {}
 unsafe extern "C" fn p_reset(p: *const clap_plugin) {
     // SAFETY: `p` comes from the host and is one of ours.
     if let Some(pl) = unsafe { this(p) } {
-        if let Ok(mut e) = pl.engine.lock() {
+        if let Ok(mut e) = pl.bridge.engine.lock() {
             e.all_notes_off();
         }
     }
@@ -360,10 +349,89 @@ unsafe fn render(pl: &Plugin, pr: &clap_process) -> i32 {
     left.fill(0.0);
     right.fill(0.0);
 
-    let Ok(mut guard) = pl.engine.try_lock() else {
+    let Ok(mut guard) = pl.bridge.engine.try_lock() else {
         return CLAP_PROCESS_CONTINUE; // engine busy on the main thread: one silent block
     };
     let engine = &mut *guard;
+
+    // Drain any parameter gestures or audition notes queued by the embedded GUI.
+    let mut ui_ev = Vec::new();
+    pl.bridge.drain_ui_events_try(&mut ui_ev);
+    // SAFETY: host guarantees `out_events` is valid if non-null during `process`.
+    let out_events = unsafe { pr.out_events.as_ref() };
+    for ev in ui_ev {
+        match ev {
+            UiEvent::ParamGestureBegin(id) => {
+                if let Some(list) = out_events {
+                    if let Some(push) = list.try_push {
+                        let msg = clap_event_param_gesture {
+                            header: clap_event_header {
+                                size: std::mem::size_of::<clap_event_param_gesture>() as u32,
+                                time: 0,
+                                space_id: CLAP_CORE_EVENT_SPACE_ID,
+                                type_: CLAP_EVENT_PARAM_GESTURE_BEGIN,
+                                flags: 0,
+                            },
+                            param_id: id,
+                        };
+                        // SAFETY: `msg` is a valid `clap_event_param_gesture` with matching header size.
+                        unsafe {
+                            push(list, std::ptr::addr_of!(msg).cast());
+                        }
+                    }
+                }
+            }
+            UiEvent::ParamValue(id, val) => {
+                pl.set_value(engine, id, f64::from(val));
+                if let Some(list) = out_events {
+                    if let Some(push) = list.try_push {
+                        let msg = clap_event_param_value {
+                            header: clap_event_header {
+                                size: std::mem::size_of::<clap_event_param_value>() as u32,
+                                time: 0,
+                                space_id: CLAP_CORE_EVENT_SPACE_ID,
+                                type_: CLAP_EVENT_PARAM_VALUE,
+                                flags: 0,
+                            },
+                            param_id: id,
+                            cookie: std::ptr::null_mut(),
+                            note_id: -1,
+                            port_index: -1,
+                            channel: -1,
+                            key: -1,
+                            value: f64::from(val),
+                        };
+                        // SAFETY: `msg` is a valid `clap_event_param_value` with matching header size.
+                        unsafe {
+                            push(list, std::ptr::addr_of!(msg).cast());
+                        }
+                    }
+                }
+            }
+            UiEvent::ParamGestureEnd(id) => {
+                if let Some(list) = out_events {
+                    if let Some(push) = list.try_push {
+                        let msg = clap_event_param_gesture {
+                            header: clap_event_header {
+                                size: std::mem::size_of::<clap_event_param_gesture>() as u32,
+                                time: 0,
+                                space_id: CLAP_CORE_EVENT_SPACE_ID,
+                                type_: CLAP_EVENT_PARAM_GESTURE_END,
+                                flags: 0,
+                            },
+                            param_id: id,
+                        };
+                        // SAFETY: `msg` is a valid `clap_event_param_gesture` with matching header size.
+                        unsafe {
+                            push(list, std::ptr::addr_of!(msg).cast());
+                        }
+                    }
+                }
+            }
+            UiEvent::NoteOn(note, vel) => engine.note_on(note, vel),
+            UiEvent::NoteOff(note) => engine.note_off(note),
+        }
+    }
 
     let mut cursor = 0usize;
     // SAFETY: the host guarantees `in_events` and its callbacks are valid.
@@ -389,6 +457,7 @@ unsafe fn render(pl: &Plugin, pr: &clap_process) -> i32 {
     if cursor < frames {
         engine.process(&mut left[cursor..], &mut right[cursor..]);
     }
+    pl.bridge.update_meters(left, right, engine.active_voices());
     CLAP_PROCESS_CONTINUE
 }
 
@@ -403,10 +472,12 @@ mod tests {
     use crate::{clap_entry, ext};
     use clap_sys::audio_buffer::clap_audio_buffer;
     use clap_sys::events::clap_input_events;
+    use clap_sys::ext::gui::{clap_plugin_gui, CLAP_EXT_GUI, CLAP_WINDOW_API_WIN32};
     use clap_sys::ext::params::{clap_param_info, clap_plugin_params, CLAP_EXT_PARAMS};
     use clap_sys::ext::state::{clap_plugin_state, CLAP_EXT_STATE};
     use clap_sys::factory::plugin_factory::CLAP_PLUGIN_FACTORY_ID;
     use clap_sys::stream::{clap_istream, clap_ostream};
+    use synthcraft_core::params::PARAMS;
 
     struct Events {
         notes: Vec<clap_event_note>,
@@ -661,7 +732,11 @@ mod tests {
             let ext = (*a).get_extension.map(|g| g(a, CLAP_EXT_STATE.as_ptr()));
             let st = &*ext.unwrap_or(std::ptr::null()).cast::<clap_plugin_state>();
             let pa = this(a).map(|pl| {
-                pl.engine.lock().map(|mut e| e.set_param(0x1005, 9.0)).ok();
+                pl.bridge
+                    .engine
+                    .lock()
+                    .map(|mut e| e.set_param(0x1005, 9.0))
+                    .ok();
             });
             assert!(pa.is_some());
             let os = clap_ostream {
@@ -692,5 +767,46 @@ mod tests {
         let _ = ext::lookup(CLAP_EXT_STATE);
         destroy(a);
         destroy(b);
+    }
+
+    #[test]
+    fn gui_extension_lifecycle_and_sizing_contracts_hold() {
+        let p = make();
+        // SAFETY: `p` is a valid live plugin created by `make()`.
+        unsafe {
+            let raw = (*p).get_extension.map(|g| g(p, CLAP_EXT_GUI.as_ptr()));
+            let gui = &*raw.unwrap_or(std::ptr::null()).cast::<clap_plugin_gui>();
+            #[cfg(windows)]
+            {
+                assert!(gui.is_api_supported.is_some_and(|f| f(
+                    p,
+                    CLAP_WINDOW_API_WIN32.as_ptr(),
+                    false
+                )));
+                assert!(!gui.is_api_supported.is_some_and(|f| f(
+                    p,
+                    CLAP_WINDOW_API_WIN32.as_ptr(),
+                    true
+                )));
+                assert!(gui
+                    .create
+                    .is_some_and(|f| f(p, CLAP_WINDOW_API_WIN32.as_ptr(), false)));
+                let (mut w, mut h) = (0u32, 0u32);
+                assert!(gui.get_size.is_some_and(|f| f(p, &mut w, &mut h)));
+                assert!(w >= 720 && h >= 440);
+                let (mut small_w, mut small_h) = (100u32, 100u32);
+                assert!(gui
+                    .adjust_size
+                    .is_some_and(|f| f(p, &mut small_w, &mut small_h)));
+                assert!(small_w >= 720 && small_h >= 440);
+                assert!(gui.set_size.is_some_and(|f| f(p, 1024, 640)));
+                assert!(gui.get_size.is_some_and(|f| f(p, &mut w, &mut h)));
+                assert_eq!((w, h), (1024, 640));
+                if let Some(d) = gui.destroy {
+                    d(p);
+                }
+            }
+        }
+        destroy(p);
     }
 }
