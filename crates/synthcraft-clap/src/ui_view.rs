@@ -9,7 +9,7 @@ use std::f32::consts::PI;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use synthcraft_core::params::{ParamDef, PARAMS};
-use synthcraft_core::{FilterMode, WaveformKind};
+use synthcraft_core::{FilterMode, SynthEngine, SynthPatch, WaveformKind};
 
 /// Persistent UI interaction state for one open CLAP editor instance.
 #[derive(Default)]
@@ -18,6 +18,7 @@ pub(crate) struct ClapUiState {
     held_note: Option<u8>,
     available_banks: Vec<PathBuf>,
     banks_scanned: bool,
+    factory_patches: Vec<SynthPatch>,
 }
 
 const BG_PANEL: Color32 = Color32::from_rgb(9, 14, 26);
@@ -35,11 +36,21 @@ const TEXT_MUTED: Color32 = Color32::from_rgb(148, 163, 184);
 
 impl ClapUiState {
     fn scan_banks_if_needed(&mut self) {
+        if self.factory_patches.is_empty() {
+            self.factory_patches = SynthEngine::factory_seed().patches;
+        }
         if self.banks_scanned {
             return;
         }
         self.banks_scanned = true;
         self.refresh_banks();
+    }
+
+    fn apply_factory_patch(&self, bridge: &GuiBridge, patch: &SynthPatch) {
+        if let Ok(mut eng) = bridge.engine.lock() {
+            eng.replace_patch(patch.clone());
+            bridge.sync_values(&eng);
+        }
     }
 
     fn refresh_banks(&mut self) {
@@ -99,6 +110,49 @@ impl ClapUiState {
                     .monospace(),
             );
             ui.separator();
+
+            // Factory patch selector (< [Patch] >)
+            if !self.factory_patches.is_empty() {
+                let (cur_id, cur_name) = bridge
+                    .engine
+                    .try_lock()
+                    .map(|e| (e.patch().id.clone(), e.patch().name.clone()))
+                    .unwrap_or_else(|_| (String::new(), String::from("Patch")));
+                let cur_idx = self
+                    .factory_patches
+                    .iter()
+                    .position(|p| p.id == cur_id)
+                    .unwrap_or(0);
+                let count = self.factory_patches.len();
+                let mut pick: Option<usize> = None;
+                if ui
+                    .small_button("<")
+                    .on_hover_text("Previous patch")
+                    .clicked()
+                {
+                    pick = Some((cur_idx + count - 1) % count);
+                }
+                egui::ComboBox::from_label("Patch")
+                    .width(170.0)
+                    .selected_text(cur_name)
+                    .show_ui(ui, |ui| {
+                        for (i, p) in self.factory_patches.iter().enumerate() {
+                            let label = format!("{} [{}]", p.name, p.category);
+                            if ui.selectable_label(p.id == cur_id, label).clicked() {
+                                pick = Some(i);
+                            }
+                        }
+                    });
+                if ui.small_button(">").on_hover_text("Next patch").clicked() {
+                    pick = Some((cur_idx + 1) % count);
+                }
+                if let Some(i) = pick {
+                    if let Some(patch) = self.factory_patches.get(i).cloned() {
+                        self.apply_factory_patch(bridge, &patch);
+                    }
+                }
+                ui.separator();
+            }
 
             // Live voice count & stereo peak meter
             let voices = bridge.active_voices.load(Ordering::Relaxed);

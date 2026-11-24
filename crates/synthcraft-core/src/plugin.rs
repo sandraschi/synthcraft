@@ -54,6 +54,11 @@ impl PluginEngine {
         self.rt.patch_mut()
     }
 
+    /// Replace the active patch in place. Call from the main thread while `process` is not running.
+    pub fn replace_patch(&mut self, patch: SynthPatch) {
+        let _ = self.rt.replace_patch(patch);
+    }
+
     /// Rebuild the engine at a new rate, keeping patch and bank. Sounding notes are cut.
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
         if (sample_rate - self.rt.sample_rate()).abs() < 0.5 {

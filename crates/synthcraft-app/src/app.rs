@@ -570,25 +570,20 @@ impl SynthCraftApp {
                 }
             });
             ui.menu_button("Insert", |ui| {
-                for (id, label) in [
-                    ("vienna_acid_303", "Patch: Vienna Acid 303 (128 BPM 8A)"),
-                    ("goliath_reese_sub", "Patch: Goliath Reese Sub (174 BPM 4A)"),
-                    ("danube_dub_chord", "Patch: Danube Dub Chord (124 BPM 2A)"),
-                    (
-                        "stephansdom_bell_fm",
-                        "Patch: Stephansdom FM Pluck (120 BPM 9A)",
-                    ),
-                    (
-                        "djcraft_riser_sweep",
-                        "Patch: DJCraft Drop Riser (128 BPM 8A)",
-                    ),
-                    (
-                        "soundcraft_warm_pad",
-                        "Patch: SoundCraft Analog Pad (110 BPM 11B)",
-                    ),
-                ] {
+                let menu_patches: Vec<(String, String)> = self
+                    .engine
+                    .patches
+                    .iter()
+                    .map(|p| {
+                        (
+                            p.id.clone(),
+                            format!("Patch: {} ({:.0} BPM {})", p.name, p.bpm, p.camelot_key),
+                        )
+                    })
+                    .collect();
+                for (id, label) in menu_patches {
                     if ui.button(label).clicked() {
-                        let _ = self.engine.select_patch(id);
+                        let _ = self.engine.select_patch(&id);
                         self.persist();
                         ui.close();
                     }
@@ -779,7 +774,60 @@ impl SynthCraftApp {
             (None, Some(e)) => format!("audio unavailable: {e}"),
             (None, None) => "audio not started".to_string(),
         };
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
+            // Always-visible Patch selector (< [Patch] >) across every workbench
+            let patches: Vec<(String, String, String)> = self
+                .engine
+                .patches
+                .iter()
+                .map(|p| (p.id.clone(), p.name.clone(), p.category.clone()))
+                .collect();
+            if !patches.is_empty() {
+                let cur_idx = patches
+                    .iter()
+                    .position(|(id, _, _)| *id == self.engine.active_patch_id)
+                    .unwrap_or(0);
+                let cur_name = patches[cur_idx].1.clone();
+                let mut next_id: Option<String> = None;
+                if ui
+                    .small_button("<")
+                    .on_hover_text("Previous patch")
+                    .clicked()
+                {
+                    let prev = (cur_idx + patches.len() - 1) % patches.len();
+                    next_id = Some(patches[prev].0.clone());
+                }
+                egui::ComboBox::from_label("Patch")
+                    .width(210.0)
+                    .selected_text(cur_name)
+                    .show_ui(ui, |ui| {
+                        for (id, name, cat) in &patches {
+                            let label = format!("{name} [{cat}]");
+                            if ui
+                                .selectable_label(self.engine.active_patch_id == *id, label)
+                                .clicked()
+                            {
+                                next_id = Some(id.clone());
+                            }
+                        }
+                    });
+                if ui.small_button(">").on_hover_text("Next patch").clicked() {
+                    let next = (cur_idx + 1) % patches.len();
+                    next_id = Some(patches[next].0.clone());
+                }
+                if let Some(id) = next_id {
+                    if (synthcraft_core::Command::LoadPatch { patch_id: id })
+                        .dispatch(&mut self.engine)
+                        .is_ok()
+                    {
+                        self.status_line =
+                            format!("Loaded patch: {}", self.engine.active_patch().name);
+                        self.persist();
+                    }
+                }
+                ui.separator();
+            }
+
             let label = if self.is_playing() {
                 "Stop sequencer (Space)"
             } else {
