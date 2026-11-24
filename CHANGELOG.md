@@ -16,6 +16,9 @@
 - Sampler layers (a note plays every matching zone, up to 4) and one-shot zones (SFZ `loop_mode=one_shot`, ignores note-off); SFZ `pan`.
 - True stereo engine output: `SynthRt::process_stereo`, per-voice spread (`stereo_spread`), stereo chorus, decorrelated stereo reverb. CLAP, C ABI, Rack and the desktop audio callback now output real stereo.
 - Ambient mode: slow seeded drift on cutoff, morph and reverb send (`ambient_depth`, `ambient_rate_hz`, `ambient_seed`). Three new host parameters (25 in total, ids 0x1017 to 0x1019).
+- Interactive 3U Eurorack bay: all 12 module knobs are draggable (vertical drag, Shift fine adjust, scroll wheel, double-click reset), module mode labels click-to-cycle, and patch cables can be dragged jack-to-jack, moved, unplugged, or reset via `Command` (`ListRackCables`, `ConnectRackCable`, `DisconnectRackCable`, `ResetRackCables`).
+- Live rack cable DSP routing (`RackRouting` in `SynthRt`): patching and unplugging cables in the 3U bay alters live audio and CV modulation routing (defaults preserve existing patch sound).
+- Native `CLAP_EXT_GUI` plug-in UI in `synthcraft-clap` (Windows `CLAP_WINDOW_API_WIN32` embedded child `HWND` + `egui-wgpu`): 25 hardware rotary knobs with DAW automation gestures (`PARAM_GESTURE_BEGIN`/`VALUE`/`END`), live stereo peak meter and oscilloscope, VCO1/VCF selectors, sample bank picker (`Documents/SynthCraft/Banks`), and 1-octave audition keyboard.
 
 ### Changed
 - SQLite persistence rewritten: schema v2, backup before migration, bad rows quarantined, per-row upserts, background saves, UI settings persisted. `rusqlite` 0.41 (fixes RUSTSEC-2026-0459).
