@@ -294,16 +294,38 @@ pub enum CliSub {
     LoadWavetable { spec: String },
     /// Import a Standard MIDI File (.mid) into the 16-step sequencer
     ImportMidi { path: String },
+    /// Manage the 3U CLAP Host module (scan, inspect, configure, status)
+    #[command(subcommand)]
+    ClapHost(ClapHostSub),
+    /// List all built-in morphing wavetables and the active patch's wavetable
+    ListWavetables,
+    /// Record a sequence of MIDI notes directly into the 16-step sequencer
+    RecordSeqNotes {
+        /// Comma-separated MIDI notes (0..127), e.g. "36,36,48,39,43"
+        notes: String,
+        #[arg(long, default_value_t = 0)]
+        start_step: usize,
+        #[arg(long, default_value_t = 0.85)]
+        velocity: f32,
+    },
+    /// Export the Web Audio AudioWorklet JS bridge (and compiled .wasm if built) to a directory
+    ExportWasmBundle { output_dir: String },
+    /// Reset all patches to factory defaults
+    ResetFactory,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ClapHostSub {
     /// Scan standard system CLAP plugin directories for installed .clap files
-    ScanClapPlugins,
+    Scan,
     /// Inspect an external .clap plugin binary (descriptors + automatable parameters)
-    InspectClapPlugin {
+    Inspect {
         path: String,
         #[arg(long, default_value_t = 0)]
         plugin_index: u32,
     },
     /// Configure the 3U CLAP Host rack module (plugin path, CV target param, mix, CV depth)
-    ConfigureClapHost {
+    Configure {
         #[arg(long)]
         plugin_path: Option<String>,
         #[arg(long, default_value_t = 0)]
@@ -315,8 +337,8 @@ pub enum CliSub {
         #[arg(long, default_value_t = 0.5)]
         cv_depth: f32,
     },
-    /// Reset all patches to factory defaults
-    ResetFactory,
+    /// Show the current 3U CLAP Host configuration and rack slot state
+    Status,
 }
 
 fn default_banks_dir() -> PathBuf {
@@ -392,6 +414,23 @@ fn run_fetch_bank(id: &str, dest: Option<&Path>, policy: &PathPolicy) -> i32 {
 }
 
 fn main() {
+    // Debug builds of `clap::Parser` with 40+ subcommands can exceed the 1 MiB default Windows
+    // main-thread stack; run on an 8 MiB stack so debug and release behave identically.
+    let handle = std::thread::Builder::new()
+        .name("synthcraft-mcp".into())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(real_main);
+    match handle {
+        Ok(h) => {
+            if h.join().is_err() {
+                std::process::exit(1);
+            }
+        }
+        Err(_) => real_main(),
+    }
+}
+
+fn real_main() {
     let cli = Cli::parse();
     let db_path = cli.db.unwrap_or_else(default_db_path);
     let mut engine = match SynthEngine::open_or_seed(&db_path) {
@@ -424,12 +463,23 @@ fn main() {
     }
 
     let sub = cli.subcommand.unwrap_or(CliSub::Status);
+    run_cli_subcommand(sub, cli.json, &mut engine, &db_path, &policy);
+}
+
+#[inline(never)]
+fn run_cli_subcommand(
+    sub: CliSub,
+    json_flag: bool,
+    engine: &mut SynthEngine,
+    db_path: &Path,
+    policy: &PathPolicy,
+) {
     match &sub {
         CliSub::ListBanks => {
-            std::process::exit(run_list_banks(cli.json));
+            std::process::exit(run_list_banks(json_flag));
         }
         CliSub::FetchBank { id, dest } => {
-            std::process::exit(run_fetch_bank(id, dest.as_deref(), &policy));
+            std::process::exit(run_fetch_bank(id, dest.as_deref(), policy));
         }
         _ => {}
     }
@@ -598,42 +648,96 @@ fn main() {
         CliSub::SetTuning { preset, scala_scl } => Command::SetTuning { preset, scala_scl },
         CliSub::LoadWavetable { spec } => Command::LoadWavetable { spec },
         CliSub::ImportMidi { path } => Command::ImportMidiFile { path },
-        CliSub::ScanClapPlugins => {
-            let files: Vec<String> = synthcraft_clap_host::scan_clap_files(&[])
-                .into_iter()
-                .map(|p| p.to_string_lossy().into_owned())
-                .collect();
-            let out = serde_json::to_string_pretty(&json!({
-                "clap_dirs": synthcraft_clap_host::standard_clap_dirs()
+        CliSub::ClapHost(sub) => match sub {
+            ClapHostSub::Scan => {
+                let files: Vec<String> = synthcraft_clap_host::scan_clap_files(&[])
                     .into_iter()
                     .map(|p| p.to_string_lossy().into_owned())
-                    .collect::<Vec<_>>(),
-                "plugins": files,
-            }))
-            .unwrap_or_else(|_| "{}".to_string());
-            println!("{out}");
-            return;
-        }
-        CliSub::InspectClapPlugin { path, plugin_index } => {
-            let resolved = if policy.is_active() {
-                match policy.check_read(&path) {
-                    Ok(p) => p,
+                    .collect();
+                let out = serde_json::to_string_pretty(&json!({
+                    "clap_dirs": synthcraft_clap_host::standard_clap_dirs()
+                        .into_iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect::<Vec<_>>(),
+                    "plugins": files,
+                }))
+                .unwrap_or_else(|_| "{}".to_string());
+                println!("{out}");
+                return;
+            }
+            ClapHostSub::Inspect { path, plugin_index } => {
+                let resolved = if policy.is_active() {
+                    match policy.check_read(&path) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("error: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                } else {
+                    PathBuf::from(&path)
+                };
+                match synthcraft_clap_host::inspect_clap_file(&resolved, plugin_index) {
+                    Ok((plugins, params)) => {
+                        let out = serde_json::to_string_pretty(&json!({
+                            "path": resolved.to_string_lossy(),
+                            "plugins": plugins,
+                            "params": params,
+                        }))
+                        .unwrap_or_else(|_| "{}".to_string());
+                        println!("{out}");
+                        return;
+                    }
                     Err(e) => {
                         eprintln!("error: {e}");
                         std::process::exit(1);
                     }
                 }
-            } else {
-                PathBuf::from(&path)
-            };
-            match synthcraft_clap_host::inspect_clap_file(&resolved, plugin_index) {
-                Ok((plugins, params)) => {
-                    let out = serde_json::to_string_pretty(&json!({
-                        "path": resolved.to_string_lossy(),
-                        "plugins": plugins,
-                        "params": params,
-                    }))
-                    .unwrap_or_else(|_| "{}".to_string());
+            }
+            ClapHostSub::Configure {
+                plugin_path,
+                plugin_index,
+                cv_param_id,
+                mix,
+                cv_depth,
+            } => Command::ConfigureClapHost {
+                plugin_path,
+                plugin_index,
+                cv_param_id,
+                mix,
+                cv_depth,
+            },
+            ClapHostSub::Status => {
+                let val = clap_host_status_json(engine);
+                let out = serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string());
+                println!("{out}");
+                return;
+            }
+        },
+        CliSub::ListWavetables => {
+            let val = list_wavetables_json(engine);
+            let out = serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string());
+            println!("{out}");
+            return;
+        }
+        CliSub::RecordSeqNotes {
+            notes,
+            start_step,
+            velocity,
+        } => {
+            let parsed: Vec<u8> = notes
+                .split(',')
+                .filter_map(|s| s.trim().parse::<u8>().ok())
+                .collect();
+            let before = serde_json::to_string(engine).unwrap_or_default();
+            match record_seq_notes(engine, &parsed, start_step, velocity) {
+                Ok(val) => {
+                    if let Err(e) = save_if_changed(engine, &before, db_path) {
+                        eprintln!("error: saving failed: {e}");
+                        std::process::exit(1);
+                    }
+                    let out =
+                        serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string());
                     println!("{out}");
                     return;
                 }
@@ -643,23 +747,35 @@ fn main() {
                 }
             }
         }
-        CliSub::ConfigureClapHost {
-            plugin_path,
-            plugin_index,
-            cv_param_id,
-            mix,
-            cv_depth,
-        } => Command::ConfigureClapHost {
-            plugin_path,
-            plugin_index,
-            cv_param_id,
-            mix,
-            cv_depth,
-        },
+        CliSub::ExportWasmBundle { output_dir } => {
+            let resolved = if policy.is_active() {
+                match policy.check_write(&output_dir) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                PathBuf::from(&output_dir)
+            };
+            match export_wasm_bundle(&resolved) {
+                Ok(val) => {
+                    let out =
+                        serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string());
+                    println!("{out}");
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
         CliSub::ResetFactory => Command::ResetFactoryPatches,
     };
     let cmd = if policy.is_active() {
-        match enforce_command(cmd, &policy) {
+        match enforce_command(cmd, policy) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("error: {e}");
@@ -670,10 +786,10 @@ fn main() {
         cmd
     };
 
-    let before = serde_json::to_string(&engine).unwrap_or_default();
-    match cmd.dispatch(&mut engine) {
+    let before = serde_json::to_string(engine).unwrap_or_default();
+    match cmd.dispatch(engine) {
         Ok(val) => {
-            if let Err(e) = save_if_changed(&engine, &before, &db_path) {
+            if let Err(e) = save_if_changed(engine, &before, db_path) {
                 eprintln!("error: command succeeded but saving failed: {e}");
                 std::process::exit(1);
             }
@@ -1291,6 +1407,33 @@ pub fn handle_mcp_request(
                     )
                     .and_then(|c| c.dispatch(engine))
                 }
+                "get_clap_host_status" => Ok(clap_host_status_json(engine)),
+                "list_wavetables" => Ok(list_wavetables_json(engine)),
+                "record_sequencer_notes" => {
+                    let notes: Vec<u8> = args
+                        .get("notes")
+                        .and_then(Value::as_array)
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_u64().map(|n| n.min(127) as u8))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let start_step =
+                        args.get("start_step").and_then(Value::as_u64).unwrap_or(0) as usize;
+                    let velocity =
+                        args.get("velocity").and_then(Value::as_f64).unwrap_or(0.85) as f32;
+                    record_seq_notes(engine, &notes, start_step, velocity)
+                }
+                "export_wasm_bundle" => {
+                    let output_dir = args
+                        .get("output_dir")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    policy
+                        .check_write(output_dir)
+                        .and_then(|resolved| export_wasm_bundle(&resolved))
+                }
                 "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
                 other => Err(synthcraft_core::SynthError::Validation(format!(
                     "Unknown tool '{other}'"
@@ -1343,7 +1486,7 @@ fn mcp_tools_schema() -> Value {
         { "name": "synth_summary", "description": "Return full active patch parameters and 16-step sequencer state.", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "list_patches", "description": "List all 6 factory and user patches in the SynthCraft library.", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "load_patch", "description": "Select and activate a patch by ID (e.g. vienna_acid_303, goliath_reese_sub, danube_dub_chord, stephansdom_bell_fm, djcraft_riser_sweep, soundcraft_warm_pad).", "inputSchema": { "type": "object", "properties": { "patch_id": { "type": "string" } }, "required": ["patch_id"] } },
-        { "name": "update_oscillators", "description": "Update VCO1 and VCO2 waveforms (sine, saw, square, triangle, pulse_pwm, supersaw, white_noise, sub_octave), detune cents, mix, and FM index.", "inputSchema": { "type": "object", "properties": { "vco1_wave": { "type": "string" }, "vco2_wave": { "type": "string" }, "detune_cents": { "type": "number" }, "mix": { "type": "number" }, "fm_index": { "type": "number" } }, "required": ["vco1_wave", "vco2_wave"] } },
+        { "name": "update_oscillators", "description": "Update VCO1 and VCO2 waveforms (sine, saw, square, triangle, pulse_pwm, supersaw, white_noise, sub_octave, atmo_pad, wavetable), detune cents, mix, and FM index.", "inputSchema": { "type": "object", "properties": { "vco1_wave": { "type": "string" }, "vco2_wave": { "type": "string" }, "detune_cents": { "type": "number" }, "mix": { "type": "number" }, "fm_index": { "type": "number" } }, "required": ["vco1_wave", "vco2_wave"] } },
         { "name": "update_filter", "description": "Configure the 4-pole ladder filter mode (lowpass_24db, bandpass_12db, highpass_12db, acid_resonant), cutoff_hz, resonance_q, and env_mod_depth.", "inputSchema": { "type": "object", "properties": { "mode": { "type": "string" }, "cutoff_hz": { "type": "number" }, "resonance_q": { "type": "number" }, "env_mod_depth": { "type": "number" } }, "required": ["mode", "cutoff_hz", "resonance_q"] } },
         { "name": "update_envelope_lfo", "description": "Update ADSR envelope (attack_ms, decay_ms, sustain_level, release_ms) and LFO (lfo_rate_hz, lfo_depth).", "inputSchema": { "type": "object", "properties": { "attack_ms": { "type": "number" }, "decay_ms": { "type": "number" }, "sustain_level": { "type": "number" }, "release_ms": { "type": "number" }, "lfo_rate_hz": { "type": "number" }, "lfo_depth": { "type": "number" } } } },
         { "name": "set_sequencer_step", "description": "Update a step (0..15) in the 16-step acid sequencer (midi_note, accent, slide, active).", "inputSchema": { "type": "object", "properties": { "step_index": { "type": "integer" }, "midi_note": { "type": "integer" }, "accent": { "type": "boolean" }, "slide": { "type": "boolean" }, "active": { "type": "boolean" } }, "required": ["step_index", "midi_note"] } },
@@ -1366,7 +1509,7 @@ fn mcp_tools_schema() -> Value {
         { "name": "disconnect_rack_cable", "description": "Disconnect a 3U Eurorack patch cable by its cable_id.", "inputSchema": { "type": "object", "properties": { "cable_id": { "type": "string" } }, "required": ["cable_id"] } },
         { "name": "reset_rack_cables", "description": "Restore the default 3U Eurorack patch cables.", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "list_rack_modules", "description": "List all placed 3U Eurorack modules across rows.", "inputSchema": { "type": "object", "properties": {} } },
-        { "name": "add_rack_module", "description": "Add a 3U Eurorack module (vco1, vco2_xdsp, pcm_workstation, vcf_ladder, lfo_adsr, vca_master, wavefolder_lpg, sample_hold_slew, euclidean_clock, stereo_delay, attenuverter, inline_scope) to a row (0..2).", "inputSchema": { "type": "object", "properties": { "kind": { "type": "string" }, "row": { "type": "integer", "minimum": 0, "maximum": 2 } }, "required": ["kind"] } },
+        { "name": "add_rack_module", "description": "Add a 3U Eurorack module (vco1, vco2_xdsp, pcm_workstation, vcf_ladder, lfo_adsr, vca_master, wavefolder_lpg, sample_hold_slew, euclidean_clock, stereo_delay, attenuverter, inline_scope, clap_host) to a row (0..2).", "inputSchema": { "type": "object", "properties": { "kind": { "type": "string" }, "row": { "type": "integer", "minimum": 0, "maximum": 2 } }, "required": ["kind"] } },
         { "name": "remove_rack_module", "description": "Remove a 3U Eurorack module by module_id (also unplugs attached cables).", "inputSchema": { "type": "object", "properties": { "module_id": { "type": "string" } }, "required": ["module_id"] } },
         { "name": "move_rack_module", "description": "Move a 3U Eurorack module horizontally (delta_slot) or between rows (delta_row).", "inputSchema": { "type": "object", "properties": { "module_id": { "type": "string" }, "delta_row": { "type": "integer" }, "delta_slot": { "type": "integer" } }, "required": ["module_id"] } },
         { "name": "set_rack_module_param", "description": "Set normalized parameters param_a/param_b (0..1) or bypassed state on a 3U rack module.", "inputSchema": { "type": "object", "properties": { "module_id": { "type": "string" }, "param_a": { "type": "number" }, "param_b": { "type": "number" }, "bypassed": { "type": "boolean" } }, "required": ["module_id"] } },
@@ -1382,8 +1525,112 @@ fn mcp_tools_schema() -> Value {
         { "name": "scan_clap_plugins", "description": "Scan standard system CLAP directories for installed .clap plugins.", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "inspect_clap_plugin", "description": "Inspect an external .clap plugin binary (inside --automation-read-root) and return its plugin descriptors and automatable parameters.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "plugin_index": { "type": "integer" } }, "required": ["path"] } },
         { "name": "configure_clap_host", "description": "Configure the 3U CLAP Host rack module (plugin_path inside --automation-read-root, plugin_index, cv_param_id, mix 0..1, cv_depth -1..1).", "inputSchema": { "type": "object", "properties": { "plugin_path": { "type": "string" }, "plugin_index": { "type": "integer" }, "cv_param_id": { "type": "integer" }, "mix": { "type": "number" }, "cv_depth": { "type": "number" } } } },
+        { "name": "get_clap_host_status", "description": "Return the current 3U CLAP Host configuration and whether a CLAP HOST module is placed in the rack.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "list_wavetables", "description": "List all built-in morphing wavetables (analog_morph, formant_vowel, metallic_bell, acid_fold) and the active patch's selected wavetable.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "record_sequencer_notes", "description": "Step-record a sequence of MIDI notes (0..127) into the active patch's 16-step sequencer starting at start_step (0..15) with velocity (0.05..1.0; >=0.88 sets accent).", "inputSchema": { "type": "object", "properties": { "notes": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 127 } }, "start_step": { "type": "integer", "minimum": 0, "maximum": 15 }, "velocity": { "type": "number" } }, "required": ["notes"] } },
+        { "name": "export_wasm_bundle", "description": "Export the Web Audio AudioWorklet bridge (synthcraft-worklet.js) and compiled synthcraft_wasm.wasm (if built) into output_dir (inside --automation-write-root).", "inputSchema": { "type": "object", "properties": { "output_dir": { "type": "string" } }, "required": ["output_dir"] } },
         { "name": "reset_factory_patches", "description": "Reset all factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
     ])
+}
+
+const WORKLET_JS: &str = include_str!("../../synthcraft-wasm/web/synthcraft-worklet.js");
+
+fn clap_host_status_json(engine: &SynthEngine) -> Value {
+    let modules: Vec<&str> = engine
+        .rack_modules
+        .iter()
+        .filter(|m| m.kind == synthcraft_core::RackModuleKind::ClapHost)
+        .map(|m| m.id.as_str())
+        .collect();
+    json!({
+        "config": engine.clap_host,
+        "rack_slots": modules,
+    })
+}
+
+fn list_wavetables_json(engine: &SynthEngine) -> Value {
+    let builtins: Vec<Value> = synthcraft_core::Wavetable::BUILTINS
+        .iter()
+        .map(|(id, desc)| json!({ "id": id, "description": desc }))
+        .collect();
+    json!({
+        "active_wavetable": engine.active_patch().wavetable,
+        "vco1_wave": engine.active_patch().vco1_wave.as_str(),
+        "vco2_wave": engine.active_patch().vco2_wave.as_str(),
+        "builtins": builtins,
+    })
+}
+
+fn record_seq_notes(
+    engine: &mut SynthEngine,
+    notes: &[u8],
+    start_step: usize,
+    velocity: f32,
+) -> Result<Value, synthcraft_core::SynthError> {
+    if notes.is_empty() {
+        return Err(synthcraft_core::SynthError::Validation(
+            "notes list must not be empty".into(),
+        ));
+    }
+    let p = engine.active_patch_mut();
+    let len = p.steps.len();
+    if len == 0 {
+        return Err(synthcraft_core::SynthError::Validation(
+            "active patch has no sequencer steps".into(),
+        ));
+    }
+    let vel = velocity.clamp(0.05, 1.0);
+    let mut written = 0usize;
+    for (i, &note) in notes.iter().enumerate().take(len) {
+        let idx = (start_step + i) % len;
+        if let Some(step) = p.steps.get_mut(idx) {
+            step.midi_note = note.clamp(0, 127);
+            step.active = true;
+            step.velocity = vel;
+            step.accent = vel >= 0.88;
+            written += 1;
+        }
+    }
+    Ok(json!({
+        "recorded_steps": written,
+        "start_step": start_step % len,
+        "velocity": vel,
+        "steps": p.steps,
+    }))
+}
+
+fn export_wasm_bundle(output_dir: &Path) -> Result<Value, synthcraft_core::SynthError> {
+    std::fs::create_dir_all(output_dir)
+        .map_err(|e| synthcraft_core::SynthError::Io(format!("create_dir_all failed: {e}")))?;
+    let js_path = output_dir.join("synthcraft-worklet.js");
+    std::fs::write(&js_path, WORKLET_JS)
+        .map_err(|e| synthcraft_core::SynthError::Io(format!("write worklet js failed: {e}")))?;
+
+    // Copy compiled `synthcraft_wasm.wasm` if present next to the binary or in target/.
+    let mut candidates = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("synthcraft_wasm.wasm"));
+        }
+    }
+    candidates.push(PathBuf::from(
+        "target/wasm32-unknown-unknown/release/synthcraft_wasm.wasm",
+    ));
+    let copied_wasm = candidates
+        .into_iter()
+        .find(|p| p.is_file())
+        .and_then(|src| {
+            let dst = output_dir.join("synthcraft_wasm.wasm");
+            std::fs::copy(&src, &dst)
+                .ok()
+                .map(|bytes| (dst.to_string_lossy().into_owned(), bytes))
+        });
+
+    Ok(json!({
+        "worklet_js": js_path.to_string_lossy(),
+        "wasm_copied": copied_wasm.as_ref().map(|(p, _)| p.as_str()),
+        "wasm_bytes": copied_wasm.as_ref().map(|(_, b)| *b),
+    }))
 }
 
 fn run_mcp_stdio(engine: &mut SynthEngine, db_path: &Path, policy: &PathPolicy) {
@@ -1441,7 +1688,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 44);
+        assert_eq!(tools, 48);
         let _ = std::fs::remove_file(&db);
     }
 
