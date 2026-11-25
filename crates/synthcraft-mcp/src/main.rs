@@ -254,6 +254,41 @@ pub enum CliSub {
     ListRackPresets,
     /// Load one of the 12 curated pre-patched 3U modular rack rigs by id
     LoadRackPreset { preset_id: String },
+    /// Set or add a General Modulation Matrix route (slot 0..7)
+    SetModRoute {
+        #[arg(long, default_value_t = 0)]
+        index: usize,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        dest: String,
+        #[arg(long, default_value_t = 0.5)]
+        depth: f32,
+        #[arg(long, default_value_t = true)]
+        enabled: bool,
+    },
+    /// Clear all routes in the active patch's Modulation Matrix
+    ClearModMatrix,
+    /// Configure the real-time Arpeggiator (off, up, down, up_down, random)
+    SetArpeggiator {
+        #[arg(long)]
+        mode: String,
+        #[arg(long, default_value_t = 4)]
+        rate_div: u8,
+        #[arg(long, default_value_t = 2)]
+        octaves: u8,
+        #[arg(long, default_value_t = 0.65)]
+        gate: f32,
+        #[arg(long, default_value_t = false)]
+        latch: bool,
+    },
+    /// Set microtonal tuning preset (equal_12, just_5_limit, pythagorean, equal_19, equal_24, equal_31, bohlen_pierce) or inline Scala .scl text
+    SetTuning {
+        #[arg(long, default_value = "equal_12")]
+        preset: String,
+        #[arg(long)]
+        scala_scl: Option<String>,
+    },
     /// Reset all patches to factory defaults
     ResetFactory,
 }
@@ -507,6 +542,34 @@ fn main() {
         CliSub::ResetRackLayout => Command::ResetRackLayout,
         CliSub::ListRackPresets => Command::ListRackPresets,
         CliSub::LoadRackPreset { preset_id } => Command::LoadRackPreset { preset_id },
+        CliSub::SetModRoute {
+            index,
+            source,
+            dest,
+            depth,
+            enabled,
+        } => Command::SetModRoute {
+            index,
+            source,
+            dest,
+            depth,
+            enabled,
+        },
+        CliSub::ClearModMatrix => Command::ClearModMatrix,
+        CliSub::SetArpeggiator {
+            mode,
+            rate_div,
+            octaves,
+            gate,
+            latch,
+        } => Command::SetArpeggiator {
+            mode,
+            rate_div,
+            octaves,
+            gate,
+            latch,
+        },
+        CliSub::SetTuning { preset, scala_scl } => Command::SetTuning { preset, scala_scl },
         CliSub::ResetFactory => Command::ResetFactoryPatches,
     };
     let cmd = if policy.is_active() {
@@ -1000,6 +1063,47 @@ pub fn handle_mcp_request(
                         .to_string(),
                 }
                 .dispatch(engine),
+                "set_mod_route" => Command::SetModRoute {
+                    index: args.get("index").and_then(Value::as_u64).unwrap_or(0) as usize,
+                    source: args
+                        .get("source")
+                        .and_then(Value::as_str)
+                        .unwrap_or("lfo")
+                        .to_string(),
+                    dest: args
+                        .get("dest")
+                        .and_then(Value::as_str)
+                        .unwrap_or("cutoff")
+                        .to_string(),
+                    depth: args.get("depth").and_then(Value::as_f64).unwrap_or(0.5) as f32,
+                    enabled: args.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+                }
+                .dispatch(engine),
+                "clear_mod_matrix" => Command::ClearModMatrix.dispatch(engine),
+                "set_arpeggiator" => Command::SetArpeggiator {
+                    mode: args
+                        .get("mode")
+                        .and_then(Value::as_str)
+                        .unwrap_or("off")
+                        .to_string(),
+                    rate_div: args.get("rate_div").and_then(Value::as_u64).unwrap_or(4) as u8,
+                    octaves: args.get("octaves").and_then(Value::as_u64).unwrap_or(2) as u8,
+                    gate: args.get("gate").and_then(Value::as_f64).unwrap_or(0.65) as f32,
+                    latch: args.get("latch").and_then(Value::as_bool).unwrap_or(false),
+                }
+                .dispatch(engine),
+                "set_tuning" => Command::SetTuning {
+                    preset: args
+                        .get("preset")
+                        .and_then(Value::as_str)
+                        .unwrap_or("equal_12")
+                        .to_string(),
+                    scala_scl: args
+                        .get("scala_scl")
+                        .and_then(Value::as_str)
+                        .map(String::from),
+                }
+                .dispatch(engine),
                 "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
                 other => Err(synthcraft_core::SynthError::Validation(format!(
                     "Unknown tool '{other}'"
@@ -1082,6 +1186,10 @@ fn mcp_tools_schema() -> Value {
         { "name": "reset_rack_layout", "description": "Restore the default 2-row 3U Eurorack module layout and default cables.", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "list_rack_presets", "description": "List all 12 curated pre-patched 3U modular rack rigs (modules + cables + voicing).", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "load_rack_preset", "description": "Load one of the 12 curated pre-patched 3U modular rack rigs by preset_id (e.g. berlin_school_sequence, west_coast_wavefolder, acid_squelch_303, random_robot_bleeps, ambient_cathedral_drift, industrial_filter_bypass, dub_techno_chord_echo, fm_metallic_bells, sub_earthquake_reese, pcm_shimmer_workstation, polyrhythmic_glitch_lab, clean_studio_init).", "inputSchema": { "type": "object", "properties": { "preset_id": { "type": "string" } }, "required": ["preset_id"] } },
+        { "name": "set_mod_route", "description": "Configure one General Modulation Matrix route (index 0..7): source (lfo, adsr_env, velocity, mod_wheel, sample_hold, ambient_drift) -> dest (cutoff, resonance, fm_index, pulse_width, vco2_detune, wavefold, stereo_pan, extreme_morph, reverb_mix) with bipolar depth (-1..1).", "inputSchema": { "type": "object", "properties": { "index": { "type": "integer", "minimum": 0, "maximum": 7 }, "source": { "type": "string" }, "dest": { "type": "string" }, "depth": { "type": "number" }, "enabled": { "type": "boolean" } }, "required": ["source", "dest", "depth"] } },
+        { "name": "clear_mod_matrix", "description": "Clear all routes from the active patch's Modulation Matrix.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "set_arpeggiator", "description": "Configure the real-time Arpeggiator: mode (off, up, down, up_down, random), rate_div (1=1/4, 2=1/8, 4=1/16, 8=1/32), octaves (1..4), gate (0.1..1.0), latch (bool).", "inputSchema": { "type": "object", "properties": { "mode": { "type": "string" }, "rate_div": { "type": "integer" }, "octaves": { "type": "integer" }, "gate": { "type": "number" }, "latch": { "type": "boolean" } }, "required": ["mode"] } },
+        { "name": "set_tuning", "description": "Set microtonal tuning preset (equal_12, just_5_limit, pythagorean, equal_19, equal_24, equal_31, bohlen_pierce) or pass custom Scala .scl text in scala_scl.", "inputSchema": { "type": "object", "properties": { "preset": { "type": "string" }, "scala_scl": { "type": "string" } } } },
         { "name": "reset_factory_patches", "description": "Reset all factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
     ])
 }
@@ -1141,7 +1249,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 35);
+        assert_eq!(tools, 39);
         let _ = std::fs::remove_file(&db);
     }
 

@@ -176,6 +176,12 @@ pub struct SynthPatch {
     pub sampler: SamplerParams,
     #[serde(default)]
     pub fx: FxParams,
+    #[serde(default)]
+    pub mod_matrix: Vec<crate::mod_matrix::ModRoute>,
+    #[serde(default)]
+    pub arp: crate::arp::ArpParams,
+    #[serde(default)]
+    pub tuning: crate::tuning::TuningPreset,
     pub steps: Vec<SequencerStep>,
 }
 

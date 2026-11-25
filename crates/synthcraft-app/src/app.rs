@@ -1310,6 +1310,117 @@ impl SynthCraftApp {
             });
             self.apply_patch_edit(&before, &edited);
         }
+
+        // Arpeggiator, Microtonal Tuning (Scala .scl), and General Modulation Matrix
+        ui.add_space(6.0);
+        {
+            let before = self.engine.active_patch().clone();
+            let mut edited = before.clone();
+
+            ui.group(|ui| {
+                ui.strong("Arpeggiator & Microtonal Tuning (Scala .scl)");
+                ui.horizontal_wrapped(|ui| {
+                    egui::ComboBox::from_label("Arp Mode")
+                        .width(100.0)
+                        .selected_text(edited.arp.mode.label())
+                        .show_ui(ui, |ui| {
+                            for m in synthcraft_core::ArpMode::ALL {
+                                ui.selectable_value(&mut edited.arp.mode, m, m.label());
+                            }
+                        });
+                    egui::ComboBox::from_label("Rate")
+                        .width(68.0)
+                        .selected_text(match edited.arp.rate_div {
+                            1 => "1/4",
+                            2 => "1/8",
+                            8 => "1/32",
+                            _ => "1/16",
+                        })
+                        .show_ui(ui, |ui| {
+                            for (div, lbl) in [(1u8, "1/4"), (2, "1/8"), (4, "1/16"), (8, "1/32")] {
+                                ui.selectable_value(&mut edited.arp.rate_div, div, lbl);
+                            }
+                        });
+                    ui.add(egui::Slider::new(&mut edited.arp.octaves, 1..=4).text("Oct"));
+                    ui.add(egui::Slider::new(&mut edited.arp.gate, 0.1..=1.0).text("Gate"));
+                    ui.checkbox(&mut edited.arp.latch, "Latch");
+
+                    ui.separator();
+                    let cur_tuning = edited.tuning.label();
+                    egui::ComboBox::from_label("Tuning")
+                        .width(175.0)
+                        .selected_text(cur_tuning)
+                        .show_ui(ui, |ui| {
+                            for (id, label) in synthcraft_core::TuningPreset::BUILTINS {
+                                if let Some(preset) =
+                                    synthcraft_core::TuningPreset::parse_builtin(id)
+                                {
+                                    if ui
+                                        .selectable_label(edited.tuning == preset, label)
+                                        .clicked()
+                                    {
+                                        edited.tuning = preset;
+                                    }
+                                }
+                            }
+                        });
+                });
+            });
+
+            ui.add_space(4.0);
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    ui.strong(format!(
+                        "General Modulation Matrix ({}/8 routes)",
+                        edited.mod_matrix.len()
+                    ));
+                    if edited.mod_matrix.len() < 8 && ui.small_button("+ Add Route").clicked() {
+                        edited.mod_matrix.push(synthcraft_core::ModRoute {
+                            source: synthcraft_core::ModSource::Lfo,
+                            dest: synthcraft_core::ModDest::Cutoff,
+                            depth: 0.35,
+                            enabled: true,
+                        });
+                    }
+                    if !edited.mod_matrix.is_empty() && ui.small_button("Clear Matrix").clicked() {
+                        edited.mod_matrix.clear();
+                    }
+                });
+                let mut remove_idx: Option<usize> = None;
+                for (i, route) in edited.mod_matrix.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut route.enabled, format!("#{}", i + 1));
+                        egui::ComboBox::from_label(format!("Src {}", i + 1))
+                            .width(105.0)
+                            .selected_text(route.source.label())
+                            .show_ui(ui, |ui| {
+                                for s in synthcraft_core::ModSource::ALL {
+                                    ui.selectable_value(&mut route.source, s, s.label());
+                                }
+                            });
+                        ui.label("->");
+                        egui::ComboBox::from_label(format!("Dst {}", i + 1))
+                            .width(115.0)
+                            .selected_text(route.dest.label())
+                            .show_ui(ui, |ui| {
+                                for d in synthcraft_core::ModDest::ALL {
+                                    ui.selectable_value(&mut route.dest, d, d.label());
+                                }
+                            });
+                        ui.add(egui::Slider::new(&mut route.depth, -1.0..=1.0).text("Depth"));
+                        if ui.small_button("X").on_hover_text("Remove route").clicked() {
+                            remove_idx = Some(i);
+                        }
+                    });
+                }
+                if let Some(i) = remove_idx {
+                    edited.mod_matrix.remove(i);
+                }
+            });
+
+            self.apply_patch_edit(&before, &edited);
+        }
+
         if changed {
             self.persist();
         }

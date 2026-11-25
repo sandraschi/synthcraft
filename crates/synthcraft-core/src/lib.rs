@@ -5,12 +5,14 @@
 //! and BPM/Camelot Stem & Riser Forge for DJCraft.
 #![forbid(unsafe_code)]
 
+pub mod arp;
 pub mod banks;
 pub mod db;
 pub mod dsp;
 pub mod edit;
 pub mod error;
 pub mod midi;
+pub mod mod_matrix;
 pub mod model;
 pub mod params;
 pub mod plugin;
@@ -20,9 +22,12 @@ pub mod rompler;
 pub mod rt;
 pub mod sampler;
 pub mod sandbox;
+pub mod tuning;
 
+pub use arp::{ArpMode, ArpParams};
 pub use db::{default_db_path, load_from_db, save_to_db};
 pub use error::SynthError;
+pub use mod_matrix::{ModDest, ModRoute, ModSource};
 pub use model::{
     analyze_patch_spectrum, export_clap_descriptor, export_djcraft_stem_manifest, midi_to_freq_hz,
     stem_duration_ms, synthesize_audio_buffer, write_wav_file, ClapParameterSpec, FilterMode,
@@ -40,6 +45,7 @@ pub use rompler::{
     RackRouting,
 };
 pub use rt::{RtOptions, SynthRt, MAX_VOICES};
+pub use tuning::{build_pitch_table, parse_scala_scl, TuningPreset};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -152,6 +158,9 @@ impl SynthEngine {
                 extreme_morph: 0.50,
                 sampler: SamplerParams::default(),
                 fx: FxParams::default(),
+                mod_matrix: Vec::new(),
+                arp: ArpParams::default(),
+                tuning: TuningPreset::default(),
                 steps: mk_steps(&[
                     45, 45, 57, 45, 48, 45, 55, 52, 45, 45, 60, 45, 50, 52, 55, 57,
                 ]),
@@ -186,6 +195,9 @@ impl SynthEngine {
                 extreme_morph: 0.65,
                 sampler: SamplerParams::default(),
                 fx: FxParams::default(),
+                mod_matrix: Vec::new(),
+                arp: ArpParams::default(),
+                tuning: TuningPreset::default(),
                 steps: mk_steps(&[
                     41, 41, 41, 41, 44, 44, 44, 44, 39, 39, 39, 39, 36, 36, 39, 41,
                 ]),
@@ -220,6 +232,9 @@ impl SynthEngine {
                 extreme_morph: 0.40,
                 sampler: SamplerParams::default(),
                 fx: FxParams::default(),
+                mod_matrix: Vec::new(),
+                arp: ArpParams::default(),
+                tuning: TuningPreset::default(),
                 steps: mk_steps(&[
                     51, 51, 58, 51, 54, 51, 61, 58, 51, 51, 58, 54, 51, 54, 58, 63,
                 ]),
@@ -254,6 +269,9 @@ impl SynthEngine {
                 extreme_morph: 0.50,
                 sampler: SamplerParams::default(),
                 fx: FxParams::default(),
+                mod_matrix: Vec::new(),
+                arp: ArpParams::default(),
+                tuning: TuningPreset::default(),
                 steps: mk_steps(&[
                     64, 67, 71, 76, 74, 71, 67, 64, 66, 69, 71, 74, 71, 69, 66, 64,
                 ]),
@@ -288,6 +306,9 @@ impl SynthEngine {
                 extreme_morph: 0.70,
                 sampler: SamplerParams::default(),
                 fx: FxParams::default(),
+                mod_matrix: Vec::new(),
+                arp: ArpParams::default(),
+                tuning: TuningPreset::default(),
                 steps: mk_steps(&[
                     57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
                 ]),
@@ -322,6 +343,9 @@ impl SynthEngine {
                 extreme_morph: 0.55,
                 sampler: SamplerParams::default(),
                 fx: FxParams::default(),
+                mod_matrix: Vec::new(),
+                arp: ArpParams::default(),
+                tuning: TuningPreset::default(),
                 steps: mk_steps(&[
                     57, 57, 61, 61, 64, 64, 69, 69, 68, 68, 64, 64, 61, 61, 57, 57,
                 ]),
@@ -498,6 +522,25 @@ pub enum Command {
     ListRackPresets,
     LoadRackPreset {
         preset_id: String,
+    },
+    SetModRoute {
+        index: usize,
+        source: String,
+        dest: String,
+        depth: f32,
+        enabled: bool,
+    },
+    ClearModMatrix,
+    SetArpeggiator {
+        mode: String,
+        rate_div: u8,
+        octaves: u8,
+        gate: f32,
+        latch: bool,
+    },
+    SetTuning {
+        preset: String,
+        scala_scl: Option<String>,
     },
     ResetFactoryPatches,
 }
@@ -1014,6 +1057,72 @@ impl Command {
                     "cables": engine.rack_cables.len(),
                 }))
             }
+            Self::SetModRoute {
+                index,
+                source,
+                dest,
+                depth,
+                enabled,
+            } => {
+                if *index >= 8 {
+                    return Err(SynthError::Validation(format!(
+                        "Modulation slot {index} out of range (0..8)"
+                    )));
+                }
+                let src = ModSource::parse(source).ok_or_else(|| {
+                    SynthError::Validation(format!("Unknown modulation source '{source}'"))
+                })?;
+                let dst = ModDest::parse(dest).ok_or_else(|| {
+                    SynthError::Validation(format!("Unknown modulation destination '{dest}'"))
+                })?;
+                let route = ModRoute {
+                    source: src,
+                    dest: dst,
+                    depth: depth.clamp(-1.0, 1.0),
+                    enabled: *enabled,
+                };
+                let m = &mut engine.active_patch_mut().mod_matrix;
+                if *index < m.len() {
+                    m[*index] = route;
+                } else {
+                    m.push(route);
+                }
+                Ok(json!({ "mod_matrix": m }))
+            }
+            Self::ClearModMatrix => {
+                engine.active_patch_mut().mod_matrix.clear();
+                Ok(json!({ "cleared": true }))
+            }
+            Self::SetArpeggiator {
+                mode,
+                rate_div,
+                octaves,
+                gate,
+                latch,
+            } => {
+                let parsed = ArpMode::parse(mode).ok_or_else(|| {
+                    SynthError::Validation(format!("Unknown arpeggiator mode '{mode}'"))
+                })?;
+                let arp = &mut engine.active_patch_mut().arp;
+                arp.mode = parsed;
+                arp.rate_div = (*rate_div).clamp(1, 8);
+                arp.octaves = (*octaves).clamp(1, 4);
+                arp.gate = gate.clamp(0.1, 1.0);
+                arp.latch = *latch;
+                Ok(json!({ "arp": *arp }))
+            }
+            Self::SetTuning { preset, scala_scl } => {
+                let tuning = if let Some(scl) = scala_scl {
+                    let _ = parse_scala_scl(scl)?;
+                    TuningPreset::CustomScala(scl.clone())
+                } else {
+                    TuningPreset::parse_builtin(preset).ok_or_else(|| {
+                        SynthError::Validation(format!("Unknown tuning preset '{preset}'"))
+                    })?
+                };
+                engine.active_patch_mut().tuning = tuning.clone();
+                Ok(json!({ "tuning": tuning.id(), "label": tuning.label() }))
+            }
             Self::ResetFactoryPatches => {
                 *engine = SynthEngine::factory_seed();
                 Ok(json!({
@@ -1064,6 +1173,9 @@ fn ambient_patches(mk_steps: &dyn Fn(&[u8]) -> Vec<SequencerStep>) -> Vec<SynthP
             reverb_damping: 0.45,
             ..FxParams::default()
         },
+        mod_matrix: Vec::new(),
+        arp: ArpParams::default(),
+        tuning: TuningPreset::default(),
         steps: mk_steps(&[
             57, 57, 57, 57, 57, 57, 57, 57, 64, 64, 64, 64, 64, 64, 64, 64,
         ])

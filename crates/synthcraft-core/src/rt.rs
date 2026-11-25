@@ -149,6 +149,10 @@ pub struct SynthRt {
     delay_pos: usize,
     delay_lp_l: f32,
     delay_lp_r: f32,
+    arp: crate::arp::ArpRuntime,
+    pitch_table: [f32; 128],
+    pitch_tuning: crate::tuning::TuningPreset,
+    pitch_a4: f32,
 }
 
 impl SynthRt {
@@ -159,6 +163,9 @@ impl SynthRt {
             *v = Voice::new(i);
         }
         let patch_seed = patch.fx.ambient_seed;
+        let pitch_tuning = patch.tuning.clone();
+        let pitch_a4 = RtOptions::default().a4_hz;
+        let pitch_table = crate::tuning::build_pitch_table(&pitch_tuning, pitch_a4);
         Self {
             sr,
             cutoff_s: patch.cutoff_hz,
@@ -190,6 +197,10 @@ impl SynthRt {
             delay_pos: 0,
             delay_lp_l: 0.0,
             delay_lp_r: 0.0,
+            arp: crate::arp::ArpRuntime::default(),
+            pitch_table,
+            pitch_tuning,
+            pitch_a4,
         }
     }
 
@@ -253,7 +264,16 @@ impl SynthRt {
     }
 
     fn hz(&self, note: u8) -> f32 {
-        midi_hz(note) * (self.opts.a4_hz / 440.0)
+        self.pitch_table[(note as usize).min(127)]
+    }
+
+    fn sync_pitch_table_if_needed(&mut self) {
+        if self.patch.tuning != self.pitch_tuning || (self.opts.a4_hz - self.pitch_a4).abs() > 0.01
+        {
+            self.pitch_tuning = self.patch.tuning.clone();
+            self.pitch_a4 = self.opts.a4_hz;
+            self.pitch_table = crate::tuning::build_pitch_table(&self.pitch_tuning, self.pitch_a4);
+        }
     }
 
     pub fn set_playing(&mut self, playing: bool) {
@@ -360,8 +380,7 @@ impl SynthRt {
         v.env.gate_on();
     }
 
-    pub fn note_on(&mut self, note: u8, velocity: f32) {
-        // Re-trigger the same held note instead of stacking duplicates.
+    fn trigger_voice_note_on(&mut self, note: u8, velocity: f32) {
         let existing = self
             .voices
             .iter()
@@ -370,7 +389,7 @@ impl SynthRt {
         self.start_voice(idx, note, velocity, false, false);
     }
 
-    pub fn note_off(&mut self, note: u8) {
+    fn trigger_voice_note_off(&mut self, note: u8) {
         for v in self
             .voices
             .iter_mut()
@@ -381,7 +400,25 @@ impl SynthRt {
         }
     }
 
+    pub fn note_on(&mut self, note: u8, velocity: f32) {
+        self.sync_pitch_table_if_needed();
+        if self.patch.arp.mode != crate::arp::ArpMode::Off {
+            self.arp.key_down(note, velocity, self.patch.arp.latch);
+            return;
+        }
+        self.trigger_voice_note_on(note, velocity);
+    }
+
+    pub fn note_off(&mut self, note: u8) {
+        if self.patch.arp.mode != crate::arp::ArpMode::Off {
+            self.arp.key_up(note);
+            return;
+        }
+        self.trigger_voice_note_off(note);
+    }
+
     pub fn all_notes_off(&mut self) {
+        let _ = self.arp.clear();
         for v in self.voices.iter_mut().filter(|v| v.active) {
             v.hold = false;
             v.gate = false;
@@ -471,6 +508,7 @@ impl SynthRt {
     /// Render `left.len().min(right.len())` stereo frames. This is the one synthesis path.
     /// Does not allocate.
     pub fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+        self.sync_pitch_table_if_needed();
         let sr = self.sr;
         let glide_coef = 1.0 - (-1.0 / (GLIDE_MS * 0.001 * sr)).exp();
         let smooth = 1.0 - (-1.0 / (0.008 * sr)).exp();
@@ -487,6 +525,11 @@ impl SynthRt {
         let ambient = fx.ambient_depth.clamp(0.0, 1.0);
 
         for (left_out, right_out) in left.iter_mut().zip(right.iter_mut()) {
+            match self.arp.tick(self.patch.arp, self.patch.bpm, sr) {
+                crate::arp::ArpAction::NoteOn(n, vel) => self.trigger_voice_note_on(n, vel),
+                crate::arp::ArpAction::NoteOff(n) => self.trigger_voice_note_off(n),
+                crate::arp::ArpAction::None => {}
+            }
             if self.seq.playing {
                 if self.seq.just_started {
                     self.seq.just_started = false;
@@ -556,28 +599,45 @@ impl SynthRt {
                     continue;
                 }
                 let acc = if v.accent { 1.35 } else { 1.0 };
-
+                let mo = crate::mod_matrix::evaluate_mod_matrix(
+                    &p.mod_matrix,
+                    crate::mod_matrix::ModInputs {
+                        lfo,
+                        env,
+                        vel: v.vel,
+                        mod_wheel: self.mod_wheel,
+                        sh: sh_cv,
+                        drift: d_cut,
+                    },
+                );
+                let voice_detune = if mo.detune_cents.abs() > 1e-4 {
+                    2.0_f32.powf((p.vco2_detune_cents + mo.detune_cents) / 1200.0)
+                } else {
+                    detune_ratio
+                };
+                let pw = (p.pulse_width + mo.pulse_width).clamp(0.05, 0.95);
                 let r = self.routing;
-                let s2 = v
-                    .osc2
-                    .tick(p.vco2_wave, f * detune_ratio, sr, p.pulse_width, 0.0);
-                let fm = s2 * p.fm_index.clamp(0.0, 4.0) * 0.08 * r.vco2_to_fm
+                let s2 = v.osc2.tick(p.vco2_wave, f * voice_detune, sr, pw, 0.0);
+                let fm = s2 * (p.fm_index + mo.fm_index).clamp(0.0, 4.0) * 0.08 * r.vco2_to_fm
                     + lfo * r.lfo_to_fm * 0.15
                     + sh_cv * r.sh_to_fm * 0.12;
-                let s1 = v.osc1.tick(p.vco1_wave, f, sr, p.pulse_width, fm);
+                let s1 = v.osc1.tick(p.vco1_wave, f, sr, pw, fm);
                 let mut raw = s1 * (1.0 - mix) * r.vco1_to_vcf + s2 * (mix + r.vco2_to_vcf * 0.5);
-                if r.fold_amount > 0.01 {
-                    let gain = 1.0 + r.fold_amount * 4.5;
+                let fold = (r.fold_amount + mo.wavefold).clamp(0.0, 1.0);
+                if fold > 0.01 {
+                    let gain = 1.0 + fold * 4.5;
                     let folded = (raw * gain + r.fold_symmetry).sin();
-                    raw = raw * (1.0 - r.fold_amount) + folded * r.fold_amount;
+                    raw = raw * (1.0 - fold) + folded * fold;
                 }
 
                 let dphase = f64::from(f / sr);
                 if p.extreme_dsp != crate::rompler::ExtremeDspMode::Off {
                     v.layer_x_phase += dphase;
-                    let x = p
-                        .extreme_dsp
-                        .sample_dsp(v.layer_x_phase as f32, v.time_s, morph);
+                    let x = p.extreme_dsp.sample_dsp(
+                        v.layer_x_phase as f32,
+                        v.time_s,
+                        (morph + mo.morph).clamp(0.0, 1.0),
+                    );
                     raw = raw * 0.45 + x * 0.55;
                 }
                 if let Some(m1) = p.m1_program {
@@ -625,14 +685,16 @@ impl SynthRt {
                     + env * r.adsr_to_cutoff * 2.5
                     + lfo * 1.2 * r.lfo_to_cutoff
                     + sh_cv * 1.6 * r.sh_to_cutoff
-                    + d_cut * 1.5;
+                    + d_cut * 1.5
+                    + mo.cutoff_oct;
                 let cutoff = self.cutoff_s * 2.0_f32.powf(octaves);
-                let filtered =
-                    v.filter
-                        .process(raw * drive_in, cutoff, sr, self.q_s, p.filter_mode);
+                let q = (self.q_s + mo.resonance_q).clamp(0.5, 12.0);
+                let filtered = v
+                    .filter
+                    .process(raw * drive_in, cutoff, sr, q, p.filter_mode);
                 let vca_in = filtered * r.vcf_to_vca + raw * r.direct_to_vca;
                 let x = (vca_in * drive_out).tanh() * env * r.adsr_to_vca * v.vel * acc;
-                let pan = (v.pan * spread + layer_pan).clamp(-1.0, 1.0);
+                let pan = (v.pan * spread + layer_pan + mo.pan).clamp(-1.0, 1.0);
                 if pan == 0.0 {
                     sum_l += x;
                     sum_r += x;

@@ -158,6 +158,36 @@ impl SynthPatch {
                 key: b.camelot_key.clone(),
             });
         }
+        if a.arp != b.arp {
+            out.push(Command::SetArpeggiator {
+                mode: b.arp.mode.as_str().to_string(),
+                rate_div: b.arp.rate_div,
+                octaves: b.arp.octaves,
+                gate: b.arp.gate,
+                latch: b.arp.latch,
+            });
+        }
+        if a.tuning != b.tuning {
+            let (preset, scala_scl) = match &b.tuning {
+                crate::TuningPreset::CustomScala(s) => {
+                    ("custom_scala".to_string(), Some(s.clone()))
+                }
+                other => (other.id().to_string(), None),
+            };
+            out.push(Command::SetTuning { preset, scala_scl });
+        }
+        if a.mod_matrix != b.mod_matrix {
+            out.push(Command::ClearModMatrix);
+            for (i, r) in b.mod_matrix.iter().enumerate().take(8) {
+                out.push(Command::SetModRoute {
+                    index: i,
+                    source: r.source.as_str().to_string(),
+                    dest: r.dest.as_str().to_string(),
+                    depth: r.depth,
+                    enabled: r.enabled,
+                });
+            }
+        }
         for (i, (x, y)) in a.steps.iter().zip(&b.steps).enumerate() {
             if x.midi_note != y.midi_note
                 || x.accent != y.accent
