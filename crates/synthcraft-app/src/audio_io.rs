@@ -37,6 +37,8 @@ pub enum AudioMsg {
     ClapHostCvParam(Option<u32>),
     /// Set external Aux FX input gain (`0.0..=1.0`) for streaming audio from DJCraft (`127.0.0.1:20810`).
     AuxInGain(f32),
+    /// Trigger one voice (`0..8`) of the built-in TR-808/909 drum machine for immediate audition.
+    TriggerDrum(usize, bool),
 }
 
 /// Shared read-only view of what the callback is doing, for meters and the scope.
@@ -335,6 +337,9 @@ impl AudioHandle {
                                 } else if aux_in_gain <= 0.001 {
                                     aux_rx = None;
                                 }
+                            }
+                            AudioMsg::TriggerDrum(vi, acc) => {
+                                rt.trigger_drum(vi, acc);
                             }
                         }
                     }

@@ -155,6 +155,9 @@ pub struct SynthCraftApp {
     pub held_ui_note: Option<u8>,
     pub seq_record: bool,
     pub seq_record_cursor: usize,
+    pub seq_bar_page: usize,
+    pub drum_bar_page: usize,
+    pub drum_selected_voice: usize,
     pub kbd_down: HashMap<egui::Key, u8>,
     pub kbd_octave: i32,
     pub analysis_cache: Option<((String, u32, u32), synthcraft_core::SpectrumAnalysisReport)>,
@@ -274,6 +277,9 @@ impl SynthCraftApp {
             held_ui_note: None,
             seq_record: false,
             seq_record_cursor: 0,
+            seq_bar_page: 0,
+            drum_bar_page: 0,
+            drum_selected_voice: 0,
             kbd_down: HashMap::new(),
             kbd_octave: 3,
             analysis_cache: None,
@@ -1311,8 +1317,17 @@ impl SynthCraftApp {
     }
 
     fn render_sequencer_env(&mut self, ui: &mut egui::Ui) {
+        if self.subpage == 2 {
+            crate::drums_ui::render_drum_machine(self, ui);
+            return;
+        }
         let pal = self.skin.palette();
-        ui.heading("2. 16-Step Acid Sequencer, ADSR Fader Bank & Tempo LFO");
+        ui.horizontal_wrapped(|ui| {
+            ui.heading("5. 64-Step Acid Sequencer (4 Bars), ADSR Fader Bank & Tempo LFO");
+            if ui.button("Open TR-808/909 8-Voice Drum Machine").clicked() {
+                self.subpage = 2;
+            }
+        });
         ui.separator();
 
         let note_names = [
@@ -1346,12 +1361,94 @@ impl SynthCraftApp {
             ui.add_space(6.0);
 
             ui.group(|ui| {
+                // Pattern length selector (16 / 32 / 48 / 64 steps) & Bar A/B/C/D pager
+                ui.horizontal_wrapped(|ui| {
+                    ui.strong("Pattern Length:");
+                    let cur_len = p.steps.len();
+                    for target_len in [16_usize, 32, 48, 64] {
+                        if ui
+                            .selectable_label(cur_len == target_len, format!("{target_len} steps"))
+                            .clicked()
+                        {
+                            if target_len > cur_len {
+                                let seed = if cur_len > 0 {
+                                    p.steps.clone()
+                                } else {
+                                    vec![synthcraft_core::SequencerStep {
+                                        step_index: 0,
+                                        midi_note: 45,
+                                        velocity: 0.85,
+                                        gate_pct: 0.65,
+                                        accent: false,
+                                        slide: false,
+                                        active: true,
+                                    }]
+                                };
+                                for i in cur_len..target_len {
+                                    let mut c = seed[i % seed.len()].clone();
+                                    c.step_index = i;
+                                    p.steps.push(c);
+                                }
+                            } else {
+                                p.steps.truncate(target_len);
+                            }
+                            let max_bars = (p.steps.len() / 16).max(1);
+                            if self.seq_bar_page >= max_bars {
+                                self.seq_bar_page = max_bars - 1;
+                            }
+                            changed = true;
+                        }
+                    }
+
+                    ui.separator();
+                    ui.strong("Bar:");
+                    let num_bars = (p.steps.len() / 16).clamp(1, 4);
+                    if self.seq_bar_page >= num_bars {
+                        self.seq_bar_page = 0;
+                    }
+                    for b in 0..num_bars {
+                        let letter = ["A", "B", "C", "D"][b];
+                        let lo = b * 16 + 1;
+                        let hi = lo + 15;
+                        let is_playing_bar = playing_step.is_some_and(|ps| {
+                            let w = ps % p.steps.len().max(1);
+                            w >= b * 16 && w < (b + 1) * 16
+                        });
+                        let lbl = if is_playing_bar {
+                            format!(">Bar {letter} ({lo}-{hi})")
+                        } else {
+                            format!("Bar {letter} ({lo}-{hi})")
+                        };
+                        if ui.selectable_label(self.seq_bar_page == b, lbl).clicked() {
+                            self.seq_bar_page = b;
+                        }
+                    }
+
+                    if p.steps.len() > 16 && ui.button("Copy Bar A -> All").clicked() {
+                        let bar_a: Vec<_> = p.steps.iter().take(16).cloned().collect();
+                        for (i, s) in p.steps.iter_mut().enumerate().skip(16) {
+                            let mut c = bar_a[i % 16].clone();
+                            c.step_index = i;
+                            *s = c;
+                        }
+                        changed = true;
+                    }
+                });
+
+                let bar_start = self.seq_bar_page * 16;
+                let bar_end = (bar_start + 16).min(p.steps.len());
+
                 ui.strong(format!(
-                    "16-Step Illuminated Hardware Step Pads ({:.0} BPM | Camelot Key {}) -- Click Pad = Gate, ACC = Accent, SLD = 303 Slide",
-                    p.bpm, p.camelot_key
+                    "{}-Step Illuminated Hardware Step Pads -- Bar {} (Steps {}..{}) | {:.0} BPM | Key {} -- Click Pad = Gate, ACC = Accent, SLD = 303 Slide",
+                    p.steps.len(),
+                    ["A", "B", "C", "D"][self.seq_bar_page.min(3)],
+                    bar_start + 1,
+                    bar_end,
+                    p.bpm,
+                    p.camelot_key
                 ));
                 ui.horizontal_wrapped(|ui| {
-                    for s in &mut p.steps {
+                    for s in &mut p.steps[bar_start..bar_end] {
                         let semitone = (s.midi_note % 12) as usize;
                         let octave = (s.midi_note / 12) - 1;
                         let n_lbl = if playing_step == Some(s.step_index) {
@@ -1373,7 +1470,7 @@ impl SynthCraftApp {
 
                 if self.subpage == 0 {
                     ui.add_space(6.0);
-                    egui::CollapsingHeader::new("Fine MIDI Note & Frequency Step Matrix")
+                    egui::CollapsingHeader::new("Fine MIDI Note & Frequency Step Matrix (Active Bar)")
                         .default_open(false)
                         .show(ui, |ui| {
                             egui::Grid::new("acid_seq_grid")
@@ -1383,7 +1480,7 @@ impl SynthCraftApp {
                                     ui.strong("MIDI Note");
                                     ui.strong("Freq (Hz)");
                                     ui.end_row();
-                                    for s in &mut p.steps {
+                                    for s in &mut p.steps[bar_start..bar_end] {
                                         ui.monospace(format!("#{:02}", s.step_index + 1));
                                         changed |= ui
                                             .add(
@@ -2175,7 +2272,7 @@ mod tests {
         let reg = subapps::registry();
         assert_eq!(reg.len(), 10);
         let total_subpages: usize = reg.iter().map(|w| w.subpages().len()).sum();
-        assert_eq!(total_subpages, 23);
+        assert_eq!(total_subpages, 24);
     }
 
     #[test]

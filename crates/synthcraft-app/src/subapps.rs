@@ -105,8 +105,14 @@ const SEQ_SUBS: &[SubPage] = &[
     SubPage {
         page: Page::SequencerEnv,
         sub: 0,
-        en: "16-Step Acid Sequencer",
-        de: "16-Step Acid-Sequenzer",
+        en: "64-Step Acid Sequencer (4 Bars)",
+        de: "64-Step Acid-Sequenzer (4 Takte)",
+    },
+    SubPage {
+        page: Page::SequencerEnv,
+        sub: 2,
+        en: "TR-808/909 8-Voice Drum Machine",
+        de: "TR-808/909 8-Voice Drum-Machine",
     },
     SubPage {
         page: Page::SequencerEnv,

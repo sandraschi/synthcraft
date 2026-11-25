@@ -4,6 +4,7 @@
 mod app;
 mod audio_io;
 mod controls;
+mod drums_ui;
 mod help_docs;
 mod live;
 mod midi_io;
