@@ -11,6 +11,7 @@
 
 use crate::error::SynthError;
 use crate::model::SynthPatch;
+use crate::rack::{default_rack_modules, RackModuleInstance};
 use crate::rompler::{
     builtin_demo_showcases, builtin_midi_depot, default_rack_cables, DemoShowcaseItem,
     MidiDepotClip, MidiHardwareConfig, RackCable,
@@ -208,6 +209,7 @@ pub fn save_to_db(engine: &SynthEngine, path: &Path) -> Result<(), SynthError> {
     )
     .map_err(st("save state"))?;
 
+    put_kv(&tx, "rack_modules", &engine.rack_modules)?;
     put_kv(&tx, "rack_cables", &engine.rack_cables)?;
     put_kv(&tx, "midi_depot", &engine.midi_depot)?;
     put_kv(&tx, "demos", &engine.demos)?;
@@ -314,6 +316,8 @@ pub fn load_from_db(path: &Path) -> Result<Option<SynthEngine>, SynthError> {
         active_patch_id = patches[0].id.clone();
     }
 
+    let rack_modules: Vec<RackModuleInstance> =
+        get_kv(&conn, "rack_modules", default_rack_modules, &mut warnings);
     let rack_cables: Vec<RackCable> =
         get_kv(&conn, "rack_cables", default_rack_cables, &mut warnings);
     let midi_depot: Vec<MidiDepotClip> =
@@ -327,6 +331,7 @@ pub fn load_from_db(path: &Path) -> Result<Option<SynthEngine>, SynthError> {
         active_patch_id,
         sample_rate_hz,
         patches,
+        rack_modules,
         rack_cables,
         midi_depot,
         demos,

@@ -14,6 +14,7 @@ pub mod midi;
 pub mod model;
 pub mod params;
 pub mod plugin;
+pub mod rack;
 pub mod rompler;
 pub mod rt;
 pub mod sampler;
@@ -26,6 +27,10 @@ pub use model::{
     stem_duration_ms, synthesize_audio_buffer, write_wav_file, ClapParameterSpec, FilterMode,
     FxParams, SamplerParams, SequencerStep, SpectrumAnalysisReport, SynthPatch, WaveformKind,
     MAX_RENDER_MS,
+};
+pub use rack::{
+    compute_rack_routing, default_rack_modules, euclidean_pattern, RackCategory,
+    RackModuleInstance, RackModuleKind,
 };
 pub use rompler::{
     builtin_demo_showcases, builtin_midi_depot, default_rack_cables, export_midi_smf_file,
@@ -45,6 +50,8 @@ pub struct SynthEngine {
     pub active_patch_id: String,
     pub sample_rate_hz: u32,
     pub patches: Vec<SynthPatch>,
+    #[serde(default = "default_rack_modules")]
+    pub rack_modules: Vec<RackModuleInstance>,
     #[serde(default = "default_rack_cables")]
     pub rack_cables: Vec<RackCable>,
     #[serde(default = "builtin_midi_depot")]
@@ -325,6 +332,7 @@ impl SynthEngine {
             active_patch_id: "vienna_acid_303".into(),
             sample_rate_hz: 48000,
             patches,
+            rack_modules: default_rack_modules(),
             rack_cables: default_rack_cables(),
             midi_depot: builtin_midi_depot(),
             demos: builtin_demo_showcases(),
@@ -465,6 +473,26 @@ pub enum Command {
         cable_id: String,
     },
     ResetRackCables,
+    ListRackModules,
+    AddRackModule {
+        kind: String,
+        row: Option<usize>,
+    },
+    RemoveRackModule {
+        module_id: String,
+    },
+    MoveRackModule {
+        module_id: String,
+        delta_row: i32,
+        delta_slot: i32,
+    },
+    SetRackModuleParam {
+        module_id: String,
+        param_a: Option<f32>,
+        param_b: Option<f32>,
+        bypassed: Option<bool>,
+    },
+    ResetRackLayout,
     ResetFactoryPatches,
 }
 
@@ -862,6 +890,110 @@ impl Command {
                 Ok(json!({
                     "reset": true,
                     "count": engine.rack_cables.len(),
+                }))
+            }
+            Self::ListRackModules => Ok(json!({
+                "modules": engine.rack_modules,
+                "count": engine.rack_modules.len(),
+            })),
+            Self::AddRackModule { kind, row } => {
+                let parsed = RackModuleKind::parse(kind).ok_or_else(|| {
+                    SynthError::Validation(format!("Unknown rack module kind '{kind}'"))
+                })?;
+                let target_row = row.unwrap_or(1).min(2);
+                let mut seq = engine.rack_modules.len() + 1;
+                let id = loop {
+                    let cand = format!("{}-{seq}", parsed.as_str().to_uppercase());
+                    if !engine.rack_modules.iter().any(|m| m.id == cand) {
+                        break cand;
+                    }
+                    seq += 1;
+                };
+                let (pa, pb) = parsed.default_params();
+                let inst = RackModuleInstance {
+                    id,
+                    kind: parsed,
+                    row: target_row,
+                    bypassed: false,
+                    param_a: pa,
+                    param_b: pb,
+                };
+                engine.rack_modules.push(inst.clone());
+                Ok(json!({ "module": inst, "count": engine.rack_modules.len() }))
+            }
+            Self::RemoveRackModule { module_id } => {
+                let before = engine.rack_modules.len();
+                engine.rack_modules.retain(|m| m.id != *module_id);
+                if engine.rack_modules.len() == before {
+                    return Err(SynthError::NotFound(format!("Rack module '{module_id}'")));
+                }
+                engine
+                    .rack_cables
+                    .retain(|c| c.from_module != *module_id && c.to_module != *module_id);
+                Ok(json!({
+                    "removed": module_id,
+                    "count": engine.rack_modules.len(),
+                }))
+            }
+            Self::MoveRackModule {
+                module_id,
+                delta_row,
+                delta_slot,
+            } => {
+                let Some(idx) = engine.rack_modules.iter().position(|m| m.id == *module_id) else {
+                    return Err(SynthError::NotFound(format!("Rack module '{module_id}'")));
+                };
+                if *delta_row != 0 {
+                    let cur = engine.rack_modules[idx].row as i32;
+                    engine.rack_modules[idx].row = (cur + *delta_row).clamp(0, 2) as usize;
+                }
+                if *delta_slot != 0 {
+                    let row = engine.rack_modules[idx].row;
+                    let row_indices: Vec<usize> = engine
+                        .rack_modules
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, m)| m.row == row)
+                        .map(|(i, _)| i)
+                        .collect();
+                    if let Some(pos) = row_indices.iter().position(|&i| i == idx) {
+                        let new_pos = (pos as i32 + *delta_slot)
+                            .clamp(0, row_indices.len() as i32 - 1)
+                            as usize;
+                        if new_pos != pos {
+                            engine.rack_modules.swap(idx, row_indices[new_pos]);
+                        }
+                    }
+                }
+                Ok(json!({ "moved": module_id }))
+            }
+            Self::SetRackModuleParam {
+                module_id,
+                param_a,
+                param_b,
+                bypassed,
+            } => {
+                let Some(m) = engine.rack_modules.iter_mut().find(|m| m.id == *module_id) else {
+                    return Err(SynthError::NotFound(format!("Rack module '{module_id}'")));
+                };
+                if let Some(a) = param_a {
+                    m.param_a = a.clamp(0.0, 1.0);
+                }
+                if let Some(b) = param_b {
+                    m.param_b = b.clamp(0.0, 1.0);
+                }
+                if let Some(bp) = bypassed {
+                    m.bypassed = *bp;
+                }
+                Ok(json!({ "module": m.clone() }))
+            }
+            Self::ResetRackLayout => {
+                engine.rack_modules = default_rack_modules();
+                engine.rack_cables = default_rack_cables();
+                Ok(json!({
+                    "reset": true,
+                    "modules": engine.rack_modules.len(),
+                    "cables": engine.rack_cables.len(),
                 }))
             }
             Self::ResetFactoryPatches => {

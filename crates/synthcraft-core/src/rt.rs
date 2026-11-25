@@ -140,6 +140,15 @@ pub struct SynthRt {
     gain_s: f32,
     opts: RtOptions,
     routing: crate::rompler::RackRouting,
+    sh_phase: f32,
+    sh_seed: u32,
+    sh_held: f32,
+    sh_slewed: f32,
+    delay_l: Vec<f32>,
+    delay_r: Vec<f32>,
+    delay_pos: usize,
+    delay_lp_l: f32,
+    delay_lp_r: f32,
 }
 
 impl SynthRt {
@@ -172,6 +181,15 @@ impl SynthRt {
             mod_wheel: 0.0,
             opts: RtOptions::default(),
             routing: crate::rompler::RackRouting::default(),
+            sh_phase: 0.0,
+            sh_seed: 0x5A17_C4FE,
+            sh_held: 0.0,
+            sh_slewed: 0.0,
+            delay_l: vec![0.0; (sr as usize).max(48_000)],
+            delay_r: vec![0.0; (sr as usize).max(48_000)],
+            delay_pos: 0,
+            delay_lp_l: 0.0,
+            delay_lp_r: 0.0,
         }
     }
 
@@ -487,6 +505,26 @@ impl SynthRt {
             self.lfo_phase =
                 (self.lfo_phase + self.patch.lfo_rate_hz.clamp(0.05, 40.0) / sr).rem_euclid(1.0);
 
+            // Sample & Hold + Slew Limiter (driven by S&H + SLEW 3U module)
+            let r = self.routing;
+            self.sh_phase += r.sh_rate_hz.clamp(0.2, 30.0) / sr;
+            if self.sh_phase >= 1.0 {
+                self.sh_phase -= 1.0;
+                let mut x = self.sh_seed.max(1);
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                self.sh_seed = x;
+                self.sh_held = ((x & 0xFFFF) as f32 / 32768.0) - 1.0;
+            }
+            let slew_coef = if r.sh_slew <= 0.01 {
+                1.0
+            } else {
+                1.0 - (-1.0 / (r.sh_slew * 0.25 * sr)).exp()
+            };
+            self.sh_slewed += (self.sh_held - self.sh_slewed) * slew_coef;
+            let sh_cv = self.sh_slewed;
+
             let p = &self.patch;
             let detune_ratio = 2.0_f32.powf(p.vco2_detune_cents / 1200.0);
             let mix = p.vco_mix.clamp(0.0, 1.0);
@@ -524,9 +562,15 @@ impl SynthRt {
                     .osc2
                     .tick(p.vco2_wave, f * detune_ratio, sr, p.pulse_width, 0.0);
                 let fm = s2 * p.fm_index.clamp(0.0, 4.0) * 0.08 * r.vco2_to_fm
-                    + lfo * r.lfo_to_fm * 0.15;
+                    + lfo * r.lfo_to_fm * 0.15
+                    + sh_cv * r.sh_to_fm * 0.12;
                 let s1 = v.osc1.tick(p.vco1_wave, f, sr, p.pulse_width, fm);
                 let mut raw = s1 * (1.0 - mix) * r.vco1_to_vcf + s2 * (mix + r.vco2_to_vcf * 0.5);
+                if r.fold_amount > 0.01 {
+                    let gain = 1.0 + r.fold_amount * 4.5;
+                    let folded = (raw * gain + r.fold_symmetry).sin();
+                    raw = raw * (1.0 - r.fold_amount) + folded * r.fold_amount;
+                }
 
                 let dphase = f64::from(f / sr);
                 if p.extreme_dsp != crate::rompler::ExtremeDspMode::Off {
@@ -580,6 +624,7 @@ impl SynthRt {
                 let octaves = env * p.env_mod_depth.clamp(0.0, 1.0) * 3.0 * acc
                     + env * r.adsr_to_cutoff * 2.5
                     + lfo * 1.2 * r.lfo_to_cutoff
+                    + sh_cv * 1.6 * r.sh_to_cutoff
                     + d_cut * 1.5;
                 let cutoff = self.cutoff_s * 2.0_f32.powf(octaves);
                 let filtered =
@@ -605,6 +650,25 @@ impl SynthRt {
                 (out_l, out_r) =
                     self.chorus
                         .process_stereo(out_l, out_r, fx.chorus_mix.clamp(0.0, 1.0));
+            }
+            if r.delay_mix > 0.001 && !self.delay_l.is_empty() {
+                let cap = self.delay_l.len();
+                let d_samps = ((r.delay_time_s * sr) as usize).clamp(64, cap - 1);
+                let r_samps = ((d_samps as f32 * 0.75) as usize).clamp(64, cap - 1);
+                let idx_l = (self.delay_pos + cap - d_samps) % cap;
+                let idx_r = (self.delay_pos + cap - r_samps) % cap;
+                let tap_l = self.delay_l[idx_l];
+                let tap_r = self.delay_r[idx_r];
+                self.delay_lp_l += (tap_l - self.delay_lp_l) * 0.35;
+                self.delay_lp_r += (tap_r - self.delay_lp_r) * 0.35;
+                let fb = r.delay_feedback.clamp(0.0, 0.88);
+                // Ping-pong cross-feedback
+                self.delay_l[self.delay_pos] = (out_l + self.delay_lp_r * fb).tanh();
+                self.delay_r[self.delay_pos] = (out_r + self.delay_lp_l * fb).tanh();
+                self.delay_pos = (self.delay_pos + 1) % cap;
+                let dm = r.delay_mix.clamp(0.0, 1.0);
+                out_l = out_l * (1.0 - dm * 0.4) + tap_l * dm;
+                out_r = out_r * (1.0 - dm * 0.4) + tap_r * dm;
             }
             if fx.reverb_mix > 0.001 {
                 let m = (fx.reverb_mix + d_verb * 0.25).clamp(0.0, 1.0);

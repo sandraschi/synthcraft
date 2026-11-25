@@ -346,6 +346,15 @@ pub struct RackRouting {
     pub adsr_to_cutoff: f32,
     pub vcf_to_vca: f32,
     pub direct_to_vca: f32,
+    pub fold_amount: f32,
+    pub fold_symmetry: f32,
+    pub sh_rate_hz: f32,
+    pub sh_slew: f32,
+    pub sh_to_cutoff: f32,
+    pub sh_to_fm: f32,
+    pub delay_time_s: f32,
+    pub delay_feedback: f32,
+    pub delay_mix: f32,
 }
 
 impl Default for RackRouting {
@@ -361,6 +370,15 @@ impl Default for RackRouting {
             adsr_to_cutoff: 0.0,
             vcf_to_vca: 1.0,
             direct_to_vca: 0.0,
+            fold_amount: 0.0,
+            fold_symmetry: 0.0,
+            sh_rate_hz: 4.0,
+            sh_slew: 0.2,
+            sh_to_cutoff: 0.0,
+            sh_to_fm: 0.0,
+            delay_time_s: 0.3,
+            delay_feedback: 0.35,
+            delay_mix: 0.0,
         }
     }
 }
@@ -386,6 +404,15 @@ impl RackRouting {
             adsr_to_cutoff: 0.0,
             vcf_to_vca: 0.0,
             direct_to_vca: 0.0,
+            fold_amount: 0.0,
+            fold_symmetry: 0.0,
+            sh_rate_hz: 4.0,
+            sh_slew: 0.2,
+            sh_to_cutoff: 0.0,
+            sh_to_fm: 0.0,
+            delay_time_s: 0.3,
+            delay_feedback: 0.35,
+            delay_mix: 0.0,
         };
         for c in cables {
             let fm = canonical_module(&c.from_module);
