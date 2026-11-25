@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/synthcraft-core",
+    "crates/synthcraft-clap-host",
     "crates/synthcraft-mcp",
     "crates/synthcraft-ffi",
     "crates/synthcraft-clap",

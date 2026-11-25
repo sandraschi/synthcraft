@@ -117,7 +117,6 @@ struct Sequencer {
 }
 
 /// Polyphonic synthesizer voice engine with an in-engine step sequencer.
-#[derive(Debug, Clone)]
 pub struct SynthRt {
     sr: f32,
     patch: SynthPatch,
@@ -155,6 +154,20 @@ pub struct SynthRt {
     pitch_a4: f32,
     wt: Arc<crate::wavetable::Wavetable>,
     wt_spec: String,
+    clap_host: Option<Box<dyn crate::clap_host::ExternalClapProcessor>>,
+    clap_host_cv_param_id: Option<u32>,
+    clap_host_dry_l: Vec<f32>,
+    clap_host_dry_r: Vec<f32>,
+}
+
+impl std::fmt::Debug for SynthRt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SynthRt")
+            .field("sr", &self.sr)
+            .field("patch_id", &self.patch.id)
+            .field("has_clap_host", &self.clap_host.is_some())
+            .finish()
+    }
 }
 
 impl SynthRt {
@@ -214,6 +227,31 @@ impl SynthRt {
             pitch_a4,
             wt,
             wt_spec,
+            clap_host: None,
+            clap_host_cv_param_id: None,
+            clap_host_dry_l: vec![0.0; 2048],
+            clap_host_dry_r: vec![0.0; 2048],
+        }
+    }
+
+    /// Install or clear an external 3U CLAP Host processor. Returns the previous processor
+    /// so the caller can drop it off the audio thread.
+    pub fn set_clap_host(
+        &mut self,
+        host: Option<Box<dyn crate::clap_host::ExternalClapProcessor>>,
+    ) -> Option<Box<dyn crate::clap_host::ExternalClapProcessor>> {
+        std::mem::replace(&mut self.clap_host, host)
+    }
+
+    /// Select which CLAP parameter ID receives CV modulation from the 3U `PARAM CV` jack.
+    pub fn set_clap_host_cv_param(&mut self, param_id: Option<u32>) {
+        self.clap_host_cv_param_id = param_id;
+    }
+
+    /// Forward a parameter value change to the currently hosted CLAP plugin (if any).
+    pub fn set_clap_host_param(&mut self, param_id: u32, value: f64) {
+        if let Some(host) = self.clap_host.as_mut() {
+            host.set_param(param_id, value);
         }
     }
 
@@ -787,6 +825,32 @@ impl SynthRt {
                     let len = self.patch.steps.len().max(1);
                     self.seq.step = (self.seq.step + 1) % len;
                     self.trigger_step();
+                }
+            }
+        }
+
+        // 3U CLAP Host external plugin insert (runs block-aligned with CV-to-param modulation).
+        let mix = self.routing.clap_host_mix.clamp(0.0, 1.0);
+        if mix > 0.001 && !left.is_empty() {
+            let cv_lfo = (TAU * self.lfo_phase).sin() * self.routing.clap_host_cv_lfo;
+            let cv_sh = self.sh_slewed * self.routing.clap_host_cv_sh;
+            let cv_amount = f64::from((cv_lfo + cv_sh) * self.routing.clap_host_cv_depth);
+            let cv_mod = self.clap_host_cv_param_id.map(|id| (id, cv_amount));
+
+            if let Some(host) = self.clap_host.as_mut() {
+                let n = left.len().min(right.len());
+                if mix < 0.999 && n <= self.clap_host_dry_l.len() {
+                    self.clap_host_dry_l[..n].copy_from_slice(&left[..n]);
+                    self.clap_host_dry_r[..n].copy_from_slice(&right[..n]);
+                    host.process_block(&mut left[..n], &mut right[..n], cv_mod);
+                    let dry = 1.0 - mix;
+                    for i in 0..n {
+                        left[i] = (self.clap_host_dry_l[i] * dry + left[i] * mix).clamp(-1.0, 1.0);
+                        right[i] =
+                            (self.clap_host_dry_r[i] * dry + right[i] * mix).clamp(-1.0, 1.0);
+                    }
+                } else {
+                    host.process_block(&mut left[..n], &mut right[..n], cv_mod);
                 }
             }
         }

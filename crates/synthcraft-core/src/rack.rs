@@ -52,10 +52,11 @@ pub enum RackModuleKind {
     StereoDelay,
     Attenuverter,
     InlineScope,
+    ClapHost,
 }
 
 impl RackModuleKind {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Vco1,
         Self::Vco2Xdsp,
         Self::PcmWorkstation,
@@ -68,6 +69,7 @@ impl RackModuleKind {
         Self::StereoDelay,
         Self::Attenuverter,
         Self::InlineScope,
+        Self::ClapHost,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -84,6 +86,7 @@ impl RackModuleKind {
             Self::StereoDelay => "stereo_delay",
             Self::Attenuverter => "attenuverter",
             Self::InlineScope => "inline_scope",
+            Self::ClapHost => "clap_host",
         }
     }
 
@@ -101,6 +104,7 @@ impl RackModuleKind {
             "stereo_delay" | "delay" | "echo" => Some(Self::StereoDelay),
             "attenuverter" | "atten" | "mixer" => Some(Self::Attenuverter),
             "inline_scope" | "scope" | "oscilloscope" => Some(Self::InlineScope),
+            "clap_host" | "clap" | "plugin" => Some(Self::ClapHost),
             _ => None,
         }
     }
@@ -119,6 +123,7 @@ impl RackModuleKind {
             Self::StereoDelay => "STEREO DELAY",
             Self::Attenuverter => "ATTENUVERTER",
             Self::InlineScope => "3U SCOPE",
+            Self::ClapHost => "CLAP HOST",
         }
     }
 
@@ -136,6 +141,9 @@ impl RackModuleKind {
             Self::StereoDelay => "Ping-pong stereo tape delay with LP-damped feedback",
             Self::Attenuverter => "Dual bipolar CV/signal attenuverter (-100% to +100%)",
             Self::InlineScope => "Live 3U waveform oscilloscope & peak meter faceplate",
+            Self::ClapHost => {
+                "External CLAP 1.2.2 plugin insert slot with CV-to-parameter modulation"
+            }
         }
     }
 
@@ -144,7 +152,7 @@ impl RackModuleKind {
             Self::Vco1 | Self::Vco2Xdsp | Self::PcmWorkstation => RackCategory::Oscillators,
             Self::VcfLadder => RackCategory::Filters,
             Self::LfoAdsr | Self::SampleHoldSlew => RackCategory::Modulators,
-            Self::WavefolderLpg | Self::StereoDelay => RackCategory::Effects,
+            Self::WavefolderLpg | Self::StereoDelay | Self::ClapHost => RackCategory::Effects,
             Self::EuclideanClock => RackCategory::Sequencers,
             Self::VcaMaster | Self::Attenuverter | Self::InlineScope => RackCategory::Utilities,
         }
@@ -155,6 +163,7 @@ impl RackModuleKind {
         match self {
             Self::Attenuverter => 10,
             Self::VcfLadder | Self::StereoDelay | Self::InlineScope => 14,
+            Self::ClapHost => 16,
             _ => 12,
         }
     }
@@ -184,6 +193,11 @@ impl RackModuleKind {
                 ("OUT 2", true),
             ],
             Self::InlineScope => &[("SIG IN", false), ("THRU", true)],
+            Self::ClapHost => &[
+                ("AUDIO IN", false),
+                ("PARAM CV", false),
+                ("AUDIO OUT", true),
+            ],
         }
     }
 
@@ -194,6 +208,7 @@ impl RackModuleKind {
             Self::EuclideanClock => (0.5, 0.35),
             Self::StereoDelay => (0.38, 0.35),
             Self::Attenuverter => (0.75, 0.5),
+            Self::ClapHost => (1.0, 0.5),
             _ => (0.5, 0.5),
         }
     }
@@ -359,6 +374,20 @@ pub fn compute_rack_routing(modules: &[RackModuleInstance], cables: &[RackCable]
         // Bipolar scale (-1.0..+1.0) applied to LFO cutoff modulation when attenuverter is present
         let scale = (att.param_a.clamp(0.0, 1.0) - 0.5) * 2.0;
         r.lfo_to_cutoff *= scale;
+    }
+    if let Some(ch) = find_active(RackModuleKind::ClapHost) {
+        r.clap_host_mix = ch.param_a.clamp(0.0, 1.0);
+        r.clap_host_cv_depth = (ch.param_b.clamp(0.0, 1.0) - 0.5) * 2.0;
+        for c in cables {
+            if c.to_module == ch.id && c.to_jack == "PARAM CV" {
+                let g = c.gain.clamp(0.0, 2.0);
+                if c.from_jack == "S&H OUT" {
+                    r.clap_host_cv_sh = (r.clap_host_cv_sh + g).clamp(0.0, 2.0);
+                } else {
+                    r.clap_host_cv_lfo = (r.clap_host_cv_lfo + g).clamp(0.0, 2.0);
+                }
+            }
+        }
     }
 
     r

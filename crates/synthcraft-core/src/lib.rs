@@ -7,6 +7,7 @@
 
 pub mod arp;
 pub mod banks;
+pub mod clap_host;
 pub mod db;
 pub mod dsp;
 pub mod edit;
@@ -27,6 +28,7 @@ pub mod tuning;
 pub mod wavetable;
 
 pub use arp::{ArpMode, ArpParams};
+pub use clap_host::{ClapHostConfig, ClapParamInfo, ClapPluginInfo, ExternalClapProcessor};
 pub use db::{default_db_path, load_from_db, save_to_db};
 pub use error::SynthError;
 pub use mod_matrix::{ModDest, ModRoute, ModSource};
@@ -72,6 +74,8 @@ pub struct SynthEngine {
     pub demos: Vec<DemoShowcaseItem>,
     #[serde(default)]
     pub midi_hw: MidiHardwareConfig,
+    #[serde(default)]
+    pub clap_host: ClapHostConfig,
     /// Problems found while loading the database (unreadable rows, missing active patch).
     #[serde(skip)]
     pub load_warnings: Vec<String>,
@@ -373,6 +377,7 @@ impl SynthEngine {
             midi_depot: builtin_midi_depot(),
             demos: builtin_demo_showcases(),
             midi_hw: MidiHardwareConfig::default(),
+            clap_host: ClapHostConfig::default(),
             load_warnings: Vec::new(),
         }
     }
@@ -557,6 +562,13 @@ pub enum Command {
     },
     ImportMidiFile {
         path: String,
+    },
+    ConfigureClapHost {
+        plugin_path: Option<String>,
+        plugin_index: u32,
+        cv_param_id: Option<u32>,
+        mix: f32,
+        cv_depth: f32,
     },
     ResetFactoryPatches,
 }
@@ -1162,6 +1174,45 @@ impl Command {
                     "note_count": pat.note_count,
                     "bpm": p.bpm,
                 }))
+            }
+            Self::ConfigureClapHost {
+                plugin_path,
+                plugin_index,
+                cv_param_id,
+                mix,
+                cv_depth,
+            } => {
+                engine.clap_host = ClapHostConfig {
+                    plugin_path: plugin_path.clone(),
+                    plugin_index: *plugin_index,
+                    cv_param_id: *cv_param_id,
+                    mix: mix.clamp(0.0, 1.0),
+                    cv_depth: cv_depth.clamp(-1.0, 1.0),
+                };
+                // Ensure a ClapHost module exists in the rack when a plugin path is configured.
+                if plugin_path.is_some()
+                    && !engine
+                        .rack_modules
+                        .iter()
+                        .any(|m| m.kind == RackModuleKind::ClapHost)
+                {
+                    engine.rack_modules.push(RackModuleInstance {
+                        id: "CLAP-HOST-1".into(),
+                        kind: RackModuleKind::ClapHost,
+                        row: 1,
+                        bypassed: false,
+                        param_a: engine.clap_host.mix,
+                        param_b: engine.clap_host.cv_depth * 0.5 + 0.5,
+                    });
+                } else if let Some(m) = engine
+                    .rack_modules
+                    .iter_mut()
+                    .find(|m| m.kind == RackModuleKind::ClapHost)
+                {
+                    m.param_a = engine.clap_host.mix;
+                    m.param_b = engine.clap_host.cv_depth * 0.5 + 0.5;
+                }
+                Ok(json!({ "clap_host": engine.clap_host }))
             }
             Self::ResetFactoryPatches => {
                 *engine = SynthEngine::factory_seed();

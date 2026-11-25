@@ -355,6 +355,11 @@ pub struct RackRouting {
     pub delay_time_s: f32,
     pub delay_feedback: f32,
     pub delay_mix: f32,
+    pub clap_host_mix: f32,
+    pub clap_host_cv_depth: f32,
+    /// `0` = LFO, `1` = Sample & Hold slew CV patched into `CLAP HOST` `PARAM CV`.
+    pub clap_host_cv_lfo: f32,
+    pub clap_host_cv_sh: f32,
 }
 
 impl Default for RackRouting {
@@ -379,6 +384,10 @@ impl Default for RackRouting {
             delay_time_s: 0.3,
             delay_feedback: 0.35,
             delay_mix: 0.0,
+            clap_host_mix: 0.0,
+            clap_host_cv_depth: 0.5,
+            clap_host_cv_lfo: 0.0,
+            clap_host_cv_sh: 0.0,
         }
     }
 }
@@ -413,6 +422,10 @@ impl RackRouting {
             delay_time_s: 0.3,
             delay_feedback: 0.35,
             delay_mix: 0.0,
+            clap_host_mix: 0.0,
+            clap_host_cv_depth: 0.5,
+            clap_host_cv_lfo: 0.0,
+            clap_host_cv_sh: 0.0,
         };
         for c in cables {
             let fm = canonical_module(&c.from_module);

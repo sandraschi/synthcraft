@@ -1,0 +1,33 @@
+[package]
+name = "synthcraft-clap-host"
+description = "Native CLAP 1.2.2 plugin host for SynthCraft's 3U Eurorack CLAP Host module"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+clap-sys = "0.5"
+synthcraft-core = { path = "../synthcraft-core" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+] }
+
+# Hosting native `.clap` shared libraries requires FFI `unsafe`; every block carries a SAFETY
+# comment while `synthcraft-core` stays `forbid(unsafe_code)`.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"

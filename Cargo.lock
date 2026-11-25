@@ -3739,6 +3739,7 @@ dependencies = [
  "midir",
  "serde",
  "serde_json",
+ "synthcraft-clap-host",
  "synthcraft-core",
  "ureq",
 ]
@@ -3754,6 +3755,15 @@ dependencies = [
  "raw-window-handle",
  "synthcraft-core",
  "wgpu",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "synthcraft-clap-host"
+version = "0.3.0"
+dependencies = [
+ "clap-sys",
+ "synthcraft-core",
  "windows-sys 0.61.2",
 ]
 
@@ -3782,6 +3792,7 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "synthcraft-clap-host",
  "synthcraft-core",
  "ureq",
 ]

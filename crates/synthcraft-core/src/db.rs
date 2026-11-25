@@ -214,6 +214,7 @@ pub fn save_to_db(engine: &SynthEngine, path: &Path) -> Result<(), SynthError> {
     put_kv(&tx, "midi_depot", &engine.midi_depot)?;
     put_kv(&tx, "demos", &engine.demos)?;
     put_kv(&tx, "midi_hw", &engine.midi_hw)?;
+    put_kv(&tx, "clap_host", &engine.clap_host)?;
 
     tx.commit().map_err(st("save commit"))
 }
@@ -326,6 +327,12 @@ pub fn load_from_db(path: &Path) -> Result<Option<SynthEngine>, SynthError> {
         get_kv(&conn, "demos", builtin_demo_showcases, &mut warnings);
     let midi_hw: MidiHardwareConfig =
         get_kv(&conn, "midi_hw", MidiHardwareConfig::default, &mut warnings);
+    let clap_host: crate::ClapHostConfig = get_kv(
+        &conn,
+        "clap_host",
+        crate::ClapHostConfig::default,
+        &mut warnings,
+    );
 
     Ok(Some(SynthEngine {
         active_patch_id,
@@ -336,6 +343,7 @@ pub fn load_from_db(path: &Path) -> Result<Option<SynthEngine>, SynthError> {
         midi_depot,
         demos,
         midi_hw,
+        clap_host,
         load_warnings: warnings,
     }))
 }
