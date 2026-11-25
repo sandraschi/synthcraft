@@ -221,7 +221,28 @@ const SETTINGS_SUBS: &[SubPage] = &[
     },
 ];
 
-static WORKBENCHES: [CraftWorkbench; 10] = [
+const NEXTGEN_SUBS: &[SubPage] = &[
+    SubPage {
+        page: Page::NextGenLab,
+        sub: 0,
+        en: "MSEG & Dual Morph Filter B",
+        de: "MSEG & Dual-Morph-Filter B",
+    },
+    SubPage {
+        page: Page::NextGenLab,
+        sub: 1,
+        en: "Granular Cloud & 64-Partial Spectral",
+        de: "Granular-Cloud & 64-Partial-Spektral",
+    },
+    SubPage {
+        page: Page::NextGenLab,
+        sub: 2,
+        en: "Genopatch AI Audio-to-Patch",
+        de: "Genopatch KI Audio-zu-Patch",
+    },
+];
+
+static WORKBENCHES: [CraftWorkbench; 11] = [
     CraftWorkbench {
         id: "modular_rack",
         en: "1. VCV 2 Eurorack & VCO/VCF",
@@ -281,6 +302,12 @@ static WORKBENCHES: [CraftWorkbench; 10] = [
         en: "10. Studio Settings & Prefs",
         de: "10. Studio-Einstellungen",
         subpages: SETTINGS_SUBS,
+    },
+    CraftWorkbench {
+        id: "nextgen_lab",
+        en: "11. Next-Gen Lab (MSEG/Granular/AI)",
+        de: "11. Next-Gen-Labor (MSEG/Granular/KI)",
+        subpages: NEXTGEN_SUBS,
     },
 ];
 

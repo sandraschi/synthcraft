@@ -405,6 +405,50 @@ pub fn rotary_knob(
     changed
 }
 
+/// Renders a rotary knob with a Vital/Serum-style live animated outer modulation deflection arc
+/// (`mod_offset` in `-1.0..=1.0`, representing real-time MSEG / LFO deflection around the base value).
+#[allow(clippy::too_many_arguments)]
+pub fn rotary_knob_mod(
+    ui: &mut egui::Ui,
+    skin: &SkinPalette,
+    label: &str,
+    value: &mut f32,
+    min: f32,
+    max: f32,
+    unit: &str,
+    mod_offset: f32,
+) -> bool {
+    let before_cursor = ui.cursor().min;
+    let changed = rotary_knob(ui, skin, label, value, min, max, unit);
+    if mod_offset.abs() > 0.005 {
+        let span = (max - min).max(1e-6);
+        let base_norm = ((*value - min) / span).clamp(0.0, 1.0);
+        let mod_norm = (base_norm + mod_offset).clamp(0.0, 1.0);
+        let center = egui::pos2(before_cursor.x + 43.0, before_cursor.y + 49.0);
+        let mod_radius = 28.0;
+        let start_angle = std::f32::consts::PI * 0.75;
+        let sweep_angle = std::f32::consts::PI * 1.5;
+        let lo = base_norm.min(mod_norm);
+        let hi = base_norm.max(mod_norm);
+        let segs = 16usize;
+        let pts: Vec<egui::Pos2> = (0..=segs)
+            .map(|i| {
+                let f = lo + (hi - lo) * (i as f32 / segs as f32);
+                let a = start_angle + f * sweep_angle;
+                egui::pos2(
+                    center.x + a.cos() * mod_radius,
+                    center.y + a.sin() * mod_radius,
+                )
+            })
+            .collect();
+        ui.painter().add(egui::Shape::line(
+            pts,
+            egui::Stroke::new(2.8, skin.arc_secondary),
+        ));
+    }
+    changed
+}
+
 /// Renders an interactive studio console vertical hardware fader with recessed LED track,
 /// dual dB/percentage scale ticks, 3D ridged fader cap, and value readout.
 pub fn vertical_fader(

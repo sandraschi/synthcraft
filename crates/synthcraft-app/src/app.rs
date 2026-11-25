@@ -58,6 +58,7 @@ pub enum Page {
     Chat,
     Help,
     Settings,
+    NextGenLab,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,6 +159,10 @@ pub struct SynthCraftApp {
     pub seq_bar_page: usize,
     pub drum_bar_page: usize,
     pub drum_selected_voice: usize,
+    pub genopatch_wav_path: String,
+    pub genopatch_gens: usize,
+    pub genopatch_pop: usize,
+    pub genopatch_report: Option<synthcraft_core::GenopatchReport>,
     pub kbd_down: HashMap<egui::Key, u8>,
     pub kbd_octave: i32,
     pub analysis_cache: Option<((String, u32, u32), synthcraft_core::SpectrumAnalysisReport)>,
@@ -280,6 +285,10 @@ impl SynthCraftApp {
             seq_bar_page: 0,
             drum_bar_page: 0,
             drum_selected_voice: 0,
+            genopatch_wav_path: "demo_1990_m1_piano.wav".into(),
+            genopatch_gens: 6,
+            genopatch_pop: 32,
+            genopatch_report: None,
             kbd_down: HashMap::new(),
             kbd_octave: 3,
             analysis_cache: None,
@@ -1078,6 +1087,7 @@ impl SynthCraftApp {
                         Page::Chat => self.render_chat(ui),
                         Page::Help => self.render_help_view(ui),
                         Page::Settings => crate::settings_ui::render_studio_settings(self, ui),
+                        Page::NextGenLab => crate::nextgen_ui::render_nextgen_lab(self, ui),
                     },
                     SynthLayout::EurorackBay => {
                         crate::rack_ui::render_vcv_eurorack_canvas(self, ui);
@@ -2270,9 +2280,9 @@ mod tests {
     #[test]
     fn subapp_registry_exposes_every_workbench() {
         let reg = subapps::registry();
-        assert_eq!(reg.len(), 10);
+        assert_eq!(reg.len(), 11);
         let total_subpages: usize = reg.iter().map(|w| w.subpages().len()).sum();
-        assert_eq!(total_subpages, 24);
+        assert_eq!(total_subpages, 27);
     }
 
     #[test]

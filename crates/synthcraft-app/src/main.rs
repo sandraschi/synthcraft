@@ -9,6 +9,7 @@ mod help_docs;
 mod live;
 mod midi_io;
 mod netfetch;
+mod nextgen_ui;
 mod rack_canvas;
 mod rack_ui;
 mod saver;
