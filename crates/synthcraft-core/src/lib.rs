@@ -29,6 +29,7 @@ pub mod nextgen;
 pub mod params;
 pub mod physical;
 pub mod plugin;
+pub mod preset_bank;
 pub mod rack;
 pub mod rack_presets;
 pub mod rompler;
@@ -510,6 +511,9 @@ impl SynthEngine {
         ];
 
         patches.extend(ambient_patches(&mk_steps));
+        if let Some(template) = patches.first().cloned() {
+            patches.extend(crate::preset_bank::pro_bank_patches(&template));
+        }
 
         Self {
             active_patch_id: "vienna_acid_303".into(),
@@ -1645,13 +1649,17 @@ mod tests {
     #[test]
     fn synthesizer_produces_non_silent_bounded_pcm_for_all_factory_patches() {
         let eng = SynthEngine::factory_seed();
-        assert_eq!(eng.patches.len(), 9);
+        assert_eq!(eng.patches.len(), 129);
         for p in &eng.patches {
             let buf = synthesize_audio_buffer(p, 48000, 120 + 2 * p.attack_ms as u32);
-            assert!(!buf.is_empty());
-            assert!(buf.iter().all(|&s| (-1.0..=1.0).contains(&s)));
+            assert!(!buf.is_empty(), "empty buffer for {}", p.id);
+            assert!(
+                buf.iter().all(|&s| (-1.0..=1.0).contains(&s)),
+                "clipped for {}",
+                p.id
+            );
             let max_amp = buf.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
-            assert!(max_amp > 0.05);
+            assert!(max_amp > 0.05, "silent for {} (max_amp={})", p.id, max_amp);
         }
     }
 
@@ -1711,7 +1719,7 @@ mod tests {
         assert!(loaded.is_some());
         if let Some(l) = loaded {
             assert_eq!(l.active_patch_id, "goliath_reese_sub");
-            assert_eq!(l.patches.len(), 9);
+            assert_eq!(l.patches.len(), 129);
         }
     }
 

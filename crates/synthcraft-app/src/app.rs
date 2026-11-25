@@ -112,6 +112,13 @@ pub struct SynthCraftApp {
     pub help_search_query: String,
     pub help_selected_wb: usize,
     pub help_selected_sub: usize,
+    // Pro Preset Browser state (129+ presets)
+    pub preset_search: String,
+    pub preset_category_filter: String,
+    pub preset_engine_filter: String,
+    pub preset_favorites_only: bool,
+    pub favorite_patch_ids: Vec<String>,
+    pub mutate_counter: u64,
     pub show_palette: bool,
     pub palette_query: String,
     pub show_shortcuts: bool,
@@ -247,6 +254,16 @@ impl SynthCraftApp {
             help_search_query: String::new(),
             help_selected_wb: 0,
             help_selected_sub: 0,
+            preset_search: String::new(),
+            preset_category_filter: "All".into(),
+            preset_engine_filter: "All".into(),
+            preset_favorites_only: false,
+            favorite_patch_ids: vec![
+                "vienna_acid_303".into(),
+                "organ_silbermann_pleno".into(),
+                "organ_bach_toccata_tutti".into(),
+            ],
+            mutate_counter: 0,
             show_palette: false,
             palette_query: String::new(),
             show_shortcuts: false,
@@ -1207,35 +1224,7 @@ impl SynthCraftApp {
         }
 
         if self.subpage == 1 {
-            ui.group(|ui| {
-                ui.strong("Factory Patch Bank Overview (SoundCraft CLAP & DJCraft Compatible)");
-                egui::Grid::new("patch_library_grid")
-                    .striped(true)
-                    .show(ui, |ui| {
-                        ui.strong("Patch ID");
-                        ui.strong("Name");
-                        ui.strong("Category");
-                        ui.strong("BPM");
-                        ui.strong("Camelot Key");
-                        ui.strong("VCO 1 / 2");
-                        ui.strong("VCF Mode");
-                        ui.end_row();
-                        for p in &self.engine.patches {
-                            ui.monospace(&p.id);
-                            ui.label(&p.name);
-                            ui.label(&p.category);
-                            ui.monospace(format!("{:.0}", p.bpm));
-                            ui.monospace(&p.camelot_key);
-                            ui.monospace(format!(
-                                "{} + {}",
-                                p.vco1_wave.as_str(),
-                                p.vco2_wave.as_str()
-                            ));
-                            ui.monospace(p.filter_mode.as_str());
-                            ui.end_row();
-                        }
-                    });
-            });
+            crate::preset_browser_ui::render_pro_preset_browser(self, ui);
             ui.add_space(6.0);
         }
 

@@ -11,6 +11,7 @@ mod midi_io;
 mod netfetch;
 mod nextgen_ui;
 mod perf_master_ui;
+mod preset_browser_ui;
 mod pro_lab_ui;
 mod rack_canvas;
 mod rack_ui;
