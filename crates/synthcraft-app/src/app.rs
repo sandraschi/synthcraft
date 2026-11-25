@@ -93,6 +93,10 @@ pub struct SynthCraftApp {
     // Workbench 5: DJCraft & WAV export
     pub djcraft_bars: usize,
     pub wav_export_path: String,
+    pub djcraft_link_rx: synthcraft_core::DjcraftLinkReceiver,
+    pub djcraft_link_sync: bool,
+    pub djcraft_auto_camelot: bool,
+    pub djcraft_target_deck: String,
     // Workbench 6: Assistant & Modals
     pub chat_input: String,
     pub chat_history: Vec<(String, String)>,
@@ -199,6 +203,10 @@ impl SynthCraftApp {
             analysis_duration_ms: 250,
             djcraft_bars: 4,
             wav_export_path: "vienna_acid_303_128bpm_8A.wav".into(),
+            djcraft_link_rx: synthcraft_core::DjcraftLinkReceiver::new(),
+            djcraft_link_sync: false,
+            djcraft_auto_camelot: false,
+            djcraft_target_deck: "B".into(),
             chat_input: String::new(),
             chat_history: vec![(
                 "SynthCraft".into(),
@@ -1649,6 +1657,118 @@ impl SynthCraftApp {
             "Synthesize BPM-locked, Camelot-keyed acid loops, sub-drops, and transition risers directly to 48 kHz 16-bit PCM .wav files for DJCraft and SoundCraft.",
         );
         ui.separator();
+
+        // Live DJCraft Link & 1-Click Deck Send Bridge
+        ui.group(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.strong("Live DJCraft Bridge:");
+                if self.djcraft_link_rx.is_connected() {
+                    if let Some(b) = self.djcraft_link_rx.last_beacon() {
+                        let key_str = if b.camelot_key.is_empty() {
+                            "--"
+                        } else {
+                            b.camelot_key.as_str()
+                        };
+                        let state = if b.playing { "PLAYING" } else { "PAUSED" };
+                        ui.colored_label(
+                            egui::Color32::from_rgb(34, 197, 94),
+                            format!("LINKED: {:.1} BPM | {} | {}", b.bpm, key_str, state),
+                        );
+                    }
+                } else {
+                    ui.label(
+                        egui::RichText::new("Waiting for DJCraft Link (UDP 127.0.0.1:20809)")
+                            .small(),
+                    );
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.checkbox(
+                    &mut self.djcraft_link_sync,
+                    "Follow DJCraft BPM & Play/Stop",
+                );
+                ui.checkbox(
+                    &mut self.djcraft_auto_camelot,
+                    "Auto-Camelot Key-Lock Transpose",
+                );
+                if ui.small_button("Pull Live BPM/Key").clicked() {
+                    match synthcraft_core::query_djcraft_live_status() {
+                        Ok(val) => {
+                            let bpm = val
+                                .pointer("/data/link_bpm")
+                                .and_then(serde_json::Value::as_f64)
+                                .map(|b| b as f32);
+                            let before = self.engine.active_patch().clone();
+                            let mut edited = before.clone();
+                            if let Some(b) = bpm {
+                                edited.bpm = b.clamp(40.0, 240.0);
+                            }
+                            self.apply_patch_edit(&before, &edited);
+                            self.status_line =
+                                format!("Synced from live DJCraft ({:.1} BPM)", edited.bpm);
+                        }
+                        Err(e) => self.status_line = format!("DJCraft IPC: {e}"),
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Target Deck:");
+                for d in ["A", "B", "C", "D"] {
+                    if ui
+                        .selectable_label(self.djcraft_target_deck == d, format!("Deck {d}"))
+                        .clicked()
+                    {
+                        self.djcraft_target_deck = d.to_string();
+                    }
+                }
+                if ui
+                    .button(format!(
+                        "1-Click Forge & Load -> DJCraft Deck {}",
+                        self.djcraft_target_deck
+                    ))
+                    .clicked()
+                {
+                    let p = self.engine.active_patch();
+                    let dur_ms = synthcraft_core::stem_duration_ms(p, self.djcraft_bars);
+                    let home = std::env::var_os("USERPROFILE")
+                        .or_else(|| std::env::var_os("HOME"))
+                        .map(PathBuf::from)
+                        .unwrap_or_default();
+                    let stem_dir = home.join("Documents").join("SynthCraft").join("Stems");
+                    let _ = std::fs::create_dir_all(&stem_dir);
+                    let safe_key = p.camelot_key.replace(' ', "_");
+                    let out_path = stem_dir.join(format!(
+                        "{}_{:.0}bpm_{}_{}bars.wav",
+                        p.id, p.bpm, safe_key, self.djcraft_bars
+                    ));
+                    match write_wav_file(p, &out_path, self.engine.sample_rate_hz, dur_ms) {
+                        Ok(samples) => {
+                            match synthcraft_core::send_stem_to_djcraft_deck(
+                                &self.djcraft_target_deck,
+                                &out_path,
+                            ) {
+                                Ok(_) => {
+                                    self.status_line = format!(
+                                        "Forged {} samples and loaded onto DJCraft Deck {} ({})",
+                                        samples,
+                                        self.djcraft_target_deck,
+                                        out_path.display()
+                                    );
+                                }
+                                Err(e) => {
+                                    self.status_line = format!(
+                                        "Forged WAV to {} (DJCraft IPC load failed: {e})",
+                                        out_path.display()
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => self.status_line = format!("Stem render failed: {e}"),
+                    }
+                }
+            });
+        });
+        ui.add_space(6.0);
 
         {
             let before = self.engine.active_patch().clone();

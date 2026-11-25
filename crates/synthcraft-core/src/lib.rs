@@ -10,6 +10,7 @@ pub mod banks;
 pub mod clap_host;
 #[cfg(feature = "sqlite")]
 pub mod db;
+pub mod djcraft_bridge;
 pub mod dsp;
 pub mod edit;
 pub mod error;
@@ -32,6 +33,13 @@ pub use arp::{ArpMode, ArpParams};
 pub use clap_host::{ClapHostConfig, ClapParamInfo, ClapPluginInfo, ExternalClapProcessor};
 #[cfg(feature = "sqlite")]
 pub use db::{default_db_path, load_from_db, save_to_db};
+pub use djcraft_bridge::{
+    camelot_to_root_semitone, transpose_patch_to_camelot, DjcraftBeacon, DJCRAFT_LINK_LOOPBACK_PORT,
+};
+#[cfg(not(target_arch = "wasm32"))]
+pub use djcraft_bridge::{
+    djcraft_live_port, query_djcraft_live_status, send_stem_to_djcraft_deck, DjcraftLinkReceiver,
+};
 pub use error::SynthError;
 pub use mod_matrix::{ModDest, ModRoute, ModSource};
 pub use model::{

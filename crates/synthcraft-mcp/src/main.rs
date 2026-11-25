@@ -297,6 +297,9 @@ pub enum CliSub {
     /// Manage the 3U CLAP Host module (scan, inspect, configure, status)
     #[command(subcommand)]
     ClapHost(ClapHostSub),
+    /// Live DJCraft bridge (query running DJCraft or forge & load a stem directly onto a deck)
+    #[command(subcommand)]
+    Djcraft(DjcraftSub),
     /// List all built-in morphing wavetables and the active patch's wavetable
     ListWavetables,
     /// Record a sequence of MIDI notes directly into the 16-step sequencer
@@ -339,6 +342,21 @@ pub enum ClapHostSub {
     },
     /// Show the current 3U CLAP Host configuration and rack slot state
     Status,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DjcraftSub {
+    /// Query a running DJCraft GUI's live 4-deck BPM, playing state, and Camelot keys
+    Status,
+    /// Render a BPM/Camelot-locked WAV stem and load it directly onto DJCraft Deck A/B/C/D
+    ForgeAndLoad {
+        #[arg(long, default_value = "B")]
+        deck: String,
+        #[arg(long, default_value_t = 4)]
+        bars: usize,
+        #[arg(long)]
+        output_path: String,
+    },
 }
 
 fn default_banks_dir() -> PathBuf {
@@ -712,6 +730,49 @@ fn run_cli_subcommand(
                 let out = serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string());
                 println!("{out}");
                 return;
+            }
+        },
+        CliSub::Djcraft(sub) => match sub {
+            DjcraftSub::Status => match synthcraft_core::query_djcraft_live_status() {
+                Ok(val) => {
+                    let out =
+                        serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string());
+                    println!("{out}");
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            },
+            DjcraftSub::ForgeAndLoad {
+                deck,
+                bars,
+                output_path,
+            } => {
+                let resolved = if policy.is_active() {
+                    match policy.check_write(&output_path) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("error: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                } else {
+                    PathBuf::from(&output_path)
+                };
+                match forge_and_load_djcraft(engine, &deck, bars, &resolved) {
+                    Ok(val) => {
+                        let out =
+                            serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string());
+                        println!("{out}");
+                        return;
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
             }
         },
         CliSub::ListWavetables => {
@@ -1434,6 +1495,18 @@ pub fn handle_mcp_request(
                         .check_write(output_dir)
                         .and_then(|resolved| export_wasm_bundle(&resolved))
                 }
+                "djcraft_live_status" => synthcraft_core::query_djcraft_live_status(),
+                "forge_and_load_djcraft_deck" => {
+                    let deck = args.get("deck").and_then(Value::as_str).unwrap_or("B");
+                    let bars = args.get("bars").and_then(Value::as_u64).unwrap_or(4) as usize;
+                    let output_path = args
+                        .get("output_path")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    policy
+                        .check_write(output_path)
+                        .and_then(|resolved| forge_and_load_djcraft(engine, deck, bars, &resolved))
+                }
                 "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
                 other => Err(synthcraft_core::SynthError::Validation(format!(
                     "Unknown tool '{other}'"
@@ -1529,8 +1602,31 @@ fn mcp_tools_schema() -> Value {
         { "name": "list_wavetables", "description": "List all built-in morphing wavetables (analog_morph, formant_vowel, metallic_bell, acid_fold) and the active patch's selected wavetable.", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "record_sequencer_notes", "description": "Step-record a sequence of MIDI notes (0..127) into the active patch's 16-step sequencer starting at start_step (0..15) with velocity (0.05..1.0; >=0.88 sets accent).", "inputSchema": { "type": "object", "properties": { "notes": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 127 } }, "start_step": { "type": "integer", "minimum": 0, "maximum": 15 }, "velocity": { "type": "number" } }, "required": ["notes"] } },
         { "name": "export_wasm_bundle", "description": "Export the Web Audio AudioWorklet bridge (synthcraft-worklet.js) and compiled synthcraft_wasm.wasm (if built) into output_dir (inside --automation-write-root).", "inputSchema": { "type": "object", "properties": { "output_dir": { "type": "string" } }, "required": ["output_dir"] } },
+        { "name": "djcraft_live_status", "description": "Query a running DJCraft GUI's live 4-deck BPM, playing state, and Camelot keys via its loopback live.port IPC.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "forge_and_load_djcraft_deck", "description": "Render a BPM/Camelot-locked WAV stem (output_path inside --automation-write-root) and load it directly onto Deck A/B/C/D of a running DJCraft GUI.", "inputSchema": { "type": "object", "properties": { "deck": { "type": "string" }, "bars": { "type": "integer", "minimum": 1, "maximum": 16 }, "output_path": { "type": "string" } }, "required": ["output_path"] } },
         { "name": "reset_factory_patches", "description": "Reset all factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
     ])
+}
+
+fn forge_and_load_djcraft(
+    engine: &SynthEngine,
+    deck: &str,
+    bars: usize,
+    output_path: &Path,
+) -> Result<Value, synthcraft_core::SynthError> {
+    let p = engine.active_patch();
+    let dur_ms = synthcraft_core::stem_duration_ms(p, bars.clamp(1, 16));
+    let samples = synthcraft_core::write_wav_file(p, output_path, engine.sample_rate_hz, dur_ms)?;
+    let ipc_resp = synthcraft_core::send_stem_to_djcraft_deck(deck, output_path)?;
+    Ok(json!({
+        "deck": deck,
+        "bars": bars.clamp(1, 16),
+        "bpm": p.bpm,
+        "camelot_key": p.camelot_key,
+        "samples": samples,
+        "output_path": output_path.to_string_lossy(),
+        "djcraft_ipc": ipc_resp,
+    }))
 }
 
 const WORKLET_JS: &str = include_str!("../../synthcraft-wasm/web/synthcraft-worklet.js");
@@ -1688,7 +1784,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 48);
+        assert_eq!(tools, 50);
         let _ = std::fs::remove_file(&db);
     }
 

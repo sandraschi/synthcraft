@@ -216,6 +216,47 @@ impl SynthCraftApp {
         while let Ok(ev) = self.midi_rx.try_recv() {
             self.apply_midi_controller(ev);
         }
+        // Poll DJCraft loopback Link UDP beacons (127.0.0.1:20809) when sync or key-lock is armed.
+        if self.djcraft_link_sync || self.djcraft_auto_camelot {
+            self.djcraft_link_rx.ensure_bound();
+            if let Some(beacon) = self.djcraft_link_rx.poll() {
+                let before = self.engine.active_patch().clone();
+                let mut edited = before.clone();
+                let mut touched = false;
+                if self.djcraft_link_sync && (edited.bpm - beacon.bpm as f32).abs() > 0.05 {
+                    edited.bpm = (beacon.bpm as f32).clamp(40.0, 240.0);
+                    touched = true;
+                }
+                if self.djcraft_auto_camelot
+                    && !beacon.camelot_key.is_empty()
+                    && !beacon
+                        .camelot_key
+                        .eq_ignore_ascii_case(edited.camelot_key.trim())
+                {
+                    let shift = synthcraft_core::transpose_patch_to_camelot(
+                        &mut edited,
+                        &beacon.camelot_key,
+                    );
+                    if shift != 0 {
+                        self.status_line = format!(
+                            "Auto-Camelot transposed {:+} st -> {}",
+                            shift, edited.camelot_key
+                        );
+                    }
+                    touched = true;
+                }
+                if touched {
+                    self.apply_patch_edit(&before, &edited);
+                }
+                if self.djcraft_link_sync {
+                    if let Some(a) = &self.audio {
+                        if a.meters.playing() != beacon.playing {
+                            a.send(AudioMsg::Play(beacon.playing));
+                        }
+                    }
+                }
+            }
+        }
         let opts = self.rt_options();
         let routing = synthcraft_core::compute_rack_routing(
             &self.engine.rack_modules,
