@@ -1,52 +1,60 @@
-# SynthCraft Help & User Guide
+# SynthCraft v0.4.0 -- Help & User Guide
 
 ## Get Started
 
-**What is SynthCraft?**
-SynthCraft is a 3-tier Pure-Rust ArtCraft Modular Audio Synthesizer, 16-Step Acid Sequencer, Spectral Analyzer, CLAP (`1.2.2`) Plugin Bridge for **SoundCraft**, and BPM/Camelot Stem & Riser Forge for **DJCraft**.
+Welcome to **SynthCraft**, a Pure-Rust modular synthesizer studio, 64-step acid sequencer, 8-voice TR-808/909 drum machine, 6-operator FM / granular / spectral / neural DDSP workstation, 16-band analog vocoder, mastering desk, native **CLAP `1.2.2` DAW plugin (`SynthCraft.clap`)**, native **VCV Rack 2 module (`SynthCraft 2.0.0`)**, and **DJCraft** live bridge.
 
-It provides 6 integrated workbenches in the left sidebar:
-1. **Modular Rack & VCO/VCF** -- dual anti-aliased oscillators (`Sine`, `Saw`, `Square`, `Triangle`, `PulsePWM`, `SuperSaw`, `WhiteNoise`, `SubOctave`) with detune, FM index, and 4-pole resonant ladder filter (`LowPass24dB`, `BandPass12dB`, `HighPass12dB`, `AcidResonant`).
-2. **ADSR, LFO & Step Sequencer** -- 16-step BPM-locked sequencer (`36..84` MIDI notes, velocity, gate %, accent, acid slide) plus ADSR envelope and tempo-synced LFO modulation.
-3. **Oscilloscope & Spectrum** -- 256-sample real-time waveform scope, 32-band harmonic DFT/FFT spectrum analyzer, RMS/Peak dBFS metering, crest factor, and zero-crossing fundamental frequency (`Hz`) tracker.
-4. **CLAP Plugin & SoundCraft** -- native CLAP (`u-he` / Bitwig Clever Audio Plug-in `1.2.2`, ID `dev.sandraschi.synthcraft`) plugin descriptor and polyphonic parameter automation table (`clap_id`, modulatable flags) exported for **SoundCraft**. A loadable CLAP plugin binary is not built yet.
-5. **DJCraft Stem & WAV Forge** -- exports 48 kHz / 44.1 kHz 16-bit PCM `.wav` loops, risers, sub-drops, and stem metadata (`bpm`, `camelot_key`, `bars`, `cue_points`) directly compatible with **DJCraft** decks and **SoundCraft** tracks.
-6. **Assistant & Help** -- local-first Patch Co-Designer Chat and 6-tab interactive documentation.
+Every single subpage in the left sidebar has its own dedicated human-readable guide -- complete with plain-English explanations, hardware history, famous tracks, and CLI/MCP commands:
+- Click **`? Guide`** in the top studio bar (or press **`F1`**) from anywhere in the app to open the guide for the exact subpage you are using.
+- Open **`docs/site/index.html`** in any browser for the searchable, interactive HTML studio handbook.
 
 ## Functions
 
-- **6 Factory Patches**: `vienna_acid_303`, `goliath_reese_sub`, `danube_dub_chord`, `stephansdom_bell_fm`, `djcraft_riser_sweep`, `soundcraft_warm_pad`.
-- **SQLite Persistence**: Auto-saves patch parameters, 16-step sequences, and custom user patches to `%LOCALAPPDATA%\synthcraft\synthcraft.db` (or `--db <PATH>`).
+SynthCraft bundles **14 hierarchical workbenches (37 subpages)**:
+1. **VCV 2 Eurorack & VCO/VCF** -- Draggable 3U modular patch cables, 13 playable modules (including the external `CLAP HOST` slot), 12 pre-patched Rack Rigs, dual oscillators, 4-pole ladder filter, and Factory Patch Bank.
+2. **1990-Style PCM & Extreme DSP** -- Classic 1990s workstation pianos, organ bass, choirs, and orchestra hits (with 1988 32 kHz/12-bit DAC crunch) + 6 mathematical Extreme DSP generators (Karplus-Strong plucked strings, West-Coast wavefolder, Phase Distortion, Modal struck bar).
+3. **MIDI Keyboard & MIDI Depot** -- Live USB MIDI (`midir`), 25-key studio piano, 8 genre-authentic built-in MIDI patterns, and `.mid` file import/export.
+4. **Demo Showcase & Audition** -- 1-click club, acid, house piano, and West-Coast presets with instant spectral feedback.
+5. **Sequencer, Drums & ADSR/LFO** -- 64-step (4-bar) acid sequencer with Accent/Slide & Live Record, 8-voice pure-Rust TR-808/909 drum machine (6 kits, Euclidean fills, hi-hat choke, swing), ADSR/LFO, 8-route Mod Matrix, Arpeggiator, and Scala `.scl` microtonal tuning.
+6. **Oscilloscope & Spectrum** -- Triggered waveform oscilloscope + 32-band DFT spectrum analyzer with RMS/Peak dBFS and pitch tracking.
+7. **CLAP & SoundCraft Bridge** -- Native `SynthCraft.clap` (`dev.sandraschi.synthcraft`) with embedded hardware UI, MPE & per-note Poly-Mod, live-verified in SoundCraft and REAPER.
+8. **DJCraft Stem & WAV Forge** -- Live `DJLink` tempo sync, `DJPD` pads, `DJFX` stereo vocal/deck routing, Camelot harmonic keys, and 48 kHz `.wav` stem rendering.
+9. **Assistant & Help** -- Local Patch Co-Designer Chat and searchable 37-Subpage Encyclopedia (`F1`).
+10. **Studio Settings & Prefs (`Ctrl+,`)** -- Audio driver/oversampling, MIDI/MPE, 5 hardware skins & 4 layouts, PCM DAC settings, plugin paths, and SQLite DB status.
+11. **Next-Gen Lab** -- Drawable 16-point MSEG splines + Dual Morph Filter B (Formant, Comb +/-, MS-20 Screamer) with animated knob mod rings, 24-grain live-capture Granular Cloud, 64-Partial Spectral Additive Sculptor, and Multi-Core Evolutionary Genopatch Audio-to-Patch matcher.
+12. **Pro Lab** -- 6-Operator Thru-Zero FM Matrix (6x6), 16-Voice Hyper-Unison, Reorderable Studio FX Rack (OTT 3-band, Convolution IR, Shimmer, Analog Tape), 8x8 2D FDTD Physical Mesh, and 8x Oversampled WDF Analog Circuits (Moog CP3, Buchla 292 LPG, TB-303).
+13. **Visuals, MPE & Neural DDSP** -- 24-slice 3D perspective Waterfall Spectrogram, Lissajous Stereo Vectorscope + phase meter, 2D MPE Expression Touch Pad, and Neural DDSP Timbre Transfer (Violin, Flute, Sax, Cello, Trumpet, Choir).
+14. **Performance & Mastering Suite** -- 1-Finger Chord Memory (10 voicings) + Scale Lock + Riff Generator, 16-Band Analog Vocoder, 8-Scene Crossfader & 4-Corner XY Morph Pad, and Studio Mastering Bus (4-Band EQ, Sub-Bass Mono `<120 Hz`, M/S Width, Brickwall Limiter).
+
+All patches auto-save off the UI thread to `%LOCALAPPDATA%\synthcraft\synthcraft.db` with automatic pre-migration backups.
 
 ## Usage
 
-### CLI
+### CLI (`synthcraft-mcp`)
 ```powershell
 synthcraft-mcp status --json
 synthcraft-mcp list-patches
-synthcraft-mcp load-patch --id vienna_acid_303
-synthcraft-mcp analyze-spectrum --duration-ms 500
-synthcraft-mcp export-clap
-synthcraft-mcp export-djcraft-stem --bars 4
+synthcraft-mcp set-sequencer-length --steps 64
+synthcraft-mcp load-drum-preset --preset berlin_techno --enabled true
+synthcraft-mcp run-genopatch --target-preset acid_squelch --apply true
+synthcraft-mcp set-perf-master --chord-enabled true --chord-mode DubMinor9 --master-enabled true
 synthcraft-mcp render-wav --path loop_128bpm_8A.wav --duration-ms 2000
 ```
 
-### MCP Server (`2026-07-28` stdio)
+### MCP Server (`2026-07-28` stdio, 60 Tools)
 ```powershell
-synthcraft-mcp --mcp
+synthcraft-mcp --mcp --automation-read-root D:\AudioIn --automation-write-root D:\AudioOut
 ```
-Exposes 23 MCP tools: `synth_status`, `synth_summary`, `list_patches`, `load_patch`, `update_oscillators`, `update_filter`, `update_envelope_lfo`, `set_sequencer_step`, `synthesize_preview`, `analyze_spectrum`, `render_wav_file`, `export_clap_manifest`, `export_djcraft_stem`, `load_pcm_program`, `set_extreme_dsp`, `set_sampler_bank`, `set_fx`, `set_patch_param`, `set_camelot_key`, `load_midi_depot_clip`, `export_midi_file`, `run_demo_showcase`, and `reset_factory_patches`.
-
-The MCP server refuses to start without `--automation-read-root` and `--automation-write-root`; it can only read and write below those folders.
-
-Sample banks: `synthcraft-mcp list-banks` and `synthcraft-mcp fetch-bank <id>` download free CC0 packs (also available as a button in the rack). CLAP status: SynthCraft exports the CLAP descriptor and parameter map as JSON. A loadable CLAP plugin binary is not built yet; for now use the live app or rendered WAV stems.
+Both `--automation-read-root` and `--automation-write-root` are required so external agents stay strictly inside approved folders.
 
 ## Tips
 
-- **SoundCraft Integration**: SoundCraft hosts CLAP (`1.2.2`) plugins rather than Steinberg VST3. Use Workbench 4 (`CLAP Plugin & SoundCraft`) to inspect the `dev.sandraschi.synthcraft` CLAP descriptor, parameter IDs (`0x1001..0x100C`), (JSON export; there is no C-ABI plugin binary yet), or render 48 kHz `.wav` stems directly into a SoundCraft session.
-- **DJCraft Integration**: Use Workbench 5 (`DJCraft Stem & WAV Forge`) to lock your patch to a Camelot key (`8A Am`, `4A Fm`, etc.) and deck BPM (`120..174 BPM`) before exporting a 4-bar loop or transition riser.
-- Press `Ctrl+K` for the Command Palette, `F1` for Help, and `Ctrl+MouseWheel` to zoom the UI.
+- **`F1`** -- Open the 37-Subpage Encyclopedia pre-selected to your current subpage.
+- **`? Guide`** (top bar) -- Toggle a live side-panel guide right beside your knobs.
+- **`Ctrl+K`** -- Command Palette; **`Ctrl+,`** -- Studio Settings; **`Ctrl+Z` / `Ctrl+Y`** -- 64-deep Undo/Redo; **`Ctrl+MouseWheel`** -- Smooth UI Zoom.
+- **`Shift + Drag`** on any rotary knob for fine precision; **Double-click** to reset to default.
+- **DAW & Rack 2**: `SynthCraft.clap` loads natively in SoundCraft and REAPER; `SynthCraft 2.0.0` loads natively in VCV Rack 2.
 
 ## Other Crafts
 
-SynthCraft is part of the `sandraschi` Pure-Rust ArtCraft ecosystem alongside `djcraft`, `musiccraft`, `logiccraft`, `packetcraft`, `graphcraft`, `robotcraft`, and `smbcraft`.
+SynthCraft is part of the `sandraschi` Pure-Rust ArtCraft ecosystem alongside `djcraft`, `soundcraft`, `musiccraft`, `logiccraft`, `packetcraft`, `graphcraft`, `robotcraft`, and `smbcraft`.

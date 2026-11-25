@@ -66,6 +66,7 @@ pub enum Page {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HelpTab {
+    SubpageEncyclopedia,
     GetStarted,
     ModularRack,
     SequencerEnv,
@@ -107,6 +108,10 @@ pub struct SynthCraftApp {
     pub chat_input: String,
     pub chat_history: Vec<(String, String)>,
     pub help_tab: HelpTab,
+    pub show_subpage_help: bool,
+    pub help_search_query: String,
+    pub help_selected_wb: usize,
+    pub help_selected_sub: usize,
     pub show_palette: bool,
     pub palette_query: String,
     pub show_shortcuts: bool,
@@ -237,7 +242,11 @@ impl SynthCraftApp {
                 "SynthCraft".into(),
                 "no model selected -- connect an MCP 2026-07-28 client or local Ollama endpoint to design synth patches, CLAP mappings, and DJCraft stems.".into(),
             )],
-            help_tab: HelpTab::GetStarted,
+            help_tab: HelpTab::SubpageEncyclopedia,
+            show_subpage_help: false,
+            help_search_query: String::new(),
+            help_selected_wb: 0,
+            help_selected_sub: 0,
             show_palette: false,
             palette_query: String::new(),
             show_shortcuts: false,
@@ -600,6 +609,10 @@ impl SynthCraftApp {
             ctx.set_zoom_factor(self.zoom_factor);
         }
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
+            let (wb, sub) = crate::help_docs::map_page_to_doc(self.page, self.subpage);
+            self.help_selected_wb = wb;
+            self.help_selected_sub = sub;
+            self.help_tab = HelpTab::SubpageEncyclopedia;
             self.goto(Page::Help, 0);
         }
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::K)) {
@@ -818,6 +831,13 @@ impl SynthCraftApp {
                     .clicked()
                 {
                     self.goto(Page::Settings, 0);
+                }
+                if ui
+                    .selectable_label(self.show_subpage_help, "? Guide")
+                    .on_hover_text("Toggle dedicated human-readable guide, history & famous tracks for this subpage (F1 for full Encyclopedia)")
+                    .clicked()
+                {
+                    self.show_subpage_help = !self.show_subpage_help;
                 }
             });
         });
@@ -2036,14 +2056,15 @@ impl SynthCraftApp {
     }
 
     fn render_help_view(&mut self, ui: &mut egui::Ui) {
-        ui.heading("SynthCraft Documentation & Reference (F1)");
+        ui.heading("SynthCraft Documentation & 37-Subpage Encyclopedia (F1)");
         ui.horizontal_wrapped(|ui| {
             for (tab, label) in [
+                (HelpTab::SubpageEncyclopedia, "37-Subpage Encyclopedia"),
                 (HelpTab::GetStarted, "Get Started"),
                 (HelpTab::ModularRack, "Modular VCO & VCF"),
                 (HelpTab::SequencerEnv, "Sequencer & ADSR/LFO"),
                 (HelpTab::ClapDjcraft, "CLAP & DJCraft/SoundCraft"),
-                (HelpTab::CliMcp, "CLI & MCP 2026-07-28"),
+                (HelpTab::CliMcp, "CLI & 60 MCP Tools"),
                 (HelpTab::TechnicalInfo, "Technical Info"),
             ] {
                 if ui.selectable_label(self.help_tab == tab, label).clicked() {
@@ -2157,6 +2178,13 @@ impl eframe::App for SynthCraftApp {
                 .default_size(225.0)
                 .show(ui, |ui| {
                     self.render_sidebar(ui);
+                });
+        }
+        if self.show_subpage_help && self.page != Page::Help {
+            egui::Panel::right("synthcraft_subpage_help")
+                .default_size(380.0)
+                .show(ui, |ui| {
+                    crate::help_docs::render_subpage_help_drawer(self, ui);
                 });
         }
         egui::CentralPanel::default().show(ui, |ui| {
