@@ -311,7 +311,22 @@ const PERF_MASTER_SUBS: &[SubPage] = &[
     },
 ];
 
-static WORKBENCHES: [CraftWorkbench; 14] = [
+const PIPE_ORGAN_SUBS: &[SubPage] = &[
+    SubPage {
+        page: Page::PipeOrgan,
+        sub: 0,
+        en: "Cathedral Organ Console & Stops",
+        de: "Kathedral-Orgel Spieltisch & Register",
+    },
+    SubPage {
+        page: Page::PipeOrgan,
+        sub: 1,
+        en: "GrandOrgue Bach MIDI Depot",
+        de: "GrandOrgue Bach MIDI-Depot",
+    },
+];
+
+static WORKBENCHES: [CraftWorkbench; 15] = [
     CraftWorkbench {
         id: "modular_rack",
         en: "1. VCV 2 Eurorack & VCO/VCF",
@@ -395,6 +410,12 @@ static WORKBENCHES: [CraftWorkbench; 14] = [
         en: "14. Performance & Mastering Suite",
         de: "14. Performance & Mastering-Suite",
         subpages: PERF_MASTER_SUBS,
+    },
+    CraftWorkbench {
+        id: "pipe_organ",
+        en: "15. Cathedral Pipe Organ & Bach MIDI",
+        de: "15. Kathedral-Orgel & Bach MIDI",
+        subpages: PIPE_ORGAN_SUBS,
     },
 ];
 

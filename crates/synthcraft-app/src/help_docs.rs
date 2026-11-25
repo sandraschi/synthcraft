@@ -67,6 +67,10 @@ const WB_DOCS: &[(&str, &str)] = &[
         "14. Performance & Mastering Suite",
         include_str!("../../../docs/workbenches/14_perf_master.md"),
     ),
+    (
+        "15. Cathedral Pipe Organ & Bach MIDI",
+        include_str!("../../../docs/workbenches/15_pipe_organ.md"),
+    ),
 ];
 
 /// Map any active `(Page, subpage)` pair to `(workbench_index_0_based, subpage_ordinal_0_based)`
@@ -92,6 +96,7 @@ pub fn map_page_to_doc(page: Page, sub: usize) -> (usize, usize) {
         Page::ProLab => (11, sub.min(2)),
         Page::VisualsMpeDdsp => (12, sub.min(2)),
         Page::PerfMaster => (13, sub.min(3)),
+        Page::PipeOrgan => (14, sub.min(1)),
     }
 }
 

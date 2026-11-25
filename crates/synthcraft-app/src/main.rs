@@ -12,6 +12,7 @@ mod mod_wavetable_ui;
 mod netfetch;
 mod nextgen_ui;
 mod perf_master_ui;
+mod pipe_organ_ui;
 mod preset_browser_ui;
 mod pro_lab_ui;
 mod rack_canvas;

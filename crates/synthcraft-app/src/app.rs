@@ -62,6 +62,7 @@ pub enum Page {
     ProLab,
     VisualsMpeDdsp,
     PerfMaster,
+    PipeOrgan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,6 +121,10 @@ pub struct SynthCraftApp {
     pub favorite_patch_ids: Vec<String>,
     pub mutate_counter: u64,
     pub wt_harmonics: [f32; 16],
+    // Workbench 15: Cathedral Pipe Organ & GrandOrgue Bach MIDI Depot
+    pub organ_midi_dir: String,
+    pub organ_midi_filter: String,
+    pub organ_midi_entries: Vec<synthcraft_core::OrganMidiEntry>,
     pub show_palette: bool,
     pub palette_query: String,
     pub show_shortcuts: bool,
@@ -269,6 +274,13 @@ impl SynthCraftApp {
                 1.0, 0.5, 0.33, 0.25, 0.2, 0.16, 0.14, 0.12, 0.11, 0.1, 0.09, 0.08, 0.07, 0.06,
                 0.05, 0.04,
             ],
+            organ_midi_dir: synthcraft_core::default_grandorgue_midi_dir()
+                .display()
+                .to_string(),
+            organ_midi_filter: String::new(),
+            organ_midi_entries: synthcraft_core::scan_organ_midi_depot(
+                &synthcraft_core::default_grandorgue_midi_dir(),
+            ),
             show_palette: false,
             palette_query: String::new(),
             show_shortcuts: false,
@@ -1146,6 +1158,9 @@ impl SynthCraftApp {
                             crate::visualizers_ui::render_visuals_mpe_ddsp(self, ui)
                         }
                         Page::PerfMaster => crate::perf_master_ui::render_perf_master(self, ui),
+                        Page::PipeOrgan => {
+                            crate::pipe_organ_ui::render_pipe_organ_workbench(self, ui)
+                        }
                     },
                     SynthLayout::EurorackBay => {
                         crate::rack_ui::render_vcv_eurorack_canvas(self, ui);
@@ -2323,9 +2338,9 @@ mod tests {
     #[test]
     fn subapp_registry_exposes_every_workbench() {
         let reg = subapps::registry();
-        assert_eq!(reg.len(), 14);
+        assert_eq!(reg.len(), 15);
         let total_subpages: usize = reg.iter().map(|w| w.subpages().len()).sum();
-        assert_eq!(total_subpages, 37);
+        assert_eq!(total_subpages, 39);
     }
 
     #[test]
