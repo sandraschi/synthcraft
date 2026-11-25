@@ -137,10 +137,45 @@ impl SynthCraftApp {
 
     pub fn note_on(&mut self, note: u8, velocity: f32) {
         self.engine.midi_hw.last_triggered_note = note;
+        if self.seq_record {
+            self.record_sequencer_note(note, velocity);
+        }
         match &self.audio {
             Some(a) => a.send(AudioMsg::NoteOn(note, velocity)),
             None => self.status_line = "No audio output: notes cannot sound".into(),
         }
+    }
+
+    /// Capture a live note into the active patch's 16-step sequencer (overdubbing the playing
+    /// step when running, or step-recording and advancing the cursor when stopped).
+    pub fn record_sequencer_note(&mut self, note: u8, velocity: f32) {
+        let len = self.engine.active_patch().steps.len();
+        if len == 0 {
+            return;
+        }
+        let step_idx = match self.playing_step() {
+            Some(s) => s % len,
+            None => {
+                let cur = self.seq_record_cursor % len;
+                self.seq_record_cursor = (cur + 1) % len;
+                cur
+            }
+        };
+        let before = self.engine.active_patch().clone();
+        let mut edited = before.clone();
+        if let Some(step) = edited.steps.get_mut(step_idx) {
+            step.midi_note = note.clamp(0, 127);
+            step.active = true;
+            step.velocity = velocity.clamp(0.05, 1.0);
+            step.accent = velocity >= 0.88;
+        }
+        self.apply_patch_edit(&before, &edited);
+        self.status_line = format!(
+            "Recorded note {} (vel {:.0}%) into step {}",
+            note,
+            velocity * 100.0,
+            step_idx + 1
+        );
     }
 
     pub fn note_off(&mut self, note: u8) {
@@ -282,6 +317,13 @@ impl SynthCraftApp {
     }
 
     fn apply_midi_controller(&mut self, ev: MidiEvent) {
+        if let MidiEvent::NoteOn { note, velocity, .. } = ev {
+            self.engine.midi_hw.last_triggered_note = note;
+            if self.seq_record {
+                self.record_sequencer_note(note, velocity);
+            }
+            return;
+        }
         let MidiEvent::Controller { cc, value, .. } = ev else {
             return;
         };

@@ -73,6 +73,8 @@ pub fn connect(
                 match ev {
                     MidiEvent::NoteOn { note, velocity, .. } => {
                         let _ = audio.send(AudioMsg::NoteOn(note, velocity));
+                        let _ = ui.send(ev);
+                        repaint.request_repaint();
                     }
                     MidiEvent::NoteOff { note, .. } => {
                         let _ = audio.send(AudioMsg::NoteOff(note));

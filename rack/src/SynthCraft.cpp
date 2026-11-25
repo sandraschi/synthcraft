@@ -73,6 +73,16 @@ struct SynthCraft : Module {
 	std::string statusText;
 
 	static constexpr int VOICE_CHOICES[5] = {1, 2, 4, 8, 16};
+	static constexpr const char* WAVE_KEYS[10] = {
+		"sine", "saw", "square", "triangle", "pulse_pwm",
+		"supersaw", "white_noise", "sub_octave", "atmo_pad", "wavetable",
+	};
+	static constexpr const char* FILTER_KEYS[4] = {
+		"lowpass_24db", "bandpass_12db", "highpass_12db", "acid_resonant",
+	};
+	static constexpr const char* WAVETABLE_KEYS[4] = {
+		"analog_morph", "formant_vowel", "metallic_bell", "acid_fold",
+	};
 
 	SynthCraft() {
 		config(N_PARAMS, INPUTS_LEN, OUTPUTS_LEN, 0);
@@ -254,6 +264,57 @@ struct SynthCraft : Module {
 		statusText = "no bank";
 	}
 
+	// Read a top-level string field from the engine's current patch JSON.
+	std::string getPatchString(const char* key) {
+		if (!ready) return {};
+		std::lock_guard<std::mutex> lock(engMutex);
+		char* raw = sc_state_json(eng);
+		if (!raw) return {};
+		json_error_t err;
+		json_t* root = json_loads(raw, 0, &err);
+		sc_free_string(raw);
+		if (!root) return {};
+		std::string val;
+		if (json_t* f = json_object_get(root, key); f && json_is_string(f)) {
+			val = json_string_value(f);
+		}
+		json_decref(root);
+		return val;
+	}
+
+	// Update a top-level string field in the engine's patch JSON (zero C ABI break).
+	void setPatchString(const char* key, const char* value) {
+		if (!ready) return;
+		std::lock_guard<std::mutex> lock(engMutex);
+		char* raw = sc_state_json(eng);
+		if (!raw) return;
+		json_error_t err;
+		json_t* root = json_loads(raw, 0, &err);
+		sc_free_string(raw);
+		if (!root) return;
+		json_object_set_new(root, key, json_string(value));
+		char* dumped = json_dumps(root, JSON_COMPACT);
+		json_decref(root);
+		if (!dumped) return;
+		int rc = sc_load_state_json(eng, dumped);
+		std::free(dumped);
+		if (rc == 0) {
+			statusText = std::string(key) + ": " + value;
+		}
+		else {
+			statusText = std::string("patch update failed: ") + sc_last_error(eng);
+			WARN("SynthCraft: %s", statusText.c_str());
+		}
+		pos = BLOCK;
+	}
+
+	size_t findIndex(const std::string& val, const char* const* table, size_t n) const {
+		for (size_t i = 0; i < n; i++) {
+			if (val == table[i]) return i;
+		}
+		return 0;
+	}
+
 	json_t* dataToJson() override {
 		json_t* root = json_object();
 		json_object_set_new(root, "maxVoicesIdx", json_integer(maxVoicesIdx));
@@ -288,6 +349,9 @@ struct SynthCraft : Module {
 };
 
 constexpr int SynthCraft::VOICE_CHOICES[5];
+constexpr const char* SynthCraft::WAVE_KEYS[10];
+constexpr const char* SynthCraft::FILTER_KEYS[4];
+constexpr const char* SynthCraft::WAVETABLE_KEYS[4];
 
 namespace {
 
@@ -362,6 +426,34 @@ struct SynthCraftWidget : ModuleWidget {
 		menu->addChild(createIndexSubmenuItem(
 		    "Max voices", {"1", "2", "4", "8", "16"}, [=]() { return (size_t) m->maxVoicesIdx; },
 		    [=](size_t i) { m->setMaxVoices((int) i); }));
+		const std::vector<std::string> waveLabels = {
+			"Sine", "Saw", "Square", "Triangle", "Pulse PWM",
+			"SuperSaw", "White Noise", "Sub Octave", "Atmo Pad", "Wavetable",
+		};
+		menu->addChild(createIndexSubmenuItem(
+		    "VCO 1 waveform", waveLabels,
+		    [=]() { return m->findIndex(m->getPatchString("vco1_wave"), SynthCraft::WAVE_KEYS, 10); },
+		    [=](size_t i) {
+			    if (i < 10) m->setPatchString("vco1_wave", SynthCraft::WAVE_KEYS[i]);
+		    }));
+		menu->addChild(createIndexSubmenuItem(
+		    "VCO 2 waveform", waveLabels,
+		    [=]() { return m->findIndex(m->getPatchString("vco2_wave"), SynthCraft::WAVE_KEYS, 10); },
+		    [=](size_t i) {
+			    if (i < 10) m->setPatchString("vco2_wave", SynthCraft::WAVE_KEYS[i]);
+		    }));
+		menu->addChild(createIndexSubmenuItem(
+		    "Filter mode", {"LowPass 24dB", "BandPass 12dB", "HighPass 12dB", "Acid Resonant"},
+		    [=]() { return m->findIndex(m->getPatchString("filter_mode"), SynthCraft::FILTER_KEYS, 4); },
+		    [=](size_t i) {
+			    if (i < 4) m->setPatchString("filter_mode", SynthCraft::FILTER_KEYS[i]);
+		    }));
+		menu->addChild(createIndexSubmenuItem(
+		    "Wavetable", {"Analog Morph", "Formant Vowel", "Metallic Bell", "Acid Fold"},
+		    [=]() { return m->findIndex(m->getPatchString("wavetable"), SynthCraft::WAVETABLE_KEYS, 4); },
+		    [=](size_t i) {
+			    if (i < 4) m->setPatchString("wavetable", SynthCraft::WAVETABLE_KEYS[i]);
+		    }));
 		menu->addChild(createMenuItem("Load sample bank (.sfz .sf2 .wav)...", "", [=]() {
 			osdialog_filters* filters = osdialog_filters_parse("Sample bank:sfz,sf2,wav");
 			char* path = osdialog_file(OSDIALOG_OPEN, NULL, NULL, filters);

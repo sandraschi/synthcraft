@@ -142,6 +142,8 @@ pub struct SynthCraftApp {
     pub clap_loaded_info: Option<synthcraft_core::ClapPluginInfo>,
     pub clap_loaded_params: Vec<synthcraft_core::ClapParamInfo>,
     pub held_ui_note: Option<u8>,
+    pub seq_record: bool,
+    pub seq_record_cursor: usize,
     pub kbd_down: HashMap<egui::Key, u8>,
     pub kbd_octave: i32,
     pub analysis_cache: Option<((String, u32, u32), synthcraft_core::SpectrumAnalysisReport)>,
@@ -247,6 +249,8 @@ impl SynthCraftApp {
             clap_loaded_info: None,
             clap_loaded_params: Vec::new(),
             held_ui_note: None,
+            seq_record: false,
+            seq_record_cursor: 0,
             kbd_down: HashMap::new(),
             kbd_octave: 3,
             analysis_cache: None,
@@ -959,6 +963,47 @@ impl SynthCraftApp {
             };
             if ui.button(label).clicked() {
                 self.toggle_play();
+            }
+            let rec_label = if self.seq_record {
+                if self.is_playing() {
+                    "REC LIVE".to_string()
+                } else {
+                    format!("REC [Step {}]", self.seq_record_cursor + 1)
+                }
+            } else {
+                "Rec".to_string()
+            };
+            let rec_btn = if self.seq_record {
+                egui::Button::new(
+                    egui::RichText::new(rec_label)
+                        .strong()
+                        .color(egui::Color32::WHITE),
+                )
+                .fill(egui::Color32::from_rgb(200, 38, 38))
+            } else {
+                egui::Button::new(rec_label)
+            };
+            if ui
+                .add(rec_btn)
+                .on_hover_text(
+                    "Arm Live Sequencer Record: overdubs into playing step when running, or step-records & advances when stopped",
+                )
+                .clicked()
+            {
+                self.seq_record = !self.seq_record;
+                if self.seq_record {
+                    self.seq_record_cursor = self.playing_step().unwrap_or(0);
+                    self.status_line = if self.is_playing() {
+                        "Live Sequencer Record armed (overdubbing playing steps)".into()
+                    } else {
+                        format!(
+                            "Step Record armed at step {} -- play notes on keyboard or MIDI",
+                            self.seq_record_cursor + 1
+                        )
+                    };
+                } else {
+                    self.status_line = "Sequencer Record disarmed".into();
+                }
             }
             if ui.button("All notes off").clicked() {
                 if let Some(a) = &self.audio {
