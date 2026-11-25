@@ -250,6 +250,10 @@ pub enum CliSub {
     },
     /// Restore default 2-row 3U rack layout and cables
     ResetRackLayout,
+    /// List all 12 curated pre-patched 3U modular rack rigs
+    ListRackPresets,
+    /// Load one of the 12 curated pre-patched 3U modular rack rigs by id
+    LoadRackPreset { preset_id: String },
     /// Reset all patches to factory defaults
     ResetFactory,
 }
@@ -501,6 +505,8 @@ fn main() {
             bypassed,
         },
         CliSub::ResetRackLayout => Command::ResetRackLayout,
+        CliSub::ListRackPresets => Command::ListRackPresets,
+        CliSub::LoadRackPreset { preset_id } => Command::LoadRackPreset { preset_id },
         CliSub::ResetFactory => Command::ResetFactoryPatches,
     };
     let cmd = if policy.is_active() {
@@ -985,6 +991,15 @@ pub fn handle_mcp_request(
                 }
                 .dispatch(engine),
                 "reset_rack_layout" => Command::ResetRackLayout.dispatch(engine),
+                "list_rack_presets" => Command::ListRackPresets.dispatch(engine),
+                "load_rack_preset" => Command::LoadRackPreset {
+                    preset_id: args
+                        .get("preset_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                }
+                .dispatch(engine),
                 "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
                 other => Err(synthcraft_core::SynthError::Validation(format!(
                     "Unknown tool '{other}'"
@@ -1065,6 +1080,8 @@ fn mcp_tools_schema() -> Value {
         { "name": "move_rack_module", "description": "Move a 3U Eurorack module horizontally (delta_slot) or between rows (delta_row).", "inputSchema": { "type": "object", "properties": { "module_id": { "type": "string" }, "delta_row": { "type": "integer" }, "delta_slot": { "type": "integer" } }, "required": ["module_id"] } },
         { "name": "set_rack_module_param", "description": "Set normalized parameters param_a/param_b (0..1) or bypassed state on a 3U rack module.", "inputSchema": { "type": "object", "properties": { "module_id": { "type": "string" }, "param_a": { "type": "number" }, "param_b": { "type": "number" }, "bypassed": { "type": "boolean" } }, "required": ["module_id"] } },
         { "name": "reset_rack_layout", "description": "Restore the default 2-row 3U Eurorack module layout and default cables.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "list_rack_presets", "description": "List all 12 curated pre-patched 3U modular rack rigs (modules + cables + voicing).", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "load_rack_preset", "description": "Load one of the 12 curated pre-patched 3U modular rack rigs by preset_id (e.g. berlin_school_sequence, west_coast_wavefolder, acid_squelch_303, random_robot_bleeps, ambient_cathedral_drift, industrial_filter_bypass, dub_techno_chord_echo, fm_metallic_bells, sub_earthquake_reese, pcm_shimmer_workstation, polyrhythmic_glitch_lab, clean_studio_init).", "inputSchema": { "type": "object", "properties": { "preset_id": { "type": "string" } }, "required": ["preset_id"] } },
         { "name": "reset_factory_patches", "description": "Reset all factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
     ])
 }
@@ -1124,7 +1141,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 33);
+        assert_eq!(tools, 35);
         let _ = std::fs::remove_file(&db);
     }
 

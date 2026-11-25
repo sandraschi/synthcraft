@@ -15,6 +15,7 @@ pub mod model;
 pub mod params;
 pub mod plugin;
 pub mod rack;
+pub mod rack_presets;
 pub mod rompler;
 pub mod rt;
 pub mod sampler;
@@ -32,6 +33,7 @@ pub use rack::{
     compute_rack_routing, default_rack_modules, euclidean_pattern, RackCategory,
     RackModuleInstance, RackModuleKind,
 };
+pub use rack_presets::{apply_rack_preset, list_rack_presets, RackPresetInfo, RACK_PRESETS};
 pub use rompler::{
     builtin_demo_showcases, builtin_midi_depot, default_rack_cables, export_midi_smf_file,
     DemoShowcaseItem, ExtremeDspMode, MidiDepotClip, MidiHardwareConfig, PcmProgram, RackCable,
@@ -493,6 +495,10 @@ pub enum Command {
         bypassed: Option<bool>,
     },
     ResetRackLayout,
+    ListRackPresets,
+    LoadRackPreset {
+        preset_id: String,
+    },
     ResetFactoryPatches,
 }
 
@@ -992,6 +998,18 @@ impl Command {
                 engine.rack_cables = default_rack_cables();
                 Ok(json!({
                     "reset": true,
+                    "modules": engine.rack_modules.len(),
+                    "cables": engine.rack_cables.len(),
+                }))
+            }
+            Self::ListRackPresets => Ok(json!({
+                "presets": list_rack_presets(),
+                "count": RACK_PRESETS.len(),
+            })),
+            Self::LoadRackPreset { preset_id } => {
+                let info = apply_rack_preset(engine, preset_id)?;
+                Ok(json!({
+                    "loaded_preset": info,
                     "modules": engine.rack_modules.len(),
                     "cables": engine.rack_cables.len(),
                 }))

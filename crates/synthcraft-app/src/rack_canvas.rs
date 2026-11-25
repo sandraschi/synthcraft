@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::f32::consts::PI;
 use synthcraft_core::{
     euclidean_pattern, Command, ExtremeDspMode, FilterMode, PcmProgram, RackCategory,
-    RackModuleInstance, RackModuleKind, SynthPatch, WaveformKind,
+    RackModuleInstance, RackModuleKind, SynthPatch, WaveformKind, RACK_PRESETS,
 };
 
 /// Active drag state for interactive patch-cable creation or re-patching on the 3U rack.
@@ -336,6 +336,35 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
         };
         if ui.button(add_label).clicked() {
             app.show_module_browser = !app.show_module_browser;
+        }
+        // 1-Click Curated Modular Rack Rig selector (12 pre-patched rigs)
+        let mut pick_rig: Option<&'static str> = None;
+        egui::ComboBox::from_label("Rack Rig")
+            .width(215.0)
+            .selected_text("12 Pre-Patched Rigs...")
+            .show_ui(ui, |ui| {
+                for preset in RACK_PRESETS {
+                    let label = format!("{} [{}]", preset.name, preset.style);
+                    if ui.button(label).on_hover_text(preset.description).clicked() {
+                        pick_rig = Some(preset.id);
+                    }
+                }
+            });
+        if let Some(pid) = pick_rig {
+            match (Command::LoadRackPreset {
+                preset_id: pid.to_string(),
+            })
+            .dispatch(&mut app.engine)
+            {
+                Ok(_) => {
+                    if let Some(info) = RACK_PRESETS.iter().find(|p| p.id == pid) {
+                        app.status_line =
+                            format!("Loaded Rack Rig: {} -- {}", info.name, info.description);
+                    }
+                    app.persist_state();
+                }
+                Err(e) => app.status_line = format!("Load rig failed: {e}"),
+            }
         }
         if ui.small_button("Reset Cables").clicked()
             && Command::ResetRackCables.dispatch(&mut app.engine).is_ok()
