@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.2",
   "name": "synthcraft",
-  "version": "0.2.0",
+  "version": "__VERSION__",
   "description": "Pure-Rust Modular DSP Synthesizer, 16-Step Acid Sequencer, Spectral Analyzer, CLAP 1.2.2 Plugin Bridge for SoundCraft, and BPM/Camelot Stem Forge for DJCraft",
   "author": {
     "name": "Sandra Schipal",

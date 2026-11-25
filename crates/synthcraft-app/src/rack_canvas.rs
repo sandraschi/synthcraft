@@ -862,6 +862,13 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                                 KnobBinding::ModuleA => format_custom_knob(m.kind, true, norm_val),
                                 KnobBinding::ModuleB => format_custom_knob(m.kind, false, norm_val),
                             };
+                            resp.widget_info(|| {
+                                egui::WidgetInfo::slider(
+                                    true,
+                                    f64::from(norm_val),
+                                    format!("{} {k_label} ({val_str})", m.kind.title()),
+                                )
+                            });
                             resp.on_hover_text(format!(
                                 "{} {k_label}: {val_str}\nDrag vertically (Shift = fine) · Double-click to reset",
                                 m.kind.title()
@@ -1032,6 +1039,13 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                             pal.text_primary,
                         );
                         let dir = if *is_out { "OUT" } else { "IN" };
+                        jresp.widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::Role::Button,
+                                true,
+                                format!("{} {j_name} ({dir})", m.id),
+                            )
+                        });
                         jresp.on_hover_text(format!(
                             "{} · {j_name} ({dir})\nDrag to patch/move · Right-click to unplug",
                             m.id

@@ -134,6 +134,10 @@ pub struct SynthCraftApp {
     pub show_module_browser: bool,
     pub browser_category: Option<synthcraft_core::RackCategory>,
     pub browser_target_row: usize,
+    pub undo_stack: Vec<synthcraft_core::SynthPatch>,
+    pub redo_stack: Vec<synthcraft_core::SynthPatch>,
+    pub ab_slot_other: Option<synthcraft_core::SynthPatch>,
+    pub ab_is_b: bool,
     pub held_ui_note: Option<u8>,
     pub kbd_down: HashMap<egui::Key, u8>,
     pub kbd_octave: i32,
@@ -232,6 +236,10 @@ impl SynthCraftApp {
             show_module_browser: false,
             browser_category: None,
             browser_target_row: 1,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            ab_slot_other: None,
+            ab_is_b: false,
             held_ui_note: None,
             kbd_down: HashMap::new(),
             kbd_octave: 3,
@@ -339,12 +347,68 @@ impl SynthCraftApp {
         if cmds.is_empty() {
             return;
         }
+        // Coalesce rapid knob drags by keeping up to 64 undo snapshots.
+        if self.undo_stack.len() >= 64 {
+            self.undo_stack.remove(0);
+        }
+        self.undo_stack.push(before.clone());
+        self.redo_stack.clear();
         for c in cmds {
             if let Err(e) = c.dispatch(&mut self.engine) {
                 self.status_line = format!("Edit rejected: {e}");
             }
         }
         self.persist();
+    }
+
+    pub fn undo_patch(&mut self) {
+        let Some(prev) = self.undo_stack.pop() else {
+            self.status_line = "Nothing to undo".into();
+            return;
+        };
+        let cur = self.engine.active_patch().clone();
+        self.redo_stack.push(cur.clone());
+        for c in cur.edit_commands(&prev) {
+            let _ = c.dispatch(&mut self.engine);
+        }
+        self.status_line = format!("Undid patch edit ({} left)", self.undo_stack.len());
+        self.persist();
+    }
+
+    pub fn redo_patch(&mut self) {
+        let Some(next) = self.redo_stack.pop() else {
+            self.status_line = "Nothing to redo".into();
+            return;
+        };
+        let cur = self.engine.active_patch().clone();
+        self.undo_stack.push(cur.clone());
+        for c in cur.edit_commands(&next) {
+            let _ = c.dispatch(&mut self.engine);
+        }
+        self.status_line = format!("Redid patch edit ({} left)", self.redo_stack.len());
+        self.persist();
+    }
+
+    pub fn toggle_ab_compare(&mut self) {
+        let cur = self.engine.active_patch().clone();
+        match self.ab_slot_other.replace(cur.clone()) {
+            None => {
+                self.ab_is_b = true;
+                self.status_line =
+                    "Stored A snapshot -> now editing B (click A/B to compare)".into();
+            }
+            Some(other) => {
+                for c in cur.edit_commands(&other) {
+                    let _ = c.dispatch(&mut self.engine);
+                }
+                self.ab_is_b = !self.ab_is_b;
+                self.status_line = format!(
+                    "A/B Compare: now auditioning slot {}",
+                    if self.ab_is_b { "B" } else { "A" }
+                );
+                self.persist();
+            }
+        }
     }
 
     /// Poll the background sample-bank download and, when it finishes, load the bank through
@@ -484,6 +548,16 @@ impl SynthCraftApp {
         }
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Comma)) {
             self.goto(Page::Settings, 0);
+        }
+        if ctx.input(|i| i.modifiers.ctrl && !i.modifiers.shift && i.key_pressed(egui::Key::Z)) {
+            self.undo_patch();
+        }
+        if ctx.input(|i| {
+            i.modifiers.ctrl
+                && (i.key_pressed(egui::Key::Y)
+                    || (i.modifiers.shift && i.key_pressed(egui::Key::Z)))
+        }) {
+            self.redo_patch();
         }
     }
 
@@ -826,10 +900,48 @@ impl SynthCraftApp {
                         .dispatch(&mut self.engine)
                         .is_ok()
                     {
+                        self.undo_stack.clear();
+                        self.redo_stack.clear();
+                        self.ab_slot_other = None;
+                        self.ab_is_b = false;
                         self.status_line =
                             format!("Loaded patch: {}", self.engine.active_patch().name);
                         self.persist();
                     }
+                }
+                if ui
+                    .add_enabled(
+                        !self.undo_stack.is_empty(),
+                        egui::Button::new("Undo").small(),
+                    )
+                    .on_hover_text("Undo last patch edit (Ctrl+Z)")
+                    .clicked()
+                {
+                    self.undo_patch();
+                }
+                if ui
+                    .add_enabled(
+                        !self.redo_stack.is_empty(),
+                        egui::Button::new("Redo").small(),
+                    )
+                    .on_hover_text("Redo patch edit (Ctrl+Y)")
+                    .clicked()
+                {
+                    self.redo_patch();
+                }
+                let ab_lbl = if self.ab_slot_other.is_none() {
+                    "A/B"
+                } else if self.ab_is_b {
+                    "Slot B"
+                } else {
+                    "Slot A"
+                };
+                if ui
+                    .small_button(ab_lbl)
+                    .on_hover_text("Snapshot current patch to A/B and toggle between versions")
+                    .clicked()
+                {
+                    self.toggle_ab_compare();
                 }
                 ui.separator();
             }
@@ -1686,6 +1798,23 @@ mod tests {
         after.bpm = 900.0;
         app.apply_patch_edit(&before, &after);
         assert!((app.engine.active_patch().bpm - 240.0).abs() < 1e-3);
+
+        // Undo & Redo round-trip
+        app.undo_patch();
+        assert!((app.engine.active_patch().bpm - 99.0).abs() < 1e-3);
+        app.redo_patch();
+        assert!((app.engine.active_patch().bpm - 240.0).abs() < 1e-3);
+
+        // A/B compare snapshots current state and toggles cleanly
+        app.toggle_ab_compare(); // stores A (bpm=240), now editing B
+        let b_before = app.engine.active_patch().clone();
+        let mut b_after = b_before.clone();
+        b_after.cutoff_hz = 4444.0;
+        app.apply_patch_edit(&b_before, &b_after);
+        app.toggle_ab_compare(); // back to A (cutoff=2222)
+        assert!((app.engine.active_patch().cutoff_hz - 2222.0).abs() < 1e-3);
+        app.toggle_ab_compare(); // back to B (cutoff=4444)
+        assert!((app.engine.active_patch().cutoff_hz - 4444.0).abs() < 1e-3);
     }
 
     #[test]
