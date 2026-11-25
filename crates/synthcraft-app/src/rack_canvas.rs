@@ -169,6 +169,10 @@ fn module_knobs(kind: RackModuleKind) -> Option<[(&'static str, KnobBinding); 2]
             ("ATTEN 1", KnobBinding::ModuleA),
             ("ATTEN 2", KnobBinding::ModuleB),
         ]),
+        RackModuleKind::ClapHost => Some([
+            ("WET MIX", KnobBinding::ModuleA),
+            ("CV DEPTH", KnobBinding::ModuleB),
+        ]),
         RackModuleKind::InlineScope => None,
     }
 }
@@ -188,6 +192,8 @@ fn format_custom_knob(kind: RackModuleKind, is_a: bool, v: f32) -> String {
         (RackModuleKind::StereoDelay, true) => format!("{:.0} ms", (0.06 + v * 0.69) * 1000.0),
         (RackModuleKind::StereoDelay, false) => format!("{:.0}%", v * 88.0),
         (RackModuleKind::Attenuverter, _) => format!("{:+.0}%", (v - 0.5) * 200.0),
+        (RackModuleKind::ClapHost, true) => format!("{:.0}%", v * 100.0),
+        (RackModuleKind::ClapHost, false) => format!("{:+.0}%", (v - 0.5) * 200.0),
         _ => format!("{:.0}%", v * 100.0),
     }
 }
@@ -217,6 +223,7 @@ fn module_subtitle(m: &RackModuleInstance, patch: &SynthPatch) -> String {
         RackModuleKind::StereoDelay => format!("{:.0} ms", (0.06 + m.param_a * 0.69) * 1000.0),
         RackModuleKind::Attenuverter => format!("{:+.0}%", (m.param_a - 0.5) * 200.0),
         RackModuleKind::InlineScope => "LIVE SCOPE".to_string(),
+        RackModuleKind::ClapHost => format!("MIX {:.0}%", m.param_a * 100.0),
     }
 }
 
@@ -400,6 +407,141 @@ pub fn render_vcv_eurorack_canvas(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             .color(pal.text_muted),
         );
     });
+
+    // 3U CLAP Host control strip (shown whenever a CLAP HOST module is in the rack)
+    if app
+        .engine
+        .rack_modules
+        .iter()
+        .any(|m| m.kind == RackModuleKind::ClapHost)
+    {
+        egui::Frame::new()
+            .fill(pal.module_bg)
+            .stroke(Stroke::new(1.0, pal.module_border))
+            .corner_radius(6.0)
+            .inner_margin(6.0)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.strong("3U CLAP Host:");
+                    if ui.small_button("Scan .clap").clicked() {
+                        app.clap_discovered = synthcraft_clap_host::scan_clap_files(&[]);
+                        app.status_line = format!(
+                            "Found {} installed .clap plugin(s)",
+                            app.clap_discovered.len()
+                        );
+                    }
+                    let current_name = app
+                        .clap_loaded_info
+                        .as_ref()
+                        .map(|i| format!("{} ({})", i.name, i.vendor))
+                        .unwrap_or_else(|| "Select .clap plugin...".to_string());
+                    let mut load_path: Option<std::path::PathBuf> = None;
+                    egui::ComboBox::from_label("CLAP Plugin")
+                        .width(220.0)
+                        .selected_text(current_name)
+                        .show_ui(ui, |ui| {
+                            if app.clap_discovered.is_empty() {
+                                ui.label("Click 'Scan .clap' to find system plugins");
+                            }
+                            for p in &app.clap_discovered {
+                                let label = p
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("plugin.clap");
+                                if ui.button(label).clicked() {
+                                    load_path = Some(p.clone());
+                                }
+                            }
+                        });
+                    if let Some(path) = load_path {
+                        let sr = f64::from(app.engine.sample_rate_hz.max(44100));
+                        match synthcraft_clap_host::ClapHostInstance::load(&path, 0, sr, 2048) {
+                            Ok(inst) => {
+                                use synthcraft_core::ExternalClapProcessor;
+                                let info = inst.info().clone();
+                                let params = inst.params().to_vec();
+                                let default_cv = params.first().map(|p| p.id);
+                                app.engine.clap_host.plugin_path =
+                                    Some(path.to_string_lossy().into_owned());
+                                app.engine.clap_host.cv_param_id = default_cv;
+                                if let Some(audio) = &app.audio {
+                                    audio.send(crate::audio_io::AudioMsg::ClapHost(
+                                        Some(Box::new(inst)),
+                                        default_cv,
+                                    ));
+                                }
+                                app.status_line = format!(
+                                    "Loaded CLAP Host plugin: {} ({} params)",
+                                    info.name,
+                                    params.len()
+                                );
+                                app.clap_loaded_info = Some(info);
+                                app.clap_loaded_params = params;
+                                app.persist_state();
+                            }
+                            Err(e) => {
+                                app.status_line = format!("CLAP load failed: {e}");
+                            }
+                        }
+                    }
+
+                    if !app.clap_loaded_params.is_empty() {
+                        let sel_param = app
+                            .engine
+                            .clap_host
+                            .cv_param_id
+                            .and_then(|id| app.clap_loaded_params.iter().find(|p| p.id == id))
+                            .map(|p| p.name.clone())
+                            .unwrap_or_else(|| "None".to_string());
+                        let mut new_cv_param: Option<Option<u32>> = None;
+                        egui::ComboBox::from_label("CV Target Param")
+                            .width(180.0)
+                            .selected_text(sel_param)
+                            .show_ui(ui, |ui| {
+                                if ui
+                                    .selectable_label(
+                                        app.engine.clap_host.cv_param_id.is_none(),
+                                        "None",
+                                    )
+                                    .clicked()
+                                {
+                                    new_cv_param = Some(None);
+                                }
+                                for p in &app.clap_loaded_params {
+                                    if ui
+                                        .selectable_label(
+                                            app.engine.clap_host.cv_param_id == Some(p.id),
+                                            &p.name,
+                                        )
+                                        .clicked()
+                                    {
+                                        new_cv_param = Some(Some(p.id));
+                                    }
+                                }
+                            });
+                        if let Some(pid) = new_cv_param {
+                            app.engine.clap_host.cv_param_id = pid;
+                            if let Some(audio) = &app.audio {
+                                audio.send(crate::audio_io::AudioMsg::ClapHostCvParam(pid));
+                            }
+                            app.persist_state();
+                        }
+                    }
+
+                    if app.clap_loaded_info.is_some() && ui.small_button("Unload").clicked() {
+                        app.clap_loaded_info = None;
+                        app.clap_loaded_params.clear();
+                        app.engine.clap_host.plugin_path = None;
+                        app.engine.clap_host.cv_param_id = None;
+                        if let Some(audio) = &app.audio {
+                            audio.send(crate::audio_io::AudioMsg::ClapHost(None, None));
+                        }
+                        app.status_line = "Unloaded 3U CLAP Host plugin".into();
+                        app.persist_state();
+                    }
+                });
+            });
+    }
 
     // Collapsible Categorized Module Browser
     if app.show_module_browser {

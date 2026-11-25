@@ -1,5 +1,6 @@
 //! SynthCraft L2 CLI & MCP `2026-07-28` stdio server.
 #![forbid(unsafe_code)]
+#![recursion_limit = "256"]
 
 mod fetch;
 
@@ -293,6 +294,27 @@ pub enum CliSub {
     LoadWavetable { spec: String },
     /// Import a Standard MIDI File (.mid) into the 16-step sequencer
     ImportMidi { path: String },
+    /// Scan standard system CLAP plugin directories for installed .clap files
+    ScanClapPlugins,
+    /// Inspect an external .clap plugin binary (descriptors + automatable parameters)
+    InspectClapPlugin {
+        path: String,
+        #[arg(long, default_value_t = 0)]
+        plugin_index: u32,
+    },
+    /// Configure the 3U CLAP Host rack module (plugin path, CV target param, mix, CV depth)
+    ConfigureClapHost {
+        #[arg(long)]
+        plugin_path: Option<String>,
+        #[arg(long, default_value_t = 0)]
+        plugin_index: u32,
+        #[arg(long)]
+        cv_param_id: Option<u32>,
+        #[arg(long, default_value_t = 1.0)]
+        mix: f32,
+        #[arg(long, default_value_t = 0.5)]
+        cv_depth: f32,
+    },
     /// Reset all patches to factory defaults
     ResetFactory,
 }
@@ -576,6 +598,64 @@ fn main() {
         CliSub::SetTuning { preset, scala_scl } => Command::SetTuning { preset, scala_scl },
         CliSub::LoadWavetable { spec } => Command::LoadWavetable { spec },
         CliSub::ImportMidi { path } => Command::ImportMidiFile { path },
+        CliSub::ScanClapPlugins => {
+            let files: Vec<String> = synthcraft_clap_host::scan_clap_files(&[])
+                .into_iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect();
+            let out = serde_json::to_string_pretty(&json!({
+                "clap_dirs": synthcraft_clap_host::standard_clap_dirs()
+                    .into_iter()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>(),
+                "plugins": files,
+            }))
+            .unwrap_or_else(|_| "{}".to_string());
+            println!("{out}");
+            return;
+        }
+        CliSub::InspectClapPlugin { path, plugin_index } => {
+            let resolved = if policy.is_active() {
+                match policy.check_read(&path) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                PathBuf::from(&path)
+            };
+            match synthcraft_clap_host::inspect_clap_file(&resolved, plugin_index) {
+                Ok((plugins, params)) => {
+                    let out = serde_json::to_string_pretty(&json!({
+                        "path": resolved.to_string_lossy(),
+                        "plugins": plugins,
+                        "params": params,
+                    }))
+                    .unwrap_or_else(|_| "{}".to_string());
+                    println!("{out}");
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        CliSub::ConfigureClapHost {
+            plugin_path,
+            plugin_index,
+            cv_param_id,
+            mix,
+            cv_depth,
+        } => Command::ConfigureClapHost {
+            plugin_path,
+            plugin_index,
+            cv_param_id,
+            mix,
+            cv_depth,
+        },
         CliSub::ResetFactory => Command::ResetFactoryPatches,
     };
     let cmd = if policy.is_active() {
@@ -684,6 +764,22 @@ fn enforce_command(
                 }
             }
         }
+        Command::ConfigureClapHost {
+            plugin_path,
+            plugin_index,
+            cv_param_id,
+            mix,
+            cv_depth,
+        } => Command::ConfigureClapHost {
+            plugin_path: match plugin_path {
+                Some(p) => Some(policy.check_read(&p)?.to_string_lossy().into_owned()),
+                None => None,
+            },
+            plugin_index,
+            cv_param_id,
+            mix,
+            cv_depth,
+        },
         other => other,
     })
 }
@@ -1140,6 +1236,61 @@ pub fn handle_mcp_request(
                     enforce_command(Command::ImportMidiFile { path }, policy)
                         .and_then(|c| c.dispatch(engine))
                 }
+                "scan_clap_plugins" => {
+                    let files: Vec<String> = synthcraft_clap_host::scan_clap_files(&[])
+                        .into_iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect();
+                    let dirs: Vec<String> = synthcraft_clap_host::standard_clap_dirs()
+                        .into_iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect();
+                    Ok(json!({ "clap_dirs": dirs, "plugins": files }))
+                }
+                "inspect_clap_plugin" => {
+                    let path = args.get("path").and_then(Value::as_str).unwrap_or_default();
+                    let plugin_index = args
+                        .get("plugin_index")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0) as u32;
+                    policy.check_read(path).and_then(|resolved| {
+                        let (plugins, params) =
+                            synthcraft_clap_host::inspect_clap_file(&resolved, plugin_index)?;
+                        Ok(json!({
+                            "path": resolved.to_string_lossy(),
+                            "plugins": plugins,
+                            "params": params,
+                        }))
+                    })
+                }
+                "configure_clap_host" => {
+                    let plugin_path = args
+                        .get("plugin_path")
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                    let plugin_index = args
+                        .get("plugin_index")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0) as u32;
+                    let cv_param_id = args
+                        .get("cv_param_id")
+                        .and_then(Value::as_u64)
+                        .map(|v| v as u32);
+                    let mix = args.get("mix").and_then(Value::as_f64).unwrap_or(1.0) as f32;
+                    let cv_depth =
+                        args.get("cv_depth").and_then(Value::as_f64).unwrap_or(0.5) as f32;
+                    enforce_command(
+                        Command::ConfigureClapHost {
+                            plugin_path,
+                            plugin_index,
+                            cv_param_id,
+                            mix,
+                            cv_depth,
+                        },
+                        policy,
+                    )
+                    .and_then(|c| c.dispatch(engine))
+                }
                 "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
                 other => Err(synthcraft_core::SynthError::Validation(format!(
                     "Unknown tool '{other}'"
@@ -1228,6 +1379,9 @@ fn mcp_tools_schema() -> Value {
         { "name": "set_tuning", "description": "Set microtonal tuning preset (equal_12, just_5_limit, pythagorean, equal_19, equal_24, equal_31, bohlen_pierce) or pass custom Scala .scl text in scala_scl.", "inputSchema": { "type": "object", "properties": { "preset": { "type": "string" }, "scala_scl": { "type": "string" } } } },
         { "name": "load_wavetable", "description": "Load a built-in morphing wavetable (analog_morph, formant_vowel, metallic_bell, acid_fold) or a .wav file (inside --automation-read-root) and switch VCO1 to Wavetable mode.", "inputSchema": { "type": "object", "properties": { "spec": { "type": "string" } }, "required": ["spec"] } },
         { "name": "import_midi_file", "description": "Import a Standard MIDI File (.mid, inside --automation-read-root) and quantize the first bar into the 16-step sequencer.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
+        { "name": "scan_clap_plugins", "description": "Scan standard system CLAP directories for installed .clap plugins.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "inspect_clap_plugin", "description": "Inspect an external .clap plugin binary (inside --automation-read-root) and return its plugin descriptors and automatable parameters.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "plugin_index": { "type": "integer" } }, "required": ["path"] } },
+        { "name": "configure_clap_host", "description": "Configure the 3U CLAP Host rack module (plugin_path inside --automation-read-root, plugin_index, cv_param_id, mix 0..1, cv_depth -1..1).", "inputSchema": { "type": "object", "properties": { "plugin_path": { "type": "string" }, "plugin_index": { "type": "integer" }, "cv_param_id": { "type": "integer" }, "mix": { "type": "number" }, "cv_depth": { "type": "number" } } } },
         { "name": "reset_factory_patches", "description": "Reset all factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
     ])
 }
@@ -1287,7 +1441,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 41);
+        assert_eq!(tools, 44);
         let _ = std::fs::remove_file(&db);
     }
 

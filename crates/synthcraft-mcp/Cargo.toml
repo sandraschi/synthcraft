@@ -17,6 +17,7 @@ serde.workspace = true
 serde_json.workspace = true
 ureq = "3"
 synthcraft-core = { path = "../synthcraft-core" }
+synthcraft-clap-host = { path = "../synthcraft-clap-host" }
 
 [lints]
 workspace = true

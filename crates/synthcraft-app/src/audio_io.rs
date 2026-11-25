@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use synthcraft_core::sampler::SampleBank;
-use synthcraft_core::{RackRouting, RtOptions, SynthPatch, SynthRt};
+use synthcraft_core::{ExternalClapProcessor, RackRouting, RtOptions, SynthPatch, SynthRt};
 
 pub const SCOPE_LEN: usize = 8192;
 
@@ -29,6 +29,10 @@ pub enum AudioMsg {
     /// Install a decoded sample bank. The bank cache keeps a second reference, so dropping
     /// the old one here never frees memory on the audio thread.
     Bank(Option<Arc<SampleBank>>),
+    /// Install or unload an external 3U CLAP Host plugin processor (old one is returned to UI thread).
+    ClapHost(Option<Box<dyn ExternalClapProcessor>>, Option<u32>),
+    /// Update the CLAP parameter ID modulated by the 3U `PARAM CV` jack.
+    ClapHostCvParam(Option<u32>),
 }
 
 /// Shared read-only view of what the callback is doing, for meters and the scope.
@@ -94,6 +98,7 @@ pub struct AudioHandle {
     _stream: cpal::Stream,
     tx: Sender<AudioMsg>,
     returned: Receiver<Box<SynthPatch>>,
+    returned_clap: Receiver<Box<dyn ExternalClapProcessor>>,
     pub meters: Arc<Meters>,
     pub info: AudioConfigInfo,
     last_error: Arc<Mutex<Option<String>>>,
@@ -133,9 +138,10 @@ impl AudioHandle {
         let _ = self.tx.send(msg);
     }
 
-    /// Drop patches the callback has handed back (keeps deallocation off the audio thread).
+    /// Drop patches and unloaded CLAP hosts the callback has handed back (keeps deallocation off the audio thread).
     pub fn reclaim(&self) {
         while self.returned.try_recv().is_ok() {}
+        while self.returned_clap.try_recv().is_ok() {}
     }
 
     pub fn take_error(&self) -> Option<String> {
@@ -191,6 +197,7 @@ impl AudioHandle {
     ) -> Result<Self, String> {
         let (tx, rx) = channel::<AudioMsg>();
         let (ret_tx, returned) = channel::<Box<SynthPatch>>();
+        let (ret_clap_tx, returned_clap) = channel::<Box<dyn ExternalClapProcessor>>();
         let meters = Arc::new(Meters::new());
         let last_error = Arc::new(Mutex::new(None));
         let info = AudioConfigInfo {
@@ -205,18 +212,46 @@ impl AudioHandle {
         let mut rt = SynthRt::new(config.sample_rate as f32, patch.clone());
         rt.set_options(options);
         let stream = match format {
-            SampleFormat::F32 => {
-                Self::stream::<f32>(device, config, rt, rx, ret_tx, &meters, &last_error)
-            }
-            SampleFormat::I16 => {
-                Self::stream::<i16>(device, config, rt, rx, ret_tx, &meters, &last_error)
-            }
-            SampleFormat::I32 => {
-                Self::stream::<i32>(device, config, rt, rx, ret_tx, &meters, &last_error)
-            }
-            SampleFormat::U16 => {
-                Self::stream::<u16>(device, config, rt, rx, ret_tx, &meters, &last_error)
-            }
+            SampleFormat::F32 => Self::stream::<f32>(
+                device,
+                config,
+                rt,
+                rx,
+                ret_tx,
+                ret_clap_tx,
+                &meters,
+                &last_error,
+            ),
+            SampleFormat::I16 => Self::stream::<i16>(
+                device,
+                config,
+                rt,
+                rx,
+                ret_tx,
+                ret_clap_tx,
+                &meters,
+                &last_error,
+            ),
+            SampleFormat::I32 => Self::stream::<i32>(
+                device,
+                config,
+                rt,
+                rx,
+                ret_tx,
+                ret_clap_tx,
+                &meters,
+                &last_error,
+            ),
+            SampleFormat::U16 => Self::stream::<u16>(
+                device,
+                config,
+                rt,
+                rx,
+                ret_tx,
+                ret_clap_tx,
+                &meters,
+                &last_error,
+            ),
             other => Err(format!("unsupported sample format {other}")),
         }?;
         stream
@@ -226,18 +261,21 @@ impl AudioHandle {
             _stream: stream,
             tx,
             returned,
+            returned_clap,
             meters,
             info,
             last_error,
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn stream<T>(
         device: &cpal::Device,
         config: StreamConfig,
         mut rt: SynthRt,
         rx: Receiver<AudioMsg>,
         ret_tx: Sender<Box<SynthPatch>>,
+        ret_clap_tx: Sender<Box<dyn ExternalClapProcessor>>,
         meters: &Arc<Meters>,
         last_error: &Arc<Mutex<Option<String>>>,
     ) -> Result<cpal::Stream, String>
@@ -269,6 +307,15 @@ impl AudioHandle {
                             AudioMsg::Patch(mut boxed) => {
                                 rt.swap_patch(&mut boxed);
                                 let _ = ret_tx.send(boxed);
+                            }
+                            AudioMsg::ClapHost(host, cv_param) => {
+                                rt.set_clap_host_cv_param(cv_param);
+                                if let Some(old) = rt.set_clap_host(host) {
+                                    let _ = ret_clap_tx.send(old);
+                                }
+                            }
+                            AudioMsg::ClapHostCvParam(cv_param) => {
+                                rt.set_clap_host_cv_param(cv_param);
                             }
                         }
                     }
