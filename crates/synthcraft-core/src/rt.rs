@@ -187,6 +187,7 @@ pub struct SynthRt {
     physical_mesh: crate::physical::PhysicalMeshRuntime,
     wdf_circuit: crate::physical::WdfCircuitRuntime,
     ddsp: crate::neural_ddsp::DdspRuntime,
+    pipe_organ: crate::pipe_organ::PipeOrganRuntime,
     vocoder: crate::vocoder::VocoderRuntime,
     mastering: crate::mastering::MasteringRuntime,
 }
@@ -274,6 +275,7 @@ impl SynthRt {
             physical_mesh: crate::physical::PhysicalMeshRuntime::new(),
             wdf_circuit: crate::physical::WdfCircuitRuntime::new(),
             ddsp: crate::neural_ddsp::DdspRuntime::new(),
+            pipe_organ: crate::pipe_organ::PipeOrganRuntime::new(),
             vocoder: crate::vocoder::VocoderRuntime::new(),
             mastering: crate::mastering::MasteringRuntime::new(),
         }
@@ -1068,6 +1070,23 @@ impl SynthRt {
             (out_l, out_r) = self
                 .ddsp
                 .tick_stereo(out_l, out_r, active_freq, &self.patch.ddsp, sr);
+            let organ_midi = (69.0 + 12.0 * (active_freq.max(20.0) / 440.0).log2())
+                .round()
+                .clamp(24.0, 108.0) as u8;
+            let organ_env = (out_l.abs().max(out_r.abs()) * 2.5).clamp(0.0, 1.0);
+            (out_l, out_r) = self.pipe_organ.process_stereo(
+                out_l,
+                out_r,
+                active_freq,
+                organ_midi,
+                organ_env.max(if self.patch.pipe_organ.enabled {
+                    0.45
+                } else {
+                    0.0
+                }),
+                &self.patch.pipe_organ,
+                sr,
+            );
             let ext_voc =
                 if ext_gain > 0.001 && sample_idx < ext_l.len() && sample_idx < ext_r.len() {
                     Some((ext_l[sample_idx] + ext_r[sample_idx]) * 0.5 * ext_gain)

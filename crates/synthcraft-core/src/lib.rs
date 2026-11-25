@@ -29,6 +29,7 @@ pub mod neural_ddsp;
 pub mod nextgen;
 pub mod params;
 pub mod physical;
+pub mod pipe_organ;
 pub mod plugin;
 pub mod preset_bank;
 pub mod rack;
@@ -88,6 +89,11 @@ pub use nextgen::{
 pub use physical::{
     PhysicalMaterial, PhysicalMeshParams, PhysicalMeshRuntime, WdfCircuitMode, WdfCircuitParams,
     WdfCircuitRuntime, MESH_NODES, MESH_SIDE,
+};
+pub use pipe_organ::{
+    default_grandorgue_midi_dir, scan_organ_midi_depot, OrganDivision, OrganMidiEntry,
+    OrganStopSpec, OrganTemperament, PipeOrganParams, PipeOrganRuntime, ORGAN_STOPS,
+    ORGAN_STOP_COUNT,
 };
 pub use rack::{
     compute_rack_routing, default_rack_modules, euclidean_pattern, RackCategory,
@@ -240,6 +246,7 @@ impl SynthEngine {
                 vocoder: VocoderParams::default(),
                 scenes: SceneMorphBank::default(),
                 mastering: MasteringParams::default(),
+                pipe_organ: PipeOrganParams::default(),
                 steps: mk_steps(&[
                     45, 45, 57, 45, 48, 45, 55, 52, 45, 45, 60, 45, 50, 52, 55, 57,
                 ]),
@@ -293,6 +300,7 @@ impl SynthEngine {
                 vocoder: VocoderParams::default(),
                 scenes: SceneMorphBank::default(),
                 mastering: MasteringParams::default(),
+                pipe_organ: PipeOrganParams::default(),
                 steps: mk_steps(&[
                     41, 41, 41, 41, 44, 44, 44, 44, 39, 39, 39, 39, 36, 36, 39, 41,
                 ]),
@@ -346,6 +354,7 @@ impl SynthEngine {
                 vocoder: VocoderParams::default(),
                 scenes: SceneMorphBank::default(),
                 mastering: MasteringParams::default(),
+                pipe_organ: PipeOrganParams::default(),
                 steps: mk_steps(&[
                     51, 51, 58, 51, 54, 51, 61, 58, 51, 51, 58, 54, 51, 54, 58, 63,
                 ]),
@@ -399,6 +408,7 @@ impl SynthEngine {
                 vocoder: VocoderParams::default(),
                 scenes: SceneMorphBank::default(),
                 mastering: MasteringParams::default(),
+                pipe_organ: PipeOrganParams::default(),
                 steps: mk_steps(&[
                     64, 67, 71, 76, 74, 71, 67, 64, 66, 69, 71, 74, 71, 69, 66, 64,
                 ]),
@@ -452,6 +462,7 @@ impl SynthEngine {
                 vocoder: VocoderParams::default(),
                 scenes: SceneMorphBank::default(),
                 mastering: MasteringParams::default(),
+                pipe_organ: PipeOrganParams::default(),
                 steps: mk_steps(&[
                     57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
                 ]),
@@ -505,6 +516,7 @@ impl SynthEngine {
                 vocoder: VocoderParams::default(),
                 scenes: SceneMorphBank::default(),
                 mastering: MasteringParams::default(),
+                pipe_organ: PipeOrganParams::default(),
                 steps: mk_steps(&[
                     57, 57, 61, 61, 64, 64, 69, 69, 68, 68, 64, 64, 61, 61, 57, 57,
                 ]),
@@ -625,6 +637,9 @@ pub enum Command {
         vocoder: VocoderParams,
         scenes: Box<SceneMorphBank>,
         mastering: MasteringParams,
+    },
+    SetPipeOrgan {
+        pipe_organ: PipeOrganParams,
     },
     SynthesizePreview {
         duration_ms: u32,
@@ -1006,6 +1021,16 @@ impl Command {
                     "chord_mode": p.chord_mem.chord_mode.label(),
                     "vocoder_enabled": p.vocoder.enabled,
                     "mastering_enabled": p.mastering.enabled,
+                }))
+            }
+            Self::SetPipeOrgan { pipe_organ } => {
+                let p = engine.active_patch_mut();
+                p.pipe_organ = pipe_organ.clone();
+                Ok(json!({
+                    "enabled": p.pipe_organ.enabled,
+                    "active_stops": p.pipe_organ.active_stop_count(),
+                    "piston": p.pipe_organ.piston_name,
+                    "temperament": p.pipe_organ.temperament.label(),
                 }))
             }
             Self::SynthesizePreview { duration_ms } => {
@@ -1600,6 +1625,7 @@ fn ambient_patches(mk_steps: &dyn Fn(&[u8]) -> Vec<SequencerStep>) -> Vec<SynthP
         vocoder: VocoderParams::default(),
         scenes: SceneMorphBank::default(),
         mastering: MasteringParams::default(),
+        pipe_organ: PipeOrganParams::default(),
         steps: mk_steps(&[
             57, 57, 57, 57, 57, 57, 57, 57, 64, 64, 64, 64, 64, 64, 64, 64,
         ])

@@ -91,6 +91,9 @@ pub fn preset_engine_badges(p: &SynthPatch) -> Vec<&'static str> {
     if p.mastering.enabled {
         out.push("MSTR");
     }
+    if p.pipe_organ.enabled {
+        out.push("ORGAN");
+    }
     if out.is_empty() {
         out.push("VA");
     }
@@ -178,6 +181,7 @@ fn base(
     p.ddsp.enabled = false;
     p.chord_mem.chord_mode = ChordMode::Off;
     p.vocoder.enabled = false;
+    p.pipe_organ.enabled = false;
     p.mastering.enabled = true;
     p
 }
@@ -981,6 +985,21 @@ pub fn pro_bank_patches(template: &SynthPatch) -> Vec<SynthPatch> {
         p.spectral.odd_even_tilt = odd_even;
         p.spectral.harmonic_warp = warp;
         p.spectral.mix = 0.88;
+        p.pipe_organ.enabled = true;
+        p.pipe_organ.mix = 0.90;
+        let piston_id = match i {
+            0 => "silbermann_pleno",
+            1 => "bach_toccata_tutti",
+            2 => "cavaille_coll_ff",
+            3 => "vespers_pp",
+            4 => "celeste_p",
+            5 => "trompete_fanfare",
+            6 => "vespers_pp",
+            7 => "baroque_mf",
+            8 => "silbermann_pleno",
+            _ => "bach_toccata_tutti",
+        };
+        p.pipe_organ.load_piston(piston_id);
         p.studio_fx.enabled = true;
         p.studio_fx.conv_enabled = true;
         p.studio_fx.conv_preset = IrPreset::StephansdomCathedral;

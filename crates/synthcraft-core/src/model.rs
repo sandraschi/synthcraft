@@ -218,6 +218,8 @@ pub struct SynthPatch {
     pub scenes: crate::scenes::SceneMorphBank,
     #[serde(default)]
     pub mastering: crate::mastering::MasteringParams,
+    #[serde(default)]
+    pub pipe_organ: crate::pipe_organ::PipeOrganParams,
     pub steps: Vec<SequencerStep>,
 }
 

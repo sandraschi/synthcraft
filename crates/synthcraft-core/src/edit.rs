@@ -234,6 +234,11 @@ impl SynthPatch {
                 mastering: b.mastering,
             });
         }
+        if a.pipe_organ != b.pipe_organ {
+            out.push(Command::SetPipeOrgan {
+                pipe_organ: b.pipe_organ.clone(),
+            });
+        }
         if a.steps.len() != b.steps.len() {
             out.push(Command::SetSequencerLength {
                 steps: b.steps.len(),
