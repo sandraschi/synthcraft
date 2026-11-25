@@ -6,8 +6,8 @@
 
 SynthCraft is a 3-tier Pure-Rust ArtCraft modular audio synthesis studio and MCP `2026-07-28` server designed to work standalone or as a companion synth engine for **SoundCraft** (via CLAP `1.2.2` plugin ABI & 48 kHz `.wav` stems) and **DJCraft** (via BPM-locked, Camelot-keyed loops, acid basslines, and transition risers). It bundles 6 hierarchical workbenches:
 
-1. **Modular Rack & VCO/VCF** -- dual oscillators (`Sine`, `Saw`, `Square`, `Triangle`, `PulsePWM`, `SuperSaw`, `WhiteNoise`, `SubOctave`, `AtmoPad`) with detune, FM index, and 4-pole resonant ladder filter (`LowPass24dB`, `BandPass12dB`, `HighPass12dB`, `AcidResonant`).
-2. **ADSR, LFO & Step Sequencer** -- 16-step BPM-locked sequencer (`36..84` MIDI notes, velocity, gate %, accent, acid slide) plus ADSR envelope and tempo-synced LFO modulation.
+1. **Modular Rack & VCO/VCF** -- multi-row scrollable 3U Eurorack skiff (`13` playable modules including `Wavefolder + LPG`, `S&H + Slew`, `Stereo Delay`, `Euclidean Clock`, `Attenuverter`, `3U Scope`, and `CLAP HOST` external plugin slot), `12` curated pre-patched Rack Rigs, dual oscillators (`10` waveforms: `Sine`, `Saw`, `Square`, `Triangle`, `PulsePWM`, `SuperSaw`, `WhiteNoise`, `SubOctave`, `AtmoPad`, `Wavetable`) with detune, FM index, and 4-pole resonant ladder filter (`LowPass24dB`, `BandPass12dB`, `HighPass12dB`, `AcidResonant`).
+2. **ADSR, LFO, Mod Matrix, Arp & Step Sequencer** -- 16-step BPM-locked sequencer (`36..84` MIDI notes, velocity, gate %, accent, acid slide) with Live Sequencer Record and SMF `.mid` import/export, General Modulation Matrix (8 bipolar routes), Real-Time Arpeggiator, Scala `.scl` microtonal tuning, ADSR envelope, and tempo-synced LFO modulation.
 3. **Oscilloscope & Spectrum** -- 256-sample real-time waveform scope, 32-band harmonic DFT/FFT spectrum analyzer, RMS/Peak dBFS metering, crest factor, and zero-crossing pitch tracker (`Hz`).
 4. **CLAP Plugin & SoundCraft** -- native CLAP (`u-he` / Bitwig Clever Audio Plug-in `1.2.2`, ID `dev.sandraschi.synthcraft`) instrument plug-in (`SynthCraft.clap`, passes `clap-validator`) plus polyphonic parameter automation table (`0x1001..0x1019`) exported as JSON for **SoundCraft**.
 5. **DJCraft Stem & WAV Forge** -- exports 48 kHz / 44.1 kHz 16-bit PCM `.wav` loops, risers, sub-drops, and stem metadata (`bpm`, `camelot_key`, `bars`, `cue_points`) directly compatible with **DJCraft** decks.
@@ -17,11 +17,16 @@ SynthCraft is a 3-tier Pure-Rust ArtCraft modular audio synthesis studio and MCP
 
 | Capability | Status | Crate / Module |
 |---|---|---|
-| Dual VCO (`9` waveforms, FM/detune) + 4-Pole Resonant Ladder VCF (`4` modes) | `Implemented` | `synthcraft-core::model` |
-| ADSR Envelope + Tempo-Synced LFO + 16-Step Acid Sequencer | `Implemented` | `synthcraft-core::model` |
+| Dual VCO (`10` waveforms incl. morphing `Wavetable`, FM/detune) + 4-Pole Resonant Ladder VCF (`4` modes) | `Implemented` | `synthcraft-core::model`, `synthcraft-core::wavetable` |
+| Multi-row 3U Eurorack skiff (`13` modules, draggable DSP-wired cables, `12` pre-patched Rack Rigs) | `Implemented` | `synthcraft-core::rack`, `synthcraft-core::rack_presets`, `synthcraft-app::rack_canvas` |
+| 3U CLAP `1.2.2` Host module (loads external `.clap` plugins with live `CLAP_EVENT_PARAM_MOD` CV modulation) | `Implemented` | `synthcraft-clap-host`, `synthcraft-core::clap_host` |
+| General Modulation Matrix (`8` bipolar routes), Real-Time Arpeggiator & Scala `.scl` Microtonal Tuning | `Implemented` | `synthcraft-core::{mod_matrix, arp, tuning}` |
+| ADSR Envelope + Tempo-Synced LFO + 16-Step Acid Sequencer (Live Record + SMF `.mid` import/export) | `Implemented` | `synthcraft-core::{model, smf_import}`, `synthcraft-app::live` |
+| Undo/Redo (`Ctrl+Z`/`Ctrl+Y`, 64-deep), A/B patch compare & 3U rack accessibility metadata | `Implemented` | `synthcraft-app` |
+| WebAssembly AudioWorklet engine (`synthcraft_wasm.wasm` ~190 KB + `synthcraft-worklet.js`) | `Implemented` | `synthcraft-wasm` |
 | 32-Band DFT Spectrum Analyzer, Oscilloscope & RMS/Peak dBFS Metering | `Implemented` | `synthcraft-core::model` |
-| CLAP `1.2.2` instrument plug-in (`SynthCraft.clap`): 25 automatable parameters, notes, state; passes `clap-validator` | `Implemented; not yet tried in a DAW` | `synthcraft-clap`, `synthcraft-core::plugin` |
-| VCV Rack module (polyphonic V/Oct and gate, CV inputs, bank loading) over a C ABI | `Builds and links against the Rack SDK; not yet loaded in Rack` | `rack/`, `synthcraft-ffi` |
+| CLAP `1.2.2` instrument plug-in (`SynthCraft.clap` with native `CLAP_EXT_GUI` hardware UI): 25 automatable parameters, notes, state; passes `clap-validator` | `Implemented; not yet tried in a DAW` | `synthcraft-clap`, `synthcraft-core::plugin` |
+| VCV Rack module (polyphonic V/Oct and gate, CV inputs, bank loading, right-click VCO/VCF/wavetable menus) over a C ABI | `Builds and links against the Rack SDK; not yet loaded in Rack` | `rack/`, `synthcraft-ffi` |
 | CLAP descriptor and parameter map export for SoundCraft | `Implemented` | `synthcraft-core::model` |
 | RIFF PCM `.wav` Renderer + BPM/Camelot Stem & Riser Exporter for DJCraft | `Implemented` | `synthcraft-core::model` |
 | Bundled SQLite Persistence (`%LOCALAPPDATA%\synthcraft\synthcraft.db`), schema v2, backup before migration, bad rows quarantined, saves off the UI thread | `Implemented` | `synthcraft-core::db`, `synthcraft-app::saver` |
@@ -29,7 +34,7 @@ SynthCraft is a 3-tier Pure-Rust ArtCraft modular audio synthesis studio and MCP
 | Sampler: WAV, SFZ, SF2 banks, loop points, automatic sustain loops, free CC0 bank downloader | `Implemented` | `synthcraft-core::sampler`, `synthcraft-core::banks` |
 | Atmospheric pad oscillator, chorus, reverb | `Implemented` | `synthcraft-core::dsp` |
 | Agent file sandbox (`--automation-read-root` / `--automation-write-root`, required for MCP) | `Implemented` | `synthcraft-core::sandbox` |
-| CLI (`--json`) + MCP `2026-07-28` Stdio Server (`23` tools) | `Implemented` | `synthcraft-mcp` |
+| CLI (`--json`) + MCP `2026-07-28` Stdio Server (`48` tools) | `Implemented` | `synthcraft-mcp` |
 | Native `eframe`/`egui` 0.37 Studio (6 Workbenches, WCAG AAA Dark/Light) | `Implemented` | `synthcraft-app` |
 
 ## Quick Start

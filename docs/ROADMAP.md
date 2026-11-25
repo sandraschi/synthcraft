@@ -1,16 +1,20 @@
 # SynthCraft roadmap
 
-Status: 2026-11-23. Estimates assume AI-assisted development (days, not weeks).
+Status: 2026-11-25. Estimates assume AI-assisted development (days, not weeks).
 
 ## Done
 
-Live audio and MIDI, one shared `SynthRt` engine for live and offline, sampler (WAV, SFZ, SF2, loops, automatic sustain loops), pad oscillator, chorus, reverb, persistence v2, agent sandbox, free bank downloader, panel edits as `Command`s, 23 MCP tools, CI with cargo-deny.
+Live audio and MIDI, one shared `SynthRt` engine for live and offline, sampler (WAV, SFZ, SF2, loops, automatic sustain loops), pad oscillator, chorus, reverb, persistence v2, agent sandbox, free bank downloader, panel edits as `Command`s, CI with cargo-deny.
 
 ## Done since
 
-FFI shim (`synthcraft-ffi`), CLAP plug-in (`synthcraft-clap`, passes `clap-validator`) and a VCV Rack module (`rack/`, builds and links against the Rack SDK). Details and what is still unverified: `docs/PLUGINS.md`.
+FFI shim (`synthcraft-ffi`), CLAP plug-in (`synthcraft-clap` with native `CLAP_EXT_GUI` hardware UI, passes `clap-validator`) and a VCV Rack module (`rack/`, builds and links against the Rack SDK, with right-click VCO/VCF/wavetable context menus). Details and what is still unverified: `docs/PLUGINS.md`.
 
 Then: layered and one-shot sampler zones, true stereo output (voice spread, stereo chorus and reverb) and an ambient drift mode; see `docs/SAMPLES_AND_M1.md`.
+
+## Done in v0.4.0
+
+Multi-row 3U Eurorack skiff (`13` modules + `12` curated pre-patched Rack Rigs), 3U CLAP `1.2.2` Host module (`synthcraft-clap-host`), General Modulation Matrix (8 bipolar routes), Real-Time Arpeggiator, Scala `.scl` microtonal tuning, Morphing Wavetable oscillator (4 built-in tables + `.wav` loader), SMF `.mid` importer, Live Sequencer Record, Undo/Redo + A/B compare, 3U rack a11y metadata, WebAssembly AudioWorklet engine (`synthcraft-wasm`, ~190 KB), and 48 MCP `2026-07-28` tools.
 
 ## Next, in the order I would do it
 

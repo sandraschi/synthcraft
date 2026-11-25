@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-25
+
+### Added
+- **3U Eurorack CLAP 1.2.2 Host Module** (`synthcraft-clap-host`, `synthcraft-core::clap_host`): dynamically loads external `.clap` shared libraries inside a 16 HP 3U rack slot with dry/wet mix, CV depth, and live `CLAP_EVENT_PARAM_MOD` modulation from `LFO / ADSR` or `S&H + SLEW` patched into `PARAM CV`. Off-audio-thread plugin swap and drop via `AudioHandle::reclaim`.
+- **WebAssembly AudioWorklet Engine** (`synthcraft-wasm`): gated `rusqlite` behind `default = ["sqlite"]` in `synthcraft-core`, added bundler-free WASM linear-memory C ABI (`synthcraft_wasm.wasm`, ~190 KB release) + drop-in `web/synthcraft-worklet.js` `AudioWorkletProcessor`.
+- **Morphing Wavetable Oscillator** (`synthcraft-core::wavetable`): `WaveformKind::Wavetable` with 4 built-in morphing tables (`analog_morph`, `formant_vowel`, `metallic_bell`, `acid_fold`) and 16-bit PCM / 32-bit float `.wav` wavetable loader (up to 64 frames x 256 samples).
+- **General Modulation Matrix** (`synthcraft-core::mod_matrix`): 8 bipolar routes mapping 6 sources (`LFO`, `ADSR Env`, `Velocity`, `Mod Wheel`, `Sample & Hold`, `Ambient Drift`) to 9 destinations (`Cutoff`, `Resonance`, `FM Index`, `Pulse Width`, `VCO2 Detune`, `Wavefold`, `Stereo Pan`, `Extreme Morph`, `Reverb Mix`).
+- **Real-Time Arpeggiator** (`synthcraft-core::arp`): `Off`, `Up`, `Down`, `Up/Down`, `Random` modes with rate division, 1-4 octaves, gate length, and latch.
+- **Scala `.scl` Microtonal Tuning** (`synthcraft-core::tuning`): 7 built-in scales (`12-TET`, `5-Limit Just`, `Pythagorean`, `19-TET`, `24-TET`, `31-TET`, `Bohlen-Pierce`) plus full `.scl` parser.
+- **Standard MIDI File (`.mid`) Importer** (`synthcraft-core::smf_import`): parses Format 0/1 `.mid` files into the 16-step sequencer with pitch, velocity, accent, legato slide, and tempo BPM.
+- **Live Sequencer Record**: `Rec` toggle in the desktop transport bar overdubs live playing (keyboard, on-screen piano, or USB MIDI) when running, or step-records & advances when stopped, with full Undo/Redo support.
+- **Undo/Redo & A/B Compare**: 64-deep Undo/Redo (`Ctrl+Z`/`Ctrl+Y`), A/B patch compare, and 3U rack `WidgetInfo` accessibility metadata.
+- **VCV Rack 2 Context Menus** (`rack/src/SynthCraft.cpp`): right-click submenus for `VCO 1 waveform`, `VCO 2 waveform`, `Filter mode`, and `Wavetable` via `sc_state_json` (zero C ABI break).
+- **48 MCP `2026-07-28` Tools & CLI Subcommands** (`synthcraft-mcp`): added `set_mod_route`, `clear_mod_matrix`, `set_arpeggiator`, `set_tuning`, `load_wavetable`, `list_wavetables`, `import_midi_file`, `record_sequencer_notes`, `scan_clap_plugins`, `inspect_clap_plugin`, `configure_clap_host`, `get_clap_host_status`, and `export_wasm_bundle`.
+
+### Fixed
+- `mcpb/manifest.json` now uses `"__VERSION__"` placeholder for release packaging.
+- `synthcraft-mcp` launches `real_main()` on an 8 MiB stack thread to prevent Windows debug-build stack overflows (`0xC00000FD`) in `clap::Parser`.
+
 ## [0.3.0] - 2026-11-25
 
 ### Added

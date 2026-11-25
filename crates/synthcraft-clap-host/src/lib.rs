@@ -388,7 +388,7 @@ fn make_clap_host() -> clap_host {
         name: c"SynthCraft 3U CLAP Host".as_ptr(),
         vendor: c"Sandra Schipal".as_ptr(),
         url: c"https://github.com/sandraschi/synthcraft".as_ptr(),
-        version: c"0.3.0".as_ptr(),
+        version: c"0.4.0".as_ptr(),
         get_extension: Some(host_get_extension),
         request_restart: Some(host_request_restart),
         request_process: Some(host_request_process),
