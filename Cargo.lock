@@ -3798,6 +3798,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "synthcraft-wasm"
+version = "0.3.0"
+dependencies = [
+ "synthcraft-core",
+]
+
+[[package]]
 name = "sys-locale"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

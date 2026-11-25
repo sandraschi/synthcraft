@@ -8,6 +8,7 @@
 pub mod arp;
 pub mod banks;
 pub mod clap_host;
+#[cfg(feature = "sqlite")]
 pub mod db;
 pub mod dsp;
 pub mod edit;
@@ -29,6 +30,7 @@ pub mod wavetable;
 
 pub use arp::{ArpMode, ArpParams};
 pub use clap_host::{ClapHostConfig, ClapParamInfo, ClapPluginInfo, ExternalClapProcessor};
+#[cfg(feature = "sqlite")]
 pub use db::{default_db_path, load_from_db, save_to_db};
 pub use error::SynthError;
 pub use mod_matrix::{ModDest, ModRoute, ModSource};
@@ -88,6 +90,7 @@ impl Default for SynthEngine {
 }
 
 impl SynthEngine {
+    #[cfg(feature = "sqlite")]
     pub fn open_or_seed(path: &Path) -> Result<Self, SynthError> {
         if let Some(mut loaded) = load_from_db(path)? {
             if loaded.add_missing_factory_patches() {
@@ -114,6 +117,7 @@ impl SynthEngine {
         added
     }
 
+    #[cfg(feature = "sqlite")]
     pub fn save_db(&self, path: &Path) -> Result<(), SynthError> {
         save_to_db(self, path)
     }

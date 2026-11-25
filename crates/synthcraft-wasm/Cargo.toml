@@ -1,0 +1,30 @@
+[package]
+name = "synthcraft-wasm"
+description = "WebAssembly AudioWorklet DSP engine for SynthCraft (compiles synthcraft-core to wasm32-unknown-unknown)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "synthcraft_wasm"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+synthcraft-core = { path = "../synthcraft-core", default-features = false }
+
+# WASM linear-memory FFI exports need `unsafe`; every block carries a SAFETY comment while
+# `synthcraft-core` stays `forbid(unsafe_code)`.
+[lints.rust]
+unsafe_code = "allow"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"
