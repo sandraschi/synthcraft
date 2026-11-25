@@ -205,6 +205,20 @@ impl SynthPatch {
                 spectral: b.spectral.clone(),
             });
         }
+        if a.fm6 != b.fm6
+            || a.unison != b.unison
+            || a.studio_fx != b.studio_fx
+            || a.physical_mesh != b.physical_mesh
+            || a.wdf_circuit != b.wdf_circuit
+        {
+            out.push(Command::SetProLabParams {
+                fm6: Box::new(b.fm6.clone()),
+                unison: b.unison,
+                studio_fx: Box::new(b.studio_fx.clone()),
+                physical_mesh: b.physical_mesh,
+                wdf_circuit: b.wdf_circuit,
+            });
+        }
         if a.steps.len() != b.steps.len() {
             out.push(Command::SetSequencerLength {
                 steps: b.steps.len(),

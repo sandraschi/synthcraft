@@ -172,6 +172,11 @@ pub struct SynthRt {
     filter2: crate::nextgen::Filter2StereoState,
     granular: crate::granular::GranularRuntime,
     spectral: crate::granular::SpectralRuntime,
+    fm6: crate::fm_unison::Fm6Runtime,
+    unison: crate::fm_unison::UnisonRuntime,
+    studio_fx: crate::fx_rack::StudioFxRuntime,
+    physical_mesh: crate::physical::PhysicalMeshRuntime,
+    wdf_circuit: crate::physical::WdfCircuitRuntime,
 }
 
 impl std::fmt::Debug for SynthRt {
@@ -251,6 +256,11 @@ impl SynthRt {
             filter2: crate::nextgen::Filter2StereoState::new(),
             granular: crate::granular::GranularRuntime::new(),
             spectral: crate::granular::SpectralRuntime::new(),
+            fm6: crate::fm_unison::Fm6Runtime::new(),
+            unison: crate::fm_unison::UnisonRuntime::new(),
+            studio_fx: crate::fx_rack::StudioFxRuntime::new(sr),
+            physical_mesh: crate::physical::PhysicalMeshRuntime::new(),
+            wdf_circuit: crate::physical::WdfCircuitRuntime::new(),
         }
     }
 
@@ -951,8 +961,10 @@ impl SynthRt {
             let (spec_l, spec_r) = self
                 .spectral
                 .tick_stereo(active_freq, &self.patch.spectral, sr);
-            out_l += spec_l;
-            out_r += spec_r;
+            let (fm6_l, fm6_r) = self.fm6.tick_stereo(active_freq, &self.patch.fm6, sr);
+            let (uni_l, uni_r) = self.unison.tick_stereo(active_freq, &self.patch.unison, sr);
+            out_l += spec_l + fm6_l + uni_l;
+            out_r += spec_r + fm6_r + uni_r;
 
             let f2_mod = mseg_val * self.patch.mseg.filter2_depth;
             if self.patch.filter2.routing == crate::nextgen::Filter2Routing::Parallel {
@@ -974,6 +986,16 @@ impl SynthRt {
             let (drum_l, drum_r) = self.drums.tick_stereo(&self.patch.drums, sr);
             out_l += drum_l;
             out_r += drum_r;
+
+            (out_l, out_r) =
+                self.physical_mesh
+                    .tick_stereo(out_l, out_r, &self.patch.physical_mesh);
+            (out_l, out_r) =
+                self.wdf_circuit
+                    .process_stereo(out_l, out_r, &self.patch.wdf_circuit, sr);
+            (out_l, out_r) = self
+                .studio_fx
+                .process_stereo(out_l, out_r, &self.patch.studio_fx, sr);
 
             if self.opts.dc_blocker {
                 out_l = self.dc.process(out_l);

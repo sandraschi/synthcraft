@@ -930,3 +930,41 @@ fn nextgen_mseg_dual_filter_granular_spectral_and_genopatch_work_end_to_end() {
     assert!(report.threads_used >= 1);
     assert!(report.candidates[0].similarity_pct > 25.0);
 }
+
+#[test]
+fn pro_lab_fm6_unison_reorderable_fx_2d_fdtd_mesh_and_8x_wdf_synthesize_cleanly() {
+    let eng = SynthEngine::factory_seed();
+    let mut p = eng.active_patch().clone();
+
+    // 1. 6-Op FM Matrix + 16-Voice Hyper-Unison
+    p.fm6 = synthcraft_core::Fm6Params::preset("berlin_fm_bell");
+    p.unison.enabled = true;
+    p.unison.voices = 12;
+    p.unison.stack_mode = synthcraft_core::UnisonStackMode::Minor7Chord;
+
+    // 2. Reorderable Studio FX Rack (OTT + Convolution IR + Shimmer + Tape/Crush)
+    p.studio_fx.enabled = true;
+    p.studio_fx.ott_enabled = true;
+    p.studio_fx.conv_enabled = true;
+    p.studio_fx.shimmer_enabled = true;
+    p.studio_fx.tape_enabled = true;
+
+    // 3. 2D FDTD Physical Modeling Plate + 8x Oversampled Buchla 292 Vactrol LPG
+    p.physical_mesh.enabled = true;
+    p.physical_mesh.material = synthcraft_core::PhysicalMaterial::TitaniumPlate;
+    p.wdf_circuit.mode = synthcraft_core::WdfCircuitMode::Buchla292VactrolLpg;
+
+    let mut rt = SynthRt::new(SR, p);
+    rt.note_on(57, 0.95);
+    let mut l = vec![0.0_f32; 4096];
+    let mut r = vec![0.0_f32; 4096];
+    rt.process_stereo(&mut l, &mut r);
+
+    assert!(l.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    assert!(r.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    let energy: f32 = l.iter().map(|s| s * s).sum();
+    assert!(
+        energy > 0.01,
+        "Pro Lab full chain (FM6+Unison+FX+2D Mesh+8x WDF) must produce audible PCM"
+    );
+}

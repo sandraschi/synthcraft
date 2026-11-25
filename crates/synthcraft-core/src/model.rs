@@ -198,6 +198,16 @@ pub struct SynthPatch {
     pub granular: crate::granular::GranularParams,
     #[serde(default)]
     pub spectral: crate::granular::SpectralParams,
+    #[serde(default)]
+    pub fm6: crate::fm_unison::Fm6Params,
+    #[serde(default)]
+    pub unison: crate::fm_unison::UnisonParams,
+    #[serde(default)]
+    pub studio_fx: crate::fx_rack::StudioFxParams,
+    #[serde(default)]
+    pub physical_mesh: crate::physical::PhysicalMeshParams,
+    #[serde(default)]
+    pub wdf_circuit: crate::physical::WdfCircuitParams,
     pub steps: Vec<SequencerStep>,
 }
 
