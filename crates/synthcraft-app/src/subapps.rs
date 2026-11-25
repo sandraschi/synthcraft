@@ -242,7 +242,28 @@ const NEXTGEN_SUBS: &[SubPage] = &[
     },
 ];
 
-static WORKBENCHES: [CraftWorkbench; 11] = [
+const PRO_LAB_SUBS: &[SubPage] = &[
+    SubPage {
+        page: Page::ProLab,
+        sub: 0,
+        en: "6-Op FM Matrix & 16-Voice Unison",
+        de: "6-Op FM-Matrix & 16-Voice Unison",
+    },
+    SubPage {
+        page: Page::ProLab,
+        sub: 1,
+        en: "Reorderable FX (OTT/IR/Shimmer/Tape)",
+        de: "FX-Rack (OTT/IR/Shimmer/Tape)",
+    },
+    SubPage {
+        page: Page::ProLab,
+        sub: 2,
+        en: "2D FDTD Mesh & 8x WDF Circuits",
+        de: "2D-FDTD-Mesh & 8x WDF-Schaltkreise",
+    },
+];
+
+static WORKBENCHES: [CraftWorkbench; 12] = [
     CraftWorkbench {
         id: "modular_rack",
         en: "1. VCV 2 Eurorack & VCO/VCF",
@@ -308,6 +329,12 @@ static WORKBENCHES: [CraftWorkbench; 11] = [
         en: "11. Next-Gen Lab (MSEG/Granular/AI)",
         de: "11. Next-Gen-Labor (MSEG/Granular/KI)",
         subpages: NEXTGEN_SUBS,
+    },
+    CraftWorkbench {
+        id: "pro_lab",
+        en: "12. Pro Lab (6-Op FM/FX/2D Physics)",
+        de: "12. Pro-Labor (6-Op FM/FX/2D-Physik)",
+        subpages: PRO_LAB_SUBS,
     },
 ];
 

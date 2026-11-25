@@ -59,6 +59,7 @@ pub enum Page {
     Help,
     Settings,
     NextGenLab,
+    ProLab,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1088,6 +1089,7 @@ impl SynthCraftApp {
                         Page::Help => self.render_help_view(ui),
                         Page::Settings => crate::settings_ui::render_studio_settings(self, ui),
                         Page::NextGenLab => crate::nextgen_ui::render_nextgen_lab(self, ui),
+                        Page::ProLab => crate::pro_lab_ui::render_pro_lab(self, ui),
                     },
                     SynthLayout::EurorackBay => {
                         crate::rack_ui::render_vcv_eurorack_canvas(self, ui);
@@ -2280,9 +2282,9 @@ mod tests {
     #[test]
     fn subapp_registry_exposes_every_workbench() {
         let reg = subapps::registry();
-        assert_eq!(reg.len(), 11);
+        assert_eq!(reg.len(), 12);
         let total_subpages: usize = reg.iter().map(|w| w.subpages().len()).sum();
-        assert_eq!(total_subpages, 27);
+        assert_eq!(total_subpages, 30);
     }
 
     #[test]
