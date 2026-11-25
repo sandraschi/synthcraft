@@ -5,7 +5,7 @@
 
 use crate::app::SynthCraftApp;
 use crate::controls::{rotary_knob, vertical_fader};
-use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
+use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Vec2};
 use synthcraft_core::{
     Fm6Params, FxSlotKind, IrPreset, PhysicalMaterial, UnisonStackMode, WdfCircuitMode, FM_OPS,
     MESH_SIDE,
