@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-25
+
+### Added
+- **Cathedral Pipe Organ Console & GrandOrgue Bach MIDI Depot (Workbench 15)** (`synthcraft-core::pipe_organ`, `synthcraft-app::pipe_organ_ui`): 16-stop *Werkprinzip* pipe organ engine (`Hauptwerk`, `Schwellwerk`, `Pedalwerk`), 8 combination thumb pistons, couplers (`SW->HW`, `HW->PED`, `SW->PED`, `Sub 16'`, `Super 4'`), Swell shutters, Crescendo Walze, Wind-Chest Chiff, Bellows Wind Sag, Tremulant, 5 historical organ temperaments (`Werckmeister III`, `Silbermann Meantone`, `Kirnberger III`, `Quarter-Comma Meantone`, `12-TET`), and direct `.mid` scanner/importer for `grandorgue-mcp/midi_depot`.
+- **129-Preset Pro Factory Bank & Serum/Pigments Preset Browser** (`synthcraft-core::preset_bank`, `synthcraft-app::preset_browser_ui`): 129 audio-verified factory presets across 12 categories (including 10 Cathedral Pipe Organ presets), live search, category counts, 18 engine badges, star favorites, and musical `Mutate (+/- 15%)`.
+- **Drag-and-Drop Modulation, Visual Wavetable Editor & OS `.wav` Drop** (`synthcraft-app::mod_wavetable_ui`, `synthcraft-core::{granular, fx_rack}`): drag-to-modulate source pills, 16-harmonic wavetable sculptor, and OS `.wav` drag-and-drop into Genopatch, Convolution IR Reverb, and Granular Cloud.
+- **Golden-Ear Analog Calibration & 4-Wide SIMD** (`synthcraft-core::analog_simd`): per-voice `VintageSlopParams` component tolerance & thermal drift, ZDF bass-preserving resonance compensation, compact Neural DDSP harmonic MLP, and 4-wide SIMD stereo voice mixer.
+- **39-Subpage Documentation Stack & Interactive HTML Handbook** (`docs/workbenches/01..15`, `docs/site/index.html`, `synthcraft-app::help_docs`): dedicated human-readable sub-READMEs with hardware provenance and famous tracks, contextual `? Guide` drawer + searchable `F1` Encyclopedia, and self-contained interactive HTML handbook.
+
 ## [0.4.0] - 2026-11-25
 
 ### Added
