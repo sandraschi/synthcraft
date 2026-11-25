@@ -61,6 +61,7 @@ pub enum Page {
     NextGenLab,
     ProLab,
     VisualsMpeDdsp,
+    PerfMaster,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1102,6 +1103,7 @@ impl SynthCraftApp {
                         Page::VisualsMpeDdsp => {
                             crate::visualizers_ui::render_visuals_mpe_ddsp(self, ui)
                         }
+                        Page::PerfMaster => crate::perf_master_ui::render_perf_master(self, ui),
                     },
                     SynthLayout::EurorackBay => {
                         crate::rack_ui::render_vcv_eurorack_canvas(self, ui);
@@ -2294,9 +2296,9 @@ mod tests {
     #[test]
     fn subapp_registry_exposes_every_workbench() {
         let reg = subapps::registry();
-        assert_eq!(reg.len(), 13);
+        assert_eq!(reg.len(), 14);
         let total_subpages: usize = reg.iter().map(|w| w.subpages().len()).sum();
-        assert_eq!(total_subpages, 33);
+        assert_eq!(total_subpages, 37);
     }
 
     #[test]

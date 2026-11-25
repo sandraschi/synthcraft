@@ -284,7 +284,34 @@ const VISUALS_MPE_SUBS: &[SubPage] = &[
     },
 ];
 
-static WORKBENCHES: [CraftWorkbench; 13] = [
+const PERF_MASTER_SUBS: &[SubPage] = &[
+    SubPage {
+        page: Page::PerfMaster,
+        sub: 0,
+        en: "Chord Memory & Scale Lock",
+        de: "Akkord-Speicher & Skalen-Lock",
+    },
+    SubPage {
+        page: Page::PerfMaster,
+        sub: 1,
+        en: "16-Band Analog Vocoder",
+        de: "16-Band Analog-Vocoder",
+    },
+    SubPage {
+        page: Page::PerfMaster,
+        sub: 2,
+        en: "8-Scene Morph & XY Pad",
+        de: "8-Szenen-Morph & XY-Pad",
+    },
+    SubPage {
+        page: Page::PerfMaster,
+        sub: 3,
+        en: "Studio Mastering Bus",
+        de: "Studio-Mastering-Bus",
+    },
+];
+
+static WORKBENCHES: [CraftWorkbench; 14] = [
     CraftWorkbench {
         id: "modular_rack",
         en: "1. VCV 2 Eurorack & VCO/VCF",
@@ -362,6 +389,12 @@ static WORKBENCHES: [CraftWorkbench; 13] = [
         en: "13. Visuals, MPE & Neural DDSP",
         de: "13. Visuals, MPE & Neural DDSP",
         subpages: VISUALS_MPE_SUBS,
+    },
+    CraftWorkbench {
+        id: "perf_master",
+        en: "14. Performance & Mastering Suite",
+        de: "14. Performance & Mastering-Suite",
+        subpages: PERF_MASTER_SUBS,
     },
 ];
 
