@@ -3730,7 +3730,7 @@ dependencies = [
 
 [[package]]
 name = "synthcraft-app"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cpal",
  "eframe",
@@ -3745,7 +3745,7 @@ dependencies = [
 
 [[package]]
 name = "synthcraft-clap"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap-sys",
  "egui",
@@ -3759,7 +3759,7 @@ dependencies = [
 
 [[package]]
 name = "synthcraft-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rusqlite",
  "serde",
@@ -3770,14 +3770,14 @@ dependencies = [
 
 [[package]]
 name = "synthcraft-ffi"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "synthcraft-core",
 ]
 
 [[package]]
 name = "synthcraft-mcp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "serde",

@@ -12,7 +12,7 @@
     CliBin      = 'synthcraft-mcp'
     CliSmoke    = @('--db', '{db}', 'status')
     McpArgs     = @('--mcp')
-    McpSmoke    = @('--mcp')
+    McpSmoke    = @('--automation-read-root', '.', '--automation-write-root', '.', '--mcp')
     Installer   = $true
     Mcpb        = $true
     Floor       = $true

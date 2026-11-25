@@ -2,7 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-25
+
 ### Added
+- Multi-row scrollable 3U Eurorack skiff (`rack_canvas.rs`, `rack.rs`) with categorized Module Browser (`+ Add Module`), right-click move/bypass/remove, and 6 new playable DSP modules: Wavefolder + LPG, Sample & Hold + Slew, Stereo Ping-Pong Delay, Euclidean Clock, Dual Attenuverter, and Inline 3U Oscilloscope.
+- 12 curated 1-click pre-patched modular Rack Rigs (`rack_presets.rs`) with connected audio/CV cables and matched voice tuning (UI dropdown + CLI + MCP).
+- Always-visible `< [Patch] >` selector in both `synthcraft-app` and `SynthCraft.clap`.
+- 35 MCP `2026-07-28` stdio tools and 38 CLI subcommands (including 12 rack module, cable, and rig preset commands).
+- Native `CLAP_EXT_GUI` embedded hardware UI in `SynthCraft.clap` (Windows `CLAP_WINDOW_API_WIN32` + `egui-wgpu`): 25 rotary knobs with DAW automation gestures, live stereo peak meter and oscilloscope, patch/VCO1/VCF selectors, sample bank picker, and audition keyboard.
 - Real-time audio (cpal) and MIDI input (midir) through the single `SynthRt` engine shared with offline rendering.
 - Sampler with WAV, SFZ and SF2 loading, Hermite interpolation, loop points and automatic sustain loops; `AtmoPad` pad oscillator, chorus and reverb; ambient factory patches.
 - `fetch-bank` / `list-banks` and an in-app downloader for checksum-verified CC0 sample packs (VSCO 2 CE strings), manifest in `banks/manifest.json`.
