@@ -199,6 +199,57 @@ pub enum CliSub {
     SetParam { param: String, value: f32 },
     /// Set the Camelot key label
     SetCamelotKey { key: String },
+    /// List connected 3U rack patch cables
+    ListRackCables,
+    /// Connect a 3U rack patch cable between two module jacks
+    ConnectRackCable {
+        #[arg(long)]
+        from_module: String,
+        #[arg(long)]
+        from_jack: String,
+        #[arg(long)]
+        to_module: String,
+        #[arg(long)]
+        to_jack: String,
+        #[arg(long)]
+        color: Option<String>,
+        #[arg(long)]
+        gain: Option<f32>,
+    },
+    /// Disconnect a 3U rack patch cable by id
+    DisconnectRackCable { cable_id: String },
+    /// Restore default 3U rack patch cables
+    ResetRackCables,
+    /// List all placed 3U rack modules
+    ListRackModules,
+    /// Add a 3U rack module (vco1, vcf_ladder, wavefolder_lpg, sample_hold_slew, euclidean_clock, stereo_delay, attenuverter, inline_scope, ...)
+    AddRackModule {
+        kind: String,
+        #[arg(long)]
+        row: Option<usize>,
+    },
+    /// Remove a 3U rack module by id (also unplugs its cables)
+    RemoveRackModule { module_id: String },
+    /// Move a 3U rack module left/right or up/down a row
+    MoveRackModule {
+        module_id: String,
+        #[arg(long, default_value_t = 0)]
+        delta_row: i32,
+        #[arg(long, default_value_t = 0)]
+        delta_slot: i32,
+    },
+    /// Set normalized parameters (0..1) or bypass state on a 3U rack module
+    SetRackModuleParam {
+        module_id: String,
+        #[arg(long)]
+        param_a: Option<f32>,
+        #[arg(long)]
+        param_b: Option<f32>,
+        #[arg(long)]
+        bypassed: Option<bool>,
+    },
+    /// Restore default 2-row 3U rack layout and cables
+    ResetRackLayout,
     /// Reset all patches to factory defaults
     ResetFactory,
 }
@@ -408,6 +459,48 @@ fn main() {
         },
         CliSub::SetParam { param, value } => Command::SetPatchParam { param, value },
         CliSub::SetCamelotKey { key } => Command::SetCamelotKey { key },
+        CliSub::ListRackCables => Command::ListRackCables,
+        CliSub::ConnectRackCable {
+            from_module,
+            from_jack,
+            to_module,
+            to_jack,
+            color,
+            gain,
+        } => Command::ConnectRackCable {
+            from_module,
+            from_jack,
+            to_module,
+            to_jack,
+            color_name: color,
+            gain,
+        },
+        CliSub::DisconnectRackCable { cable_id } => Command::DisconnectRackCable { cable_id },
+        CliSub::ResetRackCables => Command::ResetRackCables,
+        CliSub::ListRackModules => Command::ListRackModules,
+        CliSub::AddRackModule { kind, row } => Command::AddRackModule { kind, row },
+        CliSub::RemoveRackModule { module_id } => Command::RemoveRackModule { module_id },
+        CliSub::MoveRackModule {
+            module_id,
+            delta_row,
+            delta_slot,
+        } => Command::MoveRackModule {
+            module_id,
+            delta_row,
+            delta_slot,
+        },
+        CliSub::SetRackModuleParam {
+            module_id,
+            param_a,
+            param_b,
+            bypassed,
+        } => Command::SetRackModuleParam {
+            module_id,
+            param_a,
+            param_b,
+            bypassed,
+        },
+        CliSub::ResetRackLayout => Command::ResetRackLayout,
         CliSub::ResetFactory => Command::ResetFactoryPatches,
     };
     let cmd = if policy.is_active() {
@@ -808,6 +901,90 @@ pub fn handle_mcp_request(
                         .to_string();
                     Command::SetCamelotKey { key }.dispatch(engine)
                 }
+                "list_rack_cables" => Command::ListRackCables.dispatch(engine),
+                "connect_rack_cable" => Command::ConnectRackCable {
+                    from_module: args
+                        .get("from_module")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    from_jack: args
+                        .get("from_jack")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    to_module: args
+                        .get("to_module")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    to_jack: args
+                        .get("to_jack")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    color_name: args
+                        .get("color_name")
+                        .and_then(Value::as_str)
+                        .map(String::from),
+                    gain: args.get("gain").and_then(Value::as_f64).map(|v| v as f32),
+                }
+                .dispatch(engine),
+                "disconnect_rack_cable" => Command::DisconnectRackCable {
+                    cable_id: args
+                        .get("cable_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                }
+                .dispatch(engine),
+                "reset_rack_cables" => Command::ResetRackCables.dispatch(engine),
+                "list_rack_modules" => Command::ListRackModules.dispatch(engine),
+                "add_rack_module" => Command::AddRackModule {
+                    kind: args
+                        .get("kind")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    row: args.get("row").and_then(Value::as_u64).map(|v| v as usize),
+                }
+                .dispatch(engine),
+                "remove_rack_module" => Command::RemoveRackModule {
+                    module_id: args
+                        .get("module_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                }
+                .dispatch(engine),
+                "move_rack_module" => Command::MoveRackModule {
+                    module_id: args
+                        .get("module_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    delta_row: args.get("delta_row").and_then(Value::as_i64).unwrap_or(0) as i32,
+                    delta_slot: args.get("delta_slot").and_then(Value::as_i64).unwrap_or(0) as i32,
+                }
+                .dispatch(engine),
+                "set_rack_module_param" => Command::SetRackModuleParam {
+                    module_id: args
+                        .get("module_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    param_a: args
+                        .get("param_a")
+                        .and_then(Value::as_f64)
+                        .map(|v| v as f32),
+                    param_b: args
+                        .get("param_b")
+                        .and_then(Value::as_f64)
+                        .map(|v| v as f32),
+                    bypassed: args.get("bypassed").and_then(Value::as_bool),
+                }
+                .dispatch(engine),
+                "reset_rack_layout" => Command::ResetRackLayout.dispatch(engine),
                 "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
                 other => Err(synthcraft_core::SynthError::Validation(format!(
                     "Unknown tool '{other}'"
@@ -878,7 +1055,17 @@ fn mcp_tools_schema() -> Value {
         { "name": "run_demo_showcase", "description": "Configure and audition one of the 6 curated 1-click Demo Showcases (demo_1990_m1_piano, demo_club_organ_bass, demo_m1_universe_granular, demo_buchla_wavefolder, demo_karplus_panflute, demo_modal_glass_choir).", "inputSchema": { "type": "object", "properties": { "demo_id": { "type": "string" } }, "required": ["demo_id"] } },
         { "name": "set_patch_param", "description": "Set one scalar parameter of the active patch: bpm, pulse_width, master_gain, drive_saturation, m1_layer_mix, extreme_morph, stepN.velocity or stepN.gate_pct (N = 0..15). Values are clamped to the parameter range.", "inputSchema": { "type": "object", "properties": { "param": { "type": "string" }, "value": { "type": "number" } }, "required": ["param", "value"] } },
         { "name": "set_camelot_key", "description": "Set the Camelot key label of the active patch, for example 8A Am.", "inputSchema": { "type": "object", "properties": { "key": { "type": "string" } }, "required": ["key"] } },
-        { "name": "reset_factory_patches", "description": "Reset all 6 factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
+        { "name": "list_rack_cables", "description": "List all connected 3U Eurorack patch cables.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "connect_rack_cable", "description": "Connect a 3U Eurorack patch cable between an output jack and an input jack.", "inputSchema": { "type": "object", "properties": { "from_module": { "type": "string" }, "from_jack": { "type": "string" }, "to_module": { "type": "string" }, "to_jack": { "type": "string" }, "color_name": { "type": "string" }, "gain": { "type": "number" } }, "required": ["from_module", "from_jack", "to_module", "to_jack"] } },
+        { "name": "disconnect_rack_cable", "description": "Disconnect a 3U Eurorack patch cable by its cable_id.", "inputSchema": { "type": "object", "properties": { "cable_id": { "type": "string" } }, "required": ["cable_id"] } },
+        { "name": "reset_rack_cables", "description": "Restore the default 3U Eurorack patch cables.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "list_rack_modules", "description": "List all placed 3U Eurorack modules across rows.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "add_rack_module", "description": "Add a 3U Eurorack module (vco1, vco2_xdsp, pcm_workstation, vcf_ladder, lfo_adsr, vca_master, wavefolder_lpg, sample_hold_slew, euclidean_clock, stereo_delay, attenuverter, inline_scope) to a row (0..2).", "inputSchema": { "type": "object", "properties": { "kind": { "type": "string" }, "row": { "type": "integer", "minimum": 0, "maximum": 2 } }, "required": ["kind"] } },
+        { "name": "remove_rack_module", "description": "Remove a 3U Eurorack module by module_id (also unplugs attached cables).", "inputSchema": { "type": "object", "properties": { "module_id": { "type": "string" } }, "required": ["module_id"] } },
+        { "name": "move_rack_module", "description": "Move a 3U Eurorack module horizontally (delta_slot) or between rows (delta_row).", "inputSchema": { "type": "object", "properties": { "module_id": { "type": "string" }, "delta_row": { "type": "integer" }, "delta_slot": { "type": "integer" } }, "required": ["module_id"] } },
+        { "name": "set_rack_module_param", "description": "Set normalized parameters param_a/param_b (0..1) or bypassed state on a 3U rack module.", "inputSchema": { "type": "object", "properties": { "module_id": { "type": "string" }, "param_a": { "type": "number" }, "param_b": { "type": "number" }, "bypassed": { "type": "boolean" } }, "required": ["module_id"] } },
+        { "name": "reset_rack_layout", "description": "Restore the default 2-row 3U Eurorack module layout and default cables.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "reset_factory_patches", "description": "Reset all factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
     ])
 }
 
@@ -937,7 +1124,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 23);
+        assert_eq!(tools, 33);
         let _ = std::fs::remove_file(&db);
     }
 
