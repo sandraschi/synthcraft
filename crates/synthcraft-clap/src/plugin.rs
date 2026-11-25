@@ -4,10 +4,12 @@ use crate::bridge::{GuiBridge, UiEvent};
 use crate::ext;
 use crate::gui::GuiInstance;
 use clap_sys::events::{
-    clap_event_header, clap_event_midi, clap_event_note, clap_event_param_gesture,
-    clap_event_param_value, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI, CLAP_EVENT_NOTE_CHOKE,
+    clap_event_header, clap_event_midi, clap_event_note, clap_event_note_expression,
+    clap_event_param_gesture, clap_event_param_mod, clap_event_param_value,
+    CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI, CLAP_EVENT_NOTE_CHOKE, CLAP_EVENT_NOTE_EXPRESSION,
     CLAP_EVENT_NOTE_OFF, CLAP_EVENT_NOTE_ON, CLAP_EVENT_PARAM_GESTURE_BEGIN,
-    CLAP_EVENT_PARAM_GESTURE_END, CLAP_EVENT_PARAM_VALUE,
+    CLAP_EVENT_PARAM_GESTURE_END, CLAP_EVENT_PARAM_MOD, CLAP_EVENT_PARAM_VALUE,
+    CLAP_NOTE_EXPRESSION_BRIGHTNESS, CLAP_NOTE_EXPRESSION_PRESSURE, CLAP_NOTE_EXPRESSION_TUNING,
 };
 use clap_sys::ext::params::{clap_host_params, CLAP_EXT_PARAMS, CLAP_PARAM_RESCAN_VALUES};
 use clap_sys::factory::plugin_factory::clap_plugin_factory;
@@ -195,6 +197,36 @@ impl Plugin {
                 let ev = unsafe { &*std::ptr::from_ref(h).cast::<clap_event_param_value>() };
                 self.set_value(engine, ev.param_id, ev.value);
             }
+            CLAP_EVENT_PARAM_MOD => {
+                if (h.size as usize) < std::mem::size_of::<clap_event_param_mod>() {
+                    return;
+                }
+                // SAFETY: type and size were checked.
+                let ev = unsafe { &*std::ptr::from_ref(h).cast::<clap_event_param_mod>() };
+                let note = u8::try_from(ev.key).ok();
+                engine.set_poly_param_mod(note, ev.param_id, ev.amount as f32);
+            }
+            CLAP_EVENT_NOTE_EXPRESSION => {
+                if (h.size as usize) < std::mem::size_of::<clap_event_note_expression>() {
+                    return;
+                }
+                // SAFETY: type and size were checked.
+                let ev = unsafe { &*std::ptr::from_ref(h).cast::<clap_event_note_expression>() };
+                let note = u8::try_from(ev.key).ok();
+                let val = ev.value as f32;
+                match ev.expression_id {
+                    CLAP_NOTE_EXPRESSION_TUNING => {
+                        engine.set_note_expression(note, Some(val), None, None)
+                    }
+                    CLAP_NOTE_EXPRESSION_BRIGHTNESS => {
+                        engine.set_note_expression(note, None, Some(val), None)
+                    }
+                    CLAP_NOTE_EXPRESSION_PRESSURE => {
+                        engine.set_note_expression(note, None, None, Some(val))
+                    }
+                    _ => {}
+                }
+            }
             CLAP_EVENT_MIDI => {
                 if (h.size as usize) < std::mem::size_of::<clap_event_midi>() {
                     return;
@@ -213,8 +245,11 @@ fn handle_midi(engine: &mut PluginEngine, d: [u8; 3]) {
     match status {
         0x90 if b > 0 => engine.note_on(a, f32::from(b) / 127.0),
         0x90 | 0x80 => engine.note_off(a),
+        0xA0 => engine.set_note_expression(Some(a), None, None, Some(f32::from(b) / 127.0)),
         0xB0 if a == 1 => engine.mod_wheel(f32::from(b) / 127.0),
+        0xB0 if a == 74 => engine.set_note_expression(None, None, Some(f32::from(b) / 127.0), None),
         0xB0 if a == 123 || a == 120 => engine.all_notes_off(),
+        0xD0 => engine.set_note_expression(None, None, None, Some(f32::from(a) / 127.0)),
         0xE0 => {
             let v = i32::from(a) | (i32::from(b) << 7);
             engine.pitch_bend((v - 8192) as f32 / 8192.0 * 2.0);

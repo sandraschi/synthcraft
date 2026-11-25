@@ -968,3 +968,32 @@ fn pro_lab_fm6_unison_reorderable_fx_2d_fdtd_mesh_and_8x_wdf_synthesize_cleanly(
         "Pro Lab full chain (FM6+Unison+FX+2D Mesh+8x WDF) must produce audible PCM"
     );
 }
+
+#[test]
+fn mpe_poly_mod_and_neural_ddsp_timbre_transfer_synthesize_cleanly() {
+    let eng = SynthEngine::factory_seed();
+    let mut p = eng.active_patch().clone();
+    p.ddsp.enabled = true;
+    p.ddsp.timbre_a = synthcraft_core::DdspTimbre::SoloViolinBow;
+    p.ddsp.timbre_b = synthcraft_core::DdspTimbre::AlienVocalChoir;
+    p.ddsp.morph = 0.5;
+    p.ddsp.mix = 0.75;
+
+    let mut rt = SynthRt::new(SR, p);
+    rt.note_on(57, 0.9);
+    rt.note_on(64, 0.85);
+    // Apply independent per-note MPE pitch slide & CLAP Poly-Mod to note 64 only
+    rt.set_note_expression(Some(64), Some(2.5), Some(0.85), Some(0.7));
+    rt.set_poly_param_mod(Some(57), 5, 0.45);
+
+    let mut l = vec![0.0_f32; 4096];
+    let mut r = vec![0.0_f32; 4096];
+    rt.process_stereo(&mut l, &mut r);
+    assert!(l.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    assert!(r.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    let energy: f32 = l.iter().map(|s| s * s).sum();
+    assert!(
+        energy > 0.01,
+        "MPE + Neural DDSP chain must produce audible PCM"
+    );
+}

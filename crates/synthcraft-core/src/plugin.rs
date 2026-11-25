@@ -108,6 +108,21 @@ impl PluginEngine {
         self.rt.active_voices()
     }
 
+    pub fn set_note_expression(
+        &mut self,
+        note: Option<u8>,
+        pitch_st: Option<f32>,
+        timbre: Option<f32>,
+        pressure: Option<f32>,
+    ) {
+        self.rt
+            .set_note_expression(note, pitch_st, timbre, pressure);
+    }
+
+    pub fn set_poly_param_mod(&mut self, note: Option<u8>, param_id: u32, delta: f32) {
+        self.rt.set_poly_param_mod(note, param_id, delta);
+    }
+
     /// Set a parameter by id. Returns the clamped value, or `None` for an unknown id.
     pub fn set_param(&mut self, id: u32, value: f32) -> Option<f32> {
         set_param(self.rt.patch_mut(), id, value)

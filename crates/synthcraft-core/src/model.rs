@@ -208,6 +208,8 @@ pub struct SynthPatch {
     pub physical_mesh: crate::physical::PhysicalMeshParams,
     #[serde(default)]
     pub wdf_circuit: crate::physical::WdfCircuitParams,
+    #[serde(default)]
+    pub ddsp: crate::neural_ddsp::DdspParams,
     pub steps: Vec<SequencerStep>,
 }
 

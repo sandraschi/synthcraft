@@ -60,6 +60,11 @@ struct Voice {
     time_s: f32,
     env: Adsr,
     filter: Ladder,
+    /// MPE / CLAP Poly-Mod per-voice expression state
+    mpe_pitch_st: f32,
+    mpe_timbre: f32,
+    mpe_pressure: f32,
+    poly_cutoff_mod: f32,
 }
 
 impl Voice {
@@ -89,6 +94,10 @@ impl Voice {
             time_s: 0.0,
             env: Adsr::default(),
             filter: Ladder::default(),
+            mpe_pitch_st: 0.0,
+            mpe_timbre: 0.0,
+            mpe_pressure: 0.0,
+            poly_cutoff_mod: 0.0,
         }
     }
 }
@@ -177,6 +186,7 @@ pub struct SynthRt {
     studio_fx: crate::fx_rack::StudioFxRuntime,
     physical_mesh: crate::physical::PhysicalMeshRuntime,
     wdf_circuit: crate::physical::WdfCircuitRuntime,
+    ddsp: crate::neural_ddsp::DdspRuntime,
 }
 
 impl std::fmt::Debug for SynthRt {
@@ -261,6 +271,49 @@ impl SynthRt {
             studio_fx: crate::fx_rack::StudioFxRuntime::new(sr),
             physical_mesh: crate::physical::PhysicalMeshRuntime::new(),
             wdf_circuit: crate::physical::WdfCircuitRuntime::new(),
+            ddsp: crate::neural_ddsp::DdspRuntime::new(),
+        }
+    }
+
+    /// Apply MPE / CLAP 1.2.2 per-note expression (`pitch_st` in semitones, `timbre` 0..1, `pressure` 0..1)
+    /// independently to all active voices matching `note` (or all active voices when `note` is `None`).
+    pub fn set_note_expression(
+        &mut self,
+        note: Option<u8>,
+        pitch_st: Option<f32>,
+        timbre: Option<f32>,
+        pressure: Option<f32>,
+    ) {
+        for v in self
+            .voices
+            .iter_mut()
+            .filter(|v| v.active && note.is_none_or(|n| v.note == n))
+        {
+            if let Some(p) = pitch_st {
+                v.mpe_pitch_st = p.clamp(-48.0, 48.0);
+            }
+            if let Some(t) = timbre {
+                v.mpe_timbre = t.clamp(0.0, 1.0);
+            }
+            if let Some(pr) = pressure {
+                v.mpe_pressure = pr.clamp(0.0, 1.0);
+            }
+        }
+    }
+
+    /// Apply CLAP 1.2.2 Polyphonic Parameter Modulation (`CLAP_EVENT_PARAM_MOD`) to a specific note.
+    pub fn set_poly_param_mod(&mut self, note: Option<u8>, param_id: u32, delta: f32) {
+        for v in self
+            .voices
+            .iter_mut()
+            .filter(|v| v.active && note.is_none_or(|n| v.note == n))
+        {
+            // Param 5 = Cutoff Hz in SynthCraft's CLAP param table; other params map to timbre/pressure
+            if param_id == 5 {
+                v.poly_cutoff_mod = delta.clamp(-1.0, 1.0);
+            } else {
+                v.mpe_timbre = (v.mpe_timbre + delta * 0.5).clamp(0.0, 1.0);
+            }
         }
     }
 
@@ -744,7 +797,12 @@ impl SynthRt {
 
             for v in self.voices.iter_mut().filter(|v| v.active) {
                 v.freq += (v.target_freq - v.freq) * glide_coef;
-                let f = v.freq * self.bend_ratio;
+                let mpe_ratio = if v.mpe_pitch_st.abs() > 1e-4 {
+                    2.0_f32.powf(v.mpe_pitch_st / 12.0)
+                } else {
+                    1.0
+                };
+                let f = v.freq * self.bend_ratio * mpe_ratio;
                 let env = v
                     .env
                     .tick(p.attack_ms, p.decay_ms, p.sustain_level, p.release_ms, sr);
@@ -771,7 +829,8 @@ impl SynthRt {
                 };
                 let pw = (p.pulse_width + mo.pulse_width).clamp(0.05, 0.95);
                 let r = self.routing;
-                let wt_morph = (morph + mo.morph).clamp(0.0, 1.0);
+                let wt_morph = (morph + mo.morph + v.mpe_timbre * 0.5 + v.poly_cutoff_mod * 0.4)
+                    .clamp(0.0, 1.0);
                 let s2_raw = v.osc2.tick(p.vco2_wave, f * voice_detune, sr, pw, 0.0);
                 let s2 = if p.vco2_wave == crate::model::WaveformKind::Wavetable {
                     self.wt.sample(v.osc2.phase(), wt_morph)
@@ -996,6 +1055,9 @@ impl SynthRt {
             (out_l, out_r) = self
                 .studio_fx
                 .process_stereo(out_l, out_r, &self.patch.studio_fx, sr);
+            (out_l, out_r) = self
+                .ddsp
+                .tick_stereo(out_l, out_r, active_freq, &self.patch.ddsp, sr);
 
             if self.opts.dc_blocker {
                 out_l = self.dc.process(out_l);

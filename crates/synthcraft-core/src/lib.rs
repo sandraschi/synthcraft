@@ -22,6 +22,7 @@ pub mod granular;
 pub mod midi;
 pub mod mod_matrix;
 pub mod model;
+pub mod neural_ddsp;
 pub mod nextgen;
 pub mod params;
 pub mod physical;
@@ -71,6 +72,7 @@ pub use model::{
     FxParams, SamplerParams, SequencerStep, SpectrumAnalysisReport, SynthPatch, WaveformKind,
     MAX_RENDER_MS,
 };
+pub use neural_ddsp::{DdspParams, DdspRuntime, DdspTimbre, DDSP_HARMONICS};
 pub use nextgen::{
     Filter2Mode, Filter2Params, Filter2Routing, Filter2StereoState, MsegMode, MsegParams,
     MsegPoint, MsegRuntime, MSEG_MAX_POINTS,
@@ -223,6 +225,7 @@ impl SynthEngine {
                 studio_fx: StudioFxParams::default(),
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
+                ddsp: DdspParams::default(),
                 steps: mk_steps(&[
                     45, 45, 57, 45, 48, 45, 55, 52, 45, 45, 60, 45, 50, 52, 55, 57,
                 ]),
@@ -271,6 +274,7 @@ impl SynthEngine {
                 studio_fx: StudioFxParams::default(),
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
+                ddsp: DdspParams::default(),
                 steps: mk_steps(&[
                     41, 41, 41, 41, 44, 44, 44, 44, 39, 39, 39, 39, 36, 36, 39, 41,
                 ]),
@@ -319,6 +323,7 @@ impl SynthEngine {
                 studio_fx: StudioFxParams::default(),
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
+                ddsp: DdspParams::default(),
                 steps: mk_steps(&[
                     51, 51, 58, 51, 54, 51, 61, 58, 51, 51, 58, 54, 51, 54, 58, 63,
                 ]),
@@ -367,6 +372,7 @@ impl SynthEngine {
                 studio_fx: StudioFxParams::default(),
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
+                ddsp: DdspParams::default(),
                 steps: mk_steps(&[
                     64, 67, 71, 76, 74, 71, 67, 64, 66, 69, 71, 74, 71, 69, 66, 64,
                 ]),
@@ -415,6 +421,7 @@ impl SynthEngine {
                 studio_fx: StudioFxParams::default(),
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
+                ddsp: DdspParams::default(),
                 steps: mk_steps(&[
                     57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
                 ]),
@@ -463,6 +470,7 @@ impl SynthEngine {
                 studio_fx: StudioFxParams::default(),
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
+                ddsp: DdspParams::default(),
                 steps: mk_steps(&[
                     57, 57, 61, 61, 64, 64, 69, 69, 68, 68, 64, 64, 61, 61, 57, 57,
                 ]),
@@ -571,6 +579,9 @@ pub enum Command {
         studio_fx: Box<StudioFxParams>,
         physical_mesh: PhysicalMeshParams,
         wdf_circuit: WdfCircuitParams,
+    },
+    SetDdspParams {
+        ddsp: DdspParams,
     },
     SynthesizePreview {
         duration_ms: u32,
@@ -924,6 +935,15 @@ impl Command {
                     "studio_fx_enabled": p.studio_fx.enabled,
                     "physical_mesh_enabled": p.physical_mesh.enabled,
                     "wdf_mode": p.wdf_circuit.mode.label(),
+                }))
+            }
+            Self::SetDdspParams { ddsp } => {
+                let p = engine.active_patch_mut();
+                p.ddsp = *ddsp;
+                Ok(json!({
+                    "ddsp_enabled": p.ddsp.enabled,
+                    "timbre_a": p.ddsp.timbre_a.label(),
+                    "timbre_b": p.ddsp.timbre_b.label(),
                 }))
             }
             Self::SynthesizePreview { duration_ms } => {
@@ -1513,6 +1533,7 @@ fn ambient_patches(mk_steps: &dyn Fn(&[u8]) -> Vec<SequencerStep>) -> Vec<SynthP
         studio_fx: StudioFxParams::default(),
         physical_mesh: PhysicalMeshParams::default(),
         wdf_circuit: WdfCircuitParams::default(),
+        ddsp: DdspParams::default(),
         steps: mk_steps(&[
             57, 57, 57, 57, 57, 57, 57, 57, 64, 64, 64, 64, 64, 64, 64, 64,
         ])

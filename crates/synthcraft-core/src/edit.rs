@@ -219,6 +219,9 @@ impl SynthPatch {
                 wdf_circuit: b.wdf_circuit,
             });
         }
+        if a.ddsp != b.ddsp {
+            out.push(Command::SetDdspParams { ddsp: b.ddsp });
+        }
         if a.steps.len() != b.steps.len() {
             out.push(Command::SetSequencerLength {
                 steps: b.steps.len(),
