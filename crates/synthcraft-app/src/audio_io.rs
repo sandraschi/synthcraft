@@ -39,6 +39,8 @@ pub enum AudioMsg {
     AuxInGain(f32),
     /// Trigger one voice (`0..8`) of the built-in TR-808/909 drum machine for immediate audition.
     TriggerDrum(usize, bool),
+    /// Per-note MPE / CLAP expression (note, pitch_st, timbre_cc74, pressure).
+    NoteExpression(Option<u8>, Option<f32>, Option<f32>, Option<f32>),
 }
 
 /// Shared read-only view of what the callback is doing, for meters and the scope.
@@ -340,6 +342,9 @@ impl AudioHandle {
                             }
                             AudioMsg::TriggerDrum(vi, acc) => {
                                 rt.trigger_drum(vi, acc);
+                            }
+                            AudioMsg::NoteExpression(n, pitch, timbre, press) => {
+                                rt.set_note_expression(n, pitch, timbre, press);
                             }
                         }
                     }

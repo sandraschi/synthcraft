@@ -60,6 +60,7 @@ pub enum Page {
     Settings,
     NextGenLab,
     ProLab,
+    VisualsMpeDdsp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,6 +165,10 @@ pub struct SynthCraftApp {
     pub genopatch_gens: usize,
     pub genopatch_pop: usize,
     pub genopatch_report: Option<synthcraft_core::GenopatchReport>,
+    pub waterfall_history: Vec<[f32; 32]>,
+    pub mpe_pad_pitch_st: f32,
+    pub mpe_pad_timbre: f32,
+    pub mpe_pad_pressure: f32,
     pub kbd_down: HashMap<egui::Key, u8>,
     pub kbd_octave: i32,
     pub analysis_cache: Option<((String, u32, u32), synthcraft_core::SpectrumAnalysisReport)>,
@@ -290,6 +295,10 @@ impl SynthCraftApp {
             genopatch_gens: 6,
             genopatch_pop: 32,
             genopatch_report: None,
+            waterfall_history: Vec::new(),
+            mpe_pad_pitch_st: 0.0,
+            mpe_pad_timbre: 0.5,
+            mpe_pad_pressure: 0.0,
             kbd_down: HashMap::new(),
             kbd_octave: 3,
             analysis_cache: None,
@@ -1090,6 +1099,9 @@ impl SynthCraftApp {
                         Page::Settings => crate::settings_ui::render_studio_settings(self, ui),
                         Page::NextGenLab => crate::nextgen_ui::render_nextgen_lab(self, ui),
                         Page::ProLab => crate::pro_lab_ui::render_pro_lab(self, ui),
+                        Page::VisualsMpeDdsp => {
+                            crate::visualizers_ui::render_visuals_mpe_ddsp(self, ui)
+                        }
                     },
                     SynthLayout::EurorackBay => {
                         crate::rack_ui::render_vcv_eurorack_canvas(self, ui);
@@ -2282,9 +2294,9 @@ mod tests {
     #[test]
     fn subapp_registry_exposes_every_workbench() {
         let reg = subapps::registry();
-        assert_eq!(reg.len(), 12);
+        assert_eq!(reg.len(), 13);
         let total_subpages: usize = reg.iter().map(|w| w.subpages().len()).sum();
-        assert_eq!(total_subpages, 30);
+        assert_eq!(total_subpages, 33);
     }
 
     #[test]

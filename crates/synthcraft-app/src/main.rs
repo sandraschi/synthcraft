@@ -16,6 +16,7 @@ mod rack_ui;
 mod saver;
 mod settings_ui;
 mod subapps;
+mod visualizers_ui;
 
 use app::SynthCraftApp;
 use std::path::PathBuf;

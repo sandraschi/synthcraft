@@ -263,7 +263,28 @@ const PRO_LAB_SUBS: &[SubPage] = &[
     },
 ];
 
-static WORKBENCHES: [CraftWorkbench; 12] = [
+const VISUALS_MPE_SUBS: &[SubPage] = &[
+    SubPage {
+        page: Page::VisualsMpeDdsp,
+        sub: 0,
+        en: "3D Waterfall & Lissajous Scope",
+        de: "3D-Wasserfall & Lissajous-Scope",
+    },
+    SubPage {
+        page: Page::VisualsMpeDdsp,
+        sub: 1,
+        en: "MPE & CLAP Poly-Mod Touch Pad",
+        de: "MPE & CLAP Poly-Mod Touchpad",
+    },
+    SubPage {
+        page: Page::VisualsMpeDdsp,
+        sub: 2,
+        en: "Neural DDSP Timbre Transfer",
+        de: "Neural DDSP Timbre-Transfer",
+    },
+];
+
+static WORKBENCHES: [CraftWorkbench; 13] = [
     CraftWorkbench {
         id: "modular_rack",
         en: "1. VCV 2 Eurorack & VCO/VCF",
@@ -335,6 +356,12 @@ static WORKBENCHES: [CraftWorkbench; 12] = [
         en: "12. Pro Lab (6-Op FM/FX/2D Physics)",
         de: "12. Pro-Labor (6-Op FM/FX/2D-Physik)",
         subpages: PRO_LAB_SUBS,
+    },
+    CraftWorkbench {
+        id: "visuals_mpe_ddsp",
+        en: "13. Visuals, MPE & Neural DDSP",
+        de: "13. Visuals, MPE & Neural DDSP",
+        subpages: VISUALS_MPE_SUBS,
     },
 ];
 
