@@ -8,6 +8,7 @@ mod drums_ui;
 mod help_docs;
 mod live;
 mod midi_io;
+mod mod_wavetable_ui;
 mod netfetch;
 mod nextgen_ui;
 mod perf_master_ui;

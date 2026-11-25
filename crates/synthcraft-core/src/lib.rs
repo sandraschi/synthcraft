@@ -5,6 +5,7 @@
 //! and BPM/Camelot Stem & Riser Forge for DJCraft.
 #![forbid(unsafe_code)]
 
+pub mod analog_simd;
 pub mod arp;
 pub mod banks;
 pub mod chord_mem;

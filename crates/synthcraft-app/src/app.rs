@@ -119,6 +119,7 @@ pub struct SynthCraftApp {
     pub preset_favorites_only: bool,
     pub favorite_patch_ids: Vec<String>,
     pub mutate_counter: u64,
+    pub wt_harmonics: [f32; 16],
     pub show_palette: bool,
     pub palette_query: String,
     pub show_shortcuts: bool,
@@ -264,6 +265,10 @@ impl SynthCraftApp {
                 "organ_bach_toccata_tutti".into(),
             ],
             mutate_counter: 0,
+            wt_harmonics: [
+                1.0, 0.5, 0.33, 0.25, 0.2, 0.16, 0.14, 0.12, 0.11, 0.1, 0.09, 0.08, 0.07, 0.06,
+                0.05, 0.04,
+            ],
             show_palette: false,
             palette_query: String::new(),
             show_shortcuts: false,
@@ -1219,6 +1224,10 @@ impl SynthCraftApp {
         ui.separator();
 
         if self.subpage == 0 {
+            crate::mod_wavetable_ui::render_drag_drop_mod_bar(self, ui);
+            ui.add_space(4.0);
+            crate::mod_wavetable_ui::render_wavetable_frame_editor(self, ui);
+            ui.add_space(6.0);
             crate::rack_ui::render_vcv_eurorack_canvas(self, ui);
             ui.add_space(6.0);
         }
@@ -2180,6 +2189,7 @@ impl eframe::App for SynthCraftApp {
             self.render_page(ui);
         });
 
+        crate::mod_wavetable_ui::handle_dropped_wav_files(self, &ctx);
         self.render_modals(&ctx);
     }
 }

@@ -212,6 +212,40 @@ impl StudioFxRuntime {
         }
     }
 
+    /// Load a real recorded `.wav` Impulse Response into the 16-tap stereo sparse convolution engine.
+    pub fn load_custom_ir_samples(&mut self, samples: &[f32], sr: f32) {
+        if samples.len() < 32 {
+            return;
+        }
+        let max_len = self.conv.ring_l.len().saturating_sub(1).max(1);
+        let n = samples.len().min(max_len);
+        let seg = (n / 16).max(1);
+        let mut energy = 0.0_f32;
+        for i in 0..16 {
+            let start = (i * seg).min(n - 1);
+            let end = ((i + 1) * seg).min(n);
+            let mut best_idx = start;
+            let mut best_val = 0.0_f32;
+            for (k, &s) in samples[start..end].iter().enumerate() {
+                if s.abs() > best_val.abs() {
+                    best_val = s;
+                    best_idx = start + k;
+                }
+            }
+            let d_l = best_idx.clamp(1, max_len);
+            let d_r = (best_idx + ((sr * 0.0023) as usize)).clamp(1, max_len);
+            let gain = best_val * (1.0 - (i as f32) * 0.035);
+            self.conv.taps_l[i] = (d_l, gain);
+            self.conv.taps_r[i] = (d_r, -gain * 0.94);
+            energy += gain * gain;
+        }
+        let norm = (energy.sqrt().max(0.25)) * 1.35;
+        for i in 0..16 {
+            self.conv.taps_l[i].1 /= norm;
+            self.conv.taps_r[i].1 /= norm;
+        }
+    }
+
     #[inline]
     pub fn process_stereo(
         &mut self,

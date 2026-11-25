@@ -90,6 +90,21 @@ impl GranularRuntime {
         (x as f32) / (u32::MAX as f32)
     }
 
+    /// Load mono `.wav` samples directly into the 24-grain stereo ring buffer for real-audio granular synthesis.
+    pub fn load_wav_samples(&mut self, samples: &[f32]) {
+        if samples.is_empty() {
+            return;
+        }
+        let cap = self.buf_l.len();
+        let copy_len = samples.len().min(cap);
+        for i in 0..cap {
+            let s = samples[i % copy_len];
+            self.buf_l[i] = s;
+            self.buf_r[i] = samples[(i + 7) % copy_len];
+        }
+        self.write_pos = copy_len % cap;
+    }
+
     /// Process one stereo frame through the live-capture 24-grain cloud. Allocation-free.
     #[inline]
     pub fn tick_stereo(
