@@ -335,6 +335,7 @@ impl SynthCraftApp {
         let opts_changed = self.last_opts != Some(opts);
         let routing_changed = self.last_routing != Some(routing);
         self.sync_bank();
+        self.sync_bank_b();
         if patch_changed && !self.last_patch_json.is_empty() {
             self.dirty_since.get_or_insert_with(std::time::Instant::now);
         }
@@ -416,6 +417,60 @@ impl SynthCraftApp {
                 self.bank_loading = Some(spec.clone());
                 self.bank_status = format!("Loading {spec} ...");
                 let tx = self.bank_tx.clone();
+                std::thread::spawn(move || {
+                    let res =
+                        synthcraft_core::sampler::load_cached(&spec).map_err(|e| e.to_string());
+                    let _ = tx.send((spec, res));
+                });
+            }
+        }
+    }
+
+    /// Keep the audio thread's Layer B (AI2 Combi) sample bank in step with the active patch.
+    fn sync_bank_b(&mut self) {
+        while let Ok((spec, res)) = self.bank_b_rx.try_recv() {
+            if self.bank_b_loading.as_deref() == Some(spec.as_str()) {
+                self.bank_b_loading = None;
+            }
+            self.bank_b_loaded_spec = Some(spec.clone());
+            match res {
+                Ok(bank) => {
+                    self.bank_status = format!(
+                        "Loaded Layer B '{}': {} zones, {} frames",
+                        bank.name,
+                        bank.zones.len(),
+                        bank.total_frames()
+                    );
+                    if let Some(a) = &self.audio {
+                        a.send(AudioMsg::BankB(Some(bank)));
+                    }
+                }
+                Err(e) => {
+                    self.bank_status = format!("Layer B load failed: {e}");
+                    if let Some(a) = &self.audio {
+                        a.send(AudioMsg::BankB(None));
+                    }
+                }
+            }
+        }
+        let want = self.engine.active_patch().sampler.bank_b.clone();
+        let settled = want == self.bank_b_loaded_spec;
+        let in_flight = want.is_some() && want == self.bank_b_loading;
+        if settled || in_flight {
+            return;
+        }
+        match want {
+            None => {
+                self.bank_b_loaded_spec = None;
+                self.bank_b_loading = None;
+                if let Some(a) = &self.audio {
+                    a.send(AudioMsg::BankB(None));
+                }
+            }
+            Some(spec) => {
+                self.bank_b_loading = Some(spec.clone());
+                self.bank_status = format!("Loading Layer B {spec} ...");
+                let tx = self.bank_b_tx.clone();
                 std::thread::spawn(move || {
                     let res =
                         synthcraft_core::sampler::load_cached(&spec).map_err(|e| e.to_string());

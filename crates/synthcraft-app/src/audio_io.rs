@@ -29,6 +29,8 @@ pub enum AudioMsg {
     /// Install a decoded sample bank. The bank cache keeps a second reference, so dropping
     /// the old one here never frees memory on the audio thread.
     Bank(Option<Arc<SampleBank>>),
+    /// Install a decoded Layer B (AI2 Combi) sample bank.
+    BankB(Option<Arc<SampleBank>>),
     /// Install or unload an external 3U CLAP Host plugin processor (old one is returned to UI thread).
     ClapHost(Option<Box<dyn ExternalClapProcessor>>, Option<u32>),
     /// Update the CLAP parameter ID modulated by the 3U `PARAM CV` jack.
@@ -309,6 +311,9 @@ impl AudioHandle {
                             AudioMsg::Routing(r) => rt.set_routing(r),
                             AudioMsg::Bank(b) => {
                                 let _ = rt.set_bank(b);
+                            }
+                            AudioMsg::BankB(b) => {
+                                let _ = rt.set_bank_b(b);
                             }
                             AudioMsg::Patch(mut boxed) => {
                                 rt.swap_patch(&mut boxed);

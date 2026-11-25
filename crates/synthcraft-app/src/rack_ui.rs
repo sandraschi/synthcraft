@@ -385,23 +385,24 @@ fn banks_dir() -> std::path::PathBuf {
 fn render_sampler_and_fx(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
     let pal = app.skin.palette();
     ui.separator();
-    ui.heading("Sample bank layer and master effects");
+    ui.heading("M1-Style AI2 Dual-Layer Rompler & Master Effects");
     ui.label(
-        "Load an .sf2 (add #N for preset N), an .sfz, a .wav, or a folder of wavs named by note (pad_C3.wav). Put banks in the Banks folder below to list them here.",
+        "Stack Layer A (e.g. Cembalo / Glockenspiel attack) with Layer B (e.g. Cathedral Pipe Organ / Strings sustain). Supports .sf2 (#N preset), .sfz, .wav, and note-named WAV folders.",
     );
     let mut changed = false;
     let mut load: Option<String> = None;
+    let mut load_b: Option<String> = None;
     ui.horizontal(|ui| {
-        ui.label("Bank:");
+        ui.label("Layer A:");
         ui.add(
             egui::TextEdit::singleline(&mut app.bank_input)
-                .desired_width(460.0)
-                .hint_text("C:\\path\\to\\bank.sf2"),
+                .desired_width(440.0)
+                .hint_text("C:\\path\\to\\layer_a.sfz or bank.sf2#0"),
         );
-        if ui.button("Load").clicked() && !app.bank_input.trim().is_empty() {
+        if ui.button("Load A").clicked() && !app.bank_input.trim().is_empty() {
             load = Some(app.bank_input.trim().to_string());
         }
-        if ui.button("Unload").clicked() {
+        if ui.button("Clear A").clicked() {
             let before = app.engine.active_patch().clone();
             let mut after = before.clone();
             after.sampler.bank = None;
@@ -415,6 +416,24 @@ fn render_sampler_and_fx(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                 Ok(v) => app.sf2_presets = v,
                 Err(e) => app.bank_status = format!("Preset list failed: {e}"),
             }
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.label("Layer B:");
+        ui.add(
+            egui::TextEdit::singleline(&mut app.bank_b_input)
+                .desired_width(440.0)
+                .hint_text("Optional AI2 Combi Layer B (e.g. vcsl-pipe-organ-loud.sfz)"),
+        );
+        if ui.button("Load B").clicked() && !app.bank_b_input.trim().is_empty() {
+            load_b = Some(app.bank_b_input.trim().to_string());
+        }
+        if ui.button("Clear B").clicked() {
+            let before = app.engine.active_patch().clone();
+            let mut after = before.clone();
+            after.sampler.bank_b = None;
+            app.apply_patch_edit(&before, &after);
+            app.bank_b_input.clear();
         }
     });
     let dir = banks_dir();
@@ -437,8 +456,15 @@ fn render_sampler_and_fx(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                         .file_name()
                         .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_default();
-                    if ui.button(label).clicked() {
+                    if ui.button(format!("A: {label}")).clicked() {
                         load = Some(p.to_string_lossy().into_owned());
+                    }
+                    if ui
+                        .small_button("B")
+                        .on_hover_text(format!("Load {label} into AI2 Layer B"))
+                        .clicked()
+                    {
+                        load_b = Some(p.to_string_lossy().into_owned());
                     }
                 }
             }
@@ -498,6 +524,16 @@ fn render_sampler_and_fx(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
             app.bank_fetch_rx = Some(crate::netfetch::prime(spec));
         }
     }
+    if let Some(spec) = load_b {
+        app.bank_b_input = spec.clone();
+        let before = app.engine.active_patch().clone();
+        let mut after = before.clone();
+        after.sampler.bank_b = Some(spec);
+        if after.sampler.mix < 0.05 {
+            after.sampler.mix = 0.85;
+        }
+        app.apply_patch_edit(&before, &after);
+    }
     if !app.bank_status.is_empty() {
         ui.label(&app.bank_status);
     }
@@ -505,12 +541,49 @@ fn render_sampler_and_fx(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
         let before = app.engine.active_patch().clone();
         let mut edited = before.clone();
         let p = &mut edited;
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             changed |= rotary_knob(ui, &pal, "SAMPLE MIX", &mut p.sampler.mix, 0.0, 1.0, "%");
+            changed |= rotary_knob(
+                ui,
+                &pal,
+                "A/B BAL",
+                &mut p.sampler.layer_b_mix,
+                0.0,
+                1.0,
+                "%",
+            );
+            changed |= rotary_knob(
+                ui,
+                &pal,
+                "B DETUNE",
+                &mut p.sampler.layer_b_detune_cents,
+                -50.0,
+                50.0,
+                "ct",
+            );
             changed |= rotary_knob(ui, &pal, "CHORUS", &mut p.fx.chorus_mix, 0.0, 1.0, "%");
             changed |= rotary_knob(ui, &pal, "REVERB", &mut p.fx.reverb_mix, 0.0, 1.0, "%");
             changed |= rotary_knob(ui, &pal, "DECAY", &mut p.fx.reverb_decay_s, 0.3, 20.0, "s");
             changed |= rotary_knob(ui, &pal, "DAMP", &mut p.fx.reverb_damping, 0.0, 0.95, "%");
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Layer B Octave:");
+            for (oct, lbl) in [(-2, "32'"), (-1, "16'"), (0, "8'"), (1, "4'"), (2, "2'")] {
+                if ui
+                    .selectable_label(p.sampler.layer_b_octave == oct, lbl)
+                    .clicked()
+                {
+                    p.sampler.layer_b_octave = oct;
+                    changed = true;
+                }
+            }
+            ui.separator();
+            changed |= ui
+                .checkbox(
+                    &mut p.sampler.vintage_dac,
+                    "1988 Vintage 32 kHz / 12-bit DAC Crunch",
+                )
+                .changed();
         });
         app.apply_patch_edit(&before, &edited);
     }

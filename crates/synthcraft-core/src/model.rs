@@ -192,11 +192,35 @@ pub struct SynthPatch {
 }
 
 /// Sample bank layer: a bank spec (see `sampler::load_bank`) and how much of it to mix in.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SamplerParams {
     pub bank: Option<String>,
     pub mix: f32,
+    /// Optional second sample bank for M1-style AI2 dual-layer Combi stacking (e.g. Cembalo over Pipe Organ).
+    pub bank_b: Option<String>,
+    /// Balance between Layer A (0.0) and Layer B (1.0) when both banks are loaded.
+    pub layer_b_mix: f32,
+    /// Fine detune of Layer B in cents (-50..+50) for rich AI2 chorus width.
+    pub layer_b_detune_cents: f32,
+    /// Octave shift of Layer B (-2..+2) for 16' / 8' / 4' registration stacking.
+    pub layer_b_octave: i8,
+    /// Authentic 1988 32 kHz / 12-bit vintage DAC crunch on the sampler output.
+    pub vintage_dac: bool,
+}
+
+impl Default for SamplerParams {
+    fn default() -> Self {
+        Self {
+            bank: None,
+            mix: 0.0,
+            bank_b: None,
+            layer_b_mix: 0.5,
+            layer_b_detune_cents: 0.0,
+            layer_b_octave: 0,
+            vintage_dac: false,
+        }
+    }
 }
 
 /// Master effects applied after the voices. All zero means bypassed.

@@ -1,169 +1,687 @@
 {
-    "version":  1,
-    "banks":  [
-                  {
-                      "id":  "vsco2ce-violin-section-sus",
-                      "name":  "VSCO 2 CE Violin Section, sustained vibrato (pad base)",
-                      "license":  "CC0-1.0",
-                      "author":  "Versilian Studios LLC, VSCO 2 Community Edition",
-                      "repo":  "sgossner/VSCO-2-CE",
-                      "commit":  "440300901dfe9275fd84e0b7763af1f8443ae62e",
-                      "files":  [
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_A2_v1.wav",
-                                        "note":  "A2",
-                                        "bytes":  1979216,
-                                        "sha256":  "5b3ff9f991642a6dc2fdad56a7d94f581077d2c4082cc1ed89156737716ff22c"
-                                    },
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_A3_v1.wav",
-                                        "note":  "A3",
-                                        "bytes":  1890316,
-                                        "sha256":  "72817a53dfd2eb61eca94658c14e1cab6017629ca2f27bab8e394c6675bfaad7"
-                                    },
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_B2_v1.wav",
-                                        "note":  "B2",
-                                        "bytes":  2314360,
-                                        "sha256":  "1a873970a86da78ed8c9aa068303958496c34eee6fa94fcab39d499dbdfb7826"
-                                    },
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_B4_v1.wav",
-                                        "note":  "B4",
-                                        "bytes":  2056964,
-                                        "sha256":  "ec4cea41ac77f251bf5f4158fe9cbeeae13755e3785106e505808de18fdddc0d"
-                                    },
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_C4_v1.wav",
-                                        "note":  "C4",
-                                        "bytes":  2063320,
-                                        "sha256":  "c07edd5b2119fa1da2207aba996961b50dd616f69bbcf2300ab271bc6c16239f"
-                                    },
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_D3_v1.wav",
-                                        "note":  "D3",
-                                        "bytes":  2061808,
-                                        "sha256":  "583e660bc5daa4e094aef5fc014fbb92751040be8741ed7a16847306a1fe0a99"
-                                    },
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_D5_v1.wav",
-                                        "note":  "D5",
-                                        "bytes":  2116352,
-                                        "sha256":  "f8d870457826c94270b9c3ead8e8ec02cb7e6c4a3481cded055641b7fab7df62"
-                                    },
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_E4_v1.wav",
-                                        "note":  "E4",
-                                        "bytes":  2315540,
-                                        "sha256":  "787fb4bcfb47d5c88ee1573c8db15f32d345386301be4a8eea6a825847413ae2"
-                                    },
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_F#3_v1.wav",
-                                        "note":  "F#3",
-                                        "bytes":  1585612,
-                                        "sha256":  "8dc13d197373f0d1fe1b0744de57796800bde372906d3667398c55d473a383ea"
-                                    },
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_G2_v1.wav",
-                                        "note":  "G2",
-                                        "bytes":  2341712,
-                                        "sha256":  "feb96c5064fbef43087c495d61a9cab9f70ff1be5b22905147c1f86d5f89547c"
-                                    },
-                                    {
-                                        "path":  "Strings/Violin Section/susVib/VlnEns_susVib_G4_v1.wav",
-                                        "note":  "G4",
-                                        "bytes":  2330236,
-                                        "sha256":  "ed2a89cf254432d2af073699fa43ebfa16cfbc5552c7fc964a184fc434eaaa39"
-                                    }
-                                ]
-                  },
-                  {
-                      "id":  "vsco2ce-cello-section-sus",
-                      "name":  "VSCO 2 CE Cello Section, sustained vibrato (pad base)",
-                      "license":  "CC0-1.0",
-                      "author":  "Versilian Studios LLC, VSCO 2 Community Edition",
-                      "repo":  "sgossner/VSCO-2-CE",
-                      "commit":  "440300901dfe9275fd84e0b7763af1f8443ae62e",
-                      "files":  [
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_A2_v1_1.wav",
-                                        "note":  "A2",
-                                        "bytes":  2336738,
-                                        "sha256":  "c97a003184fdcb153d6b6c0bae8d82a90592a1b04b06bd7caaeda8b9776d5284"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_B1_v1_1.wav",
-                                        "note":  "B1",
-                                        "bytes":  2372492,
-                                        "sha256":  "4f95c087c4b8d87ee591e9d39c3c9caf085c6f1b9125eac3ca9e4e637da628ee"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_B3_v1_1.wav",
-                                        "note":  "B3",
-                                        "bytes":  1690082,
-                                        "sha256":  "bd25d66c1c4e73f5827bf3b931244e51ec8388594d8004529a762be81258097f"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_C1_v1_1.wav",
-                                        "note":  "C1",
-                                        "bytes":  2347376,
-                                        "sha256":  "abdcea431f384e135c469b0f3e4ac2a437f282f521dc5bcbe22abc221536e8de"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_C3_v1_1.wav",
-                                        "note":  "C3",
-                                        "bytes":  2444174,
-                                        "sha256":  "a614ee7ca821b44660236e47b89620cf914ec6ad27a99bc0d9764f47dbe512e1"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_D2_v1_1.wav",
-                                        "note":  "D2",
-                                        "bytes":  2550956,
-                                        "sha256":  "e8640dec9febc6e39fcf06b19d2c95a85d5ff8c38f13c9879e69f551eaf38ab8"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_D4_v1_1.wav",
-                                        "note":  "D4",
-                                        "bytes":  2153228,
-                                        "sha256":  "b4aa3a7fec1f0e783fa560f493868c17045feb271738e3d6834d1b00594b1c38"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_E1_v1_1.wav",
-                                        "note":  "E1",
-                                        "bytes":  2468348,
-                                        "sha256":  "de31a61b02d4e1d5a79b8bc432b0f35fe2e434290ad34402cc0f2dd7dc278cde"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_E3_v1_1.wav",
-                                        "note":  "E3",
-                                        "bytes":  2456672,
-                                        "sha256":  "d2f961e30bf64021cf4acbd88e0e7a1fd1840943ae78c62a711bcce3d109216e"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_F2_v1_1.wav",
-                                        "note":  "F2",
-                                        "bytes":  2186012,
-                                        "sha256":  "162054eab4ba118924f8f8986cf1b17ccfd65211d1945743ffbae30b4953f901"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_F4_v1_1.wav",
-                                        "note":  "F4",
-                                        "bytes":  1922948,
-                                        "sha256":  "a9888547b4b684c7649a882e693d61964848f18401a18e4646a8449b40c08bad"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_G1_v1_1.wav",
-                                        "note":  "G1",
-                                        "bytes":  2161700,
-                                        "sha256":  "9e5d24e8e28d6c7f650f9bb2b33d43c13e341a8bd33124c64e23881378b181ba"
-                                    },
-                                    {
-                                        "path":  "Strings/Cello Section/susvib/susvib_G3_v1_1.wav",
-                                        "note":  "G3",
-                                        "bytes":  2431598,
-                                        "sha256":  "8d658346b8d2054fd534b3222b5d7a23196d22a83a68c3a04ffb76b21853a3db"
-                                    }
-                                ]
-                  }
-              ]
+  "version": 1,
+  "banks": [
+    {
+      "id": "vsco2ce-violin-section-sus",
+      "name": "VSCO 2 CE Violin Section, sustained vibrato (pad base)",
+      "license": "CC0-1.0",
+      "author": "Versilian Studios LLC, VSCO 2 Community Edition",
+      "repo": "sgossner/VSCO-2-CE",
+      "commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
+      "files": [
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_A2_v1.wav",
+          "note": "A2",
+          "bytes": 1979216,
+          "sha256": "5b3ff9f991642a6dc2fdad56a7d94f581077d2c4082cc1ed89156737716ff22c"
+        },
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_A3_v1.wav",
+          "note": "A3",
+          "bytes": 1890316,
+          "sha256": "72817a53dfd2eb61eca94658c14e1cab6017629ca2f27bab8e394c6675bfaad7"
+        },
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_B2_v1.wav",
+          "note": "B2",
+          "bytes": 2314360,
+          "sha256": "1a873970a86da78ed8c9aa068303958496c34eee6fa94fcab39d499dbdfb7826"
+        },
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_B4_v1.wav",
+          "note": "B4",
+          "bytes": 2056964,
+          "sha256": "ec4cea41ac77f251bf5f4158fe9cbeeae13755e3785106e505808de18fdddc0d"
+        },
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_C4_v1.wav",
+          "note": "C4",
+          "bytes": 2063320,
+          "sha256": "c07edd5b2119fa1da2207aba996961b50dd616f69bbcf2300ab271bc6c16239f"
+        },
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_D3_v1.wav",
+          "note": "D3",
+          "bytes": 2061808,
+          "sha256": "583e660bc5daa4e094aef5fc014fbb92751040be8741ed7a16847306a1fe0a99"
+        },
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_D5_v1.wav",
+          "note": "D5",
+          "bytes": 2116352,
+          "sha256": "f8d870457826c94270b9c3ead8e8ec02cb7e6c4a3481cded055641b7fab7df62"
+        },
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_E4_v1.wav",
+          "note": "E4",
+          "bytes": 2315540,
+          "sha256": "787fb4bcfb47d5c88ee1573c8db15f32d345386301be4a8eea6a825847413ae2"
+        },
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_F#3_v1.wav",
+          "note": "F#3",
+          "bytes": 1585612,
+          "sha256": "8dc13d197373f0d1fe1b0744de57796800bde372906d3667398c55d473a383ea"
+        },
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_G2_v1.wav",
+          "note": "G2",
+          "bytes": 2341712,
+          "sha256": "feb96c5064fbef43087c495d61a9cab9f70ff1be5b22905147c1f86d5f89547c"
+        },
+        {
+          "path": "Strings/Violin Section/susVib/VlnEns_susVib_G4_v1.wav",
+          "note": "G4",
+          "bytes": 2330236,
+          "sha256": "ed2a89cf254432d2af073699fa43ebfa16cfbc5552c7fc964a184fc434eaaa39"
+        }
+      ]
+    },
+    {
+      "id": "vsco2ce-cello-section-sus",
+      "name": "VSCO 2 CE Cello Section, sustained vibrato (pad base)",
+      "license": "CC0-1.0",
+      "author": "Versilian Studios LLC, VSCO 2 Community Edition",
+      "repo": "sgossner/VSCO-2-CE",
+      "commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
+      "files": [
+        {
+          "path": "Strings/Cello Section/susvib/susvib_A2_v1_1.wav",
+          "note": "A2",
+          "bytes": 2336738,
+          "sha256": "c97a003184fdcb153d6b6c0bae8d82a90592a1b04b06bd7caaeda8b9776d5284"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_B1_v1_1.wav",
+          "note": "B1",
+          "bytes": 2372492,
+          "sha256": "4f95c087c4b8d87ee591e9d39c3c9caf085c6f1b9125eac3ca9e4e637da628ee"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_B3_v1_1.wav",
+          "note": "B3",
+          "bytes": 1690082,
+          "sha256": "bd25d66c1c4e73f5827bf3b931244e51ec8388594d8004529a762be81258097f"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_C1_v1_1.wav",
+          "note": "C1",
+          "bytes": 2347376,
+          "sha256": "abdcea431f384e135c469b0f3e4ac2a437f282f521dc5bcbe22abc221536e8de"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_C3_v1_1.wav",
+          "note": "C3",
+          "bytes": 2444174,
+          "sha256": "a614ee7ca821b44660236e47b89620cf914ec6ad27a99bc0d9764f47dbe512e1"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_D2_v1_1.wav",
+          "note": "D2",
+          "bytes": 2550956,
+          "sha256": "e8640dec9febc6e39fcf06b19d2c95a85d5ff8c38f13c9879e69f551eaf38ab8"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_D4_v1_1.wav",
+          "note": "D4",
+          "bytes": 2153228,
+          "sha256": "b4aa3a7fec1f0e783fa560f493868c17045feb271738e3d6834d1b00594b1c38"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_E1_v1_1.wav",
+          "note": "E1",
+          "bytes": 2468348,
+          "sha256": "de31a61b02d4e1d5a79b8bc432b0f35fe2e434290ad34402cc0f2dd7dc278cde"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_E3_v1_1.wav",
+          "note": "E3",
+          "bytes": 2456672,
+          "sha256": "d2f961e30bf64021cf4acbd88e0e7a1fd1840943ae78c62a711bcce3d109216e"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_F2_v1_1.wav",
+          "note": "F2",
+          "bytes": 2186012,
+          "sha256": "162054eab4ba118924f8f8986cf1b17ccfd65211d1945743ffbae30b4953f901"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_F4_v1_1.wav",
+          "note": "F4",
+          "bytes": 1922948,
+          "sha256": "a9888547b4b684c7649a882e693d61964848f18401a18e4646a8449b40c08bad"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_G1_v1_1.wav",
+          "note": "G1",
+          "bytes": 2161700,
+          "sha256": "9e5d24e8e28d6c7f650f9bb2b33d43c13e341a8bd33124c64e23881378b181ba"
+        },
+        {
+          "path": "Strings/Cello Section/susvib/susvib_G3_v1_1.wav",
+          "note": "G3",
+          "bytes": 2431598,
+          "sha256": "8d658346b8d2054fd534b3222b5d7a23196d22a83a68c3a04ffb76b21853a3db"
+        }
+      ]
+    },
+    {
+      "id": "vcsl-cembalo-harpsichord",
+      "name": "VCSL English Cembalo / Harpsichord (Normal Stop)",
+      "license": "CC0-1.0",
+      "author": "Versilian Studios LLC, Versilian Community Sample Library (VCSL)",
+      "repo": "sgossner/VCSL",
+      "commit": "c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e",
+      "files": [
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Normal/ZuckermannKitHarpsi_Normal_Sus_C1_rr1.wav",
+          "note": "C1",
+          "bytes": 3496484,
+          "sha256": "ebd76c47015272c89516308afe7d6b9db99a74ac5bfe2c29ac8cfb8548a92507"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Normal/ZuckermannKitHarpsi_Normal_Sus_F#1_rr1.wav",
+          "note": "F#1",
+          "bytes": 3155936,
+          "sha256": "522d2ee698edccc351eadb3da8b577235004635787eb4c7479393e468331417e"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Normal/ZuckermannKitHarpsi_Normal_Sus_C2_rr1.wav",
+          "note": "C2",
+          "bytes": 1978382,
+          "sha256": "8601887542f1d51238c5e771d17007303874908d8f40373a31b01eb96edbe1f4"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Normal/ZuckermannKitHarpsi_Normal_Sus_F#2_rr1.wav",
+          "note": "F#2",
+          "bytes": 2583416,
+          "sha256": "0cf9e7260301134acc50d3e25cf83e3024934685ee9e184a6642aa21b090c7c9"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Normal/ZuckermannKitHarpsi_Normal_Sus_C3_rr1.wav",
+          "note": "C3",
+          "bytes": 2244512,
+          "sha256": "a5d93c1ce51c01fee2b83a369cdd1b8fdc3155d46f4e9a16e42e26878108ac83"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Normal/ZuckermannKitHarpsi_Normal_Sus_F#3_rr1.wav",
+          "note": "F#3",
+          "bytes": 1424126,
+          "sha256": "6661561eeb3e603818707ed622e1a7aacb4c4a049264b42270fab70ad1221e31"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Normal/ZuckermannKitHarpsi_Normal_Sus_C4_rr1.wav",
+          "note": "C4",
+          "bytes": 1709120,
+          "sha256": "e6d49fcd8e2efe5a49839d241caf2f244e8921e8cdecb869c4549835b38b6f8d"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Normal/ZuckermannKitHarpsi_Normal_Sus_F#4_rr1.wav",
+          "note": "F#4",
+          "bytes": 1068482,
+          "sha256": "d457367ebd4c2384ad54aec6fb4826f2b9b9cb5057da0bf9ed3c66d45b169b9c"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Normal/ZuckermannKitHarpsi_Normal_Sus_C5_rr1.wav",
+          "note": "C5",
+          "bytes": 910394,
+          "sha256": "2df658ea8f0a168af97fa3d3f6dc6110098a8795e927ae61b944e6bf0152130b"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Normal/ZuckermannKitHarpsi_Normal_Sus_E5_rr1.wav",
+          "note": "E5",
+          "bytes": 753974,
+          "sha256": "281f70c8c8092645813b2edff717d4fbe704425df9424fd2f376375212b7c038"
+        }
+      ]
+    },
+    {
+      "id": "vcsl-cembalo-lute-stop",
+      "name": "VCSL English Cembalo / Harpsichord (Lute Buff Stop)",
+      "license": "CC0-1.0",
+      "author": "Versilian Studios LLC, Versilian Community Sample Library (VCSL)",
+      "repo": "sgossner/VCSL",
+      "commit": "c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e",
+      "files": [
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Lute/ZuckermannKitHarpsi_Lute_Sus_C1_rr1.wav",
+          "note": "C1",
+          "bytes": 2811386,
+          "sha256": "31c882fa248adeccdf5fd65ab79bc590d3809b548f9c649c713ac67cb0106004"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Lute/ZuckermannKitHarpsi_Lute_Sus_F#1_rr1.wav",
+          "note": "F#1",
+          "bytes": 1256810,
+          "sha256": "2e7ec4f7391a00d9d6bf4ac98e99ac58fd4df6dface23a02aca51369dc393876"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Lute/ZuckermannKitHarpsi_Lute_Sus_D2_rr1.wav",
+          "note": "D2",
+          "bytes": 968072,
+          "sha256": "9157ae1f2620ea772468a5fd940f400bf4dadf2e4fa7e6eaeb777e765a1d25d2"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Lute/ZuckermannKitHarpsi_Lute_Sus_F#2_rr1.wav",
+          "note": "F#2",
+          "bytes": 1010534,
+          "sha256": "efe05ac87db350e83e8b914f6503e530de2076783e727567504632ecd2f12ad4"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Lute/ZuckermannKitHarpsi_Lute_Sus_C3_rr1.wav",
+          "note": "C3",
+          "bytes": 1259462,
+          "sha256": "5ee73436595d93d7086c97bc3ef6c0e1cfd21381b5b242bf3f3d15402a3788c1"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Lute/ZuckermannKitHarpsi_Lute_Sus_F#3_rr1.wav",
+          "note": "F#3",
+          "bytes": 780650,
+          "sha256": "88c53191ff689fd9b38c15959c8ffb29f668839c10b13088d9e26a4a8ed37614"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Lute/ZuckermannKitHarpsi_Lute_Sus_C4_rr1.wav",
+          "note": "C4",
+          "bytes": 849776,
+          "sha256": "49ba716ecee46f50122d41713f43860bc8e52e7f270e08c8297bf0f92a2dac1d"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Lute/ZuckermannKitHarpsi_Lute_Sus_F#4_rr1.wav",
+          "note": "F#4",
+          "bytes": 490586,
+          "sha256": "73ee99cef3ab58f3b33ee3228e3ca7c1b812a620964cfe01b215c82bb256365f"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Lute/ZuckermannKitHarpsi_Lute_Sus_C5_rr1.wav",
+          "note": "C5",
+          "bytes": 558920,
+          "sha256": "9c857f9f99001af7730e1902d0240250925024fb0fd881dfc303dcd2d2fd12f9"
+        },
+        {
+          "path": "Chordophones/Zithers/Harpsichord, English/Sustains/Lute/ZuckermannKitHarpsi_Lute_Sus_E5_rr1.wav",
+          "note": "E5",
+          "bytes": 498164,
+          "sha256": "9dfb98906ad0dcf13fd38d7992a7a100ad4fda6721d2e972a253ae45f7d79fce"
+        }
+      ]
+    },
+    {
+      "id": "vcsl-pipe-organ-loud",
+      "name": "VCSL Cathedral Pipe Organ (Full Principal / Mixture)",
+      "license": "CC0-1.0",
+      "author": "Versilian Studios LLC, Versilian Community Sample Library (VCSL)",
+      "repo": "sgossner/VCSL",
+      "commit": "c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e",
+      "files": [
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_C1.wav",
+          "note": "C1",
+          "bytes": 2230702,
+          "sha256": "655578ef565eb845785935baca41600ca620f19dae8ba0c102ef53d4128febd4"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_F#1.wav",
+          "note": "F#1",
+          "bytes": 2234062,
+          "sha256": "03e8a7f44599f0df9975566fff56ece53990d61851f9051f264fa6506f1e075e"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_C2.wav",
+          "note": "C2",
+          "bytes": 2169390,
+          "sha256": "6a45ea670fd525c8d9c6e26c2d0c0cf5248972b3aa9cc98521b826208aba03c7"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_F#2.wav",
+          "note": "F#2",
+          "bytes": 2197326,
+          "sha256": "0fccf2e5ad86e2ef4ea2475a69fdb4d6c2687e69f83a15d06cbae03e34ac5eee"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_C3.wav",
+          "note": "C3",
+          "bytes": 2180642,
+          "sha256": "1524a5631561e898617154a2f1b6bdc6fbdacb383549255d78d14eb53b588f8b"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_F#3.wav",
+          "note": "F#3",
+          "bytes": 2167714,
+          "sha256": "5b0043d88777245103c73f04a5569b9e4e2cd143e21eeebdffd8b3684eec9df6"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_C4.wav",
+          "note": "C4",
+          "bytes": 2187714,
+          "sha256": "9f3b80ef47d908b8acae4d6e7898a28e8179c3e090d6ee1ff4c326d35ea1d945"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_F#4.wav",
+          "note": "F#4",
+          "bytes": 2119798,
+          "sha256": "bc9f4e8f0f20484a7b8eb1e35c2800c3658b59a1d8d28a8fc2f88b0ab788e28d"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_C5.wav",
+          "note": "C5",
+          "bytes": 2135622,
+          "sha256": "abcfa8821cd0ff1279f427b71cfad6467d39b0a56481fda4f164880df8f6ddcc"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_F#5.wav",
+          "note": "F#5",
+          "bytes": 2121458,
+          "sha256": "02ad4cf4038e4934a6de35ce9e9a6928bb2191e2e23a7ceddce0a2e0f83be532"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud/Rode_Man3Open_C6.wav",
+          "note": "C6",
+          "bytes": 2099290,
+          "sha256": "fcb7ed9e78012eab036f89dfd9529852ba11193afa2f224fd4536fe427f8292b"
+        }
+      ]
+    },
+    {
+      "id": "vcsl-pipe-organ-pedal",
+      "name": "VCSL Cathedral Pipe Organ (16' Sub-Bass Pedal)",
+      "license": "CC0-1.0",
+      "author": "Versilian Studios LLC, Versilian Community Sample Library (VCSL)",
+      "repo": "sgossner/VCSL",
+      "commit": "c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e",
+      "files": [
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud Pedal/Rode_Pedal_C1.wav",
+          "note": "C1",
+          "bytes": 2429630,
+          "sha256": "891de474b814c11d4bed999aa352f6752687d745a9e26fcd42deda03e5841828"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud Pedal/Rode_Pedal_D#1.wav",
+          "note": "D#1",
+          "bytes": 2274842,
+          "sha256": "ac8ed166f7b56056a5d87811ed7a178f6f796ee7e2405fcadaaef990b68f7025"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud Pedal/Rode_Pedal_F#1.wav",
+          "note": "F#1",
+          "bytes": 2251954,
+          "sha256": "0047443c237e96115ba43fc43e068e2f2abf27eddfa0e0b3a41045441f7df88b"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud Pedal/Rode_Pedal_A1.wav",
+          "note": "A1",
+          "bytes": 2258742,
+          "sha256": "f0c23d3643e3b36d025bfd2116e514f74d23cb3f017f7a4e1d47e51f818f1ef3"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud Pedal/Rode_Pedal_C2.wav",
+          "note": "C2",
+          "bytes": 2241098,
+          "sha256": "073139f5763ce6fd497e88db296e130292d2299bab2e678daa1c299c4bd4fb93"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud Pedal/Rode_Pedal_F#2.wav",
+          "note": "F#2",
+          "bytes": 2263186,
+          "sha256": "2ca4b2d67bf03117f6dde5a3f22b28157313e8842ad4621d09a13aad2071e2bc"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud Pedal/Rode_Pedal_C3.wav",
+          "note": "C3",
+          "bytes": 2242134,
+          "sha256": "5970b02f053398b7634236a6c1cfadde57362410e9256a5abc78e442bfd54057"
+        },
+        {
+          "path": "Aerophones/Edge-blown Aerophones/Pipe Organ/Loud Pedal/Rode_Pedal_F#3.wav",
+          "note": "F#3",
+          "bytes": 2237926,
+          "sha256": "6fdfaf07c41cc799506112ed956849537e37f1ad5b3497664d3306b446af625c"
+        }
+      ]
+    },
+    {
+      "id": "vsco2ce-concert-harp",
+      "name": "VSCO 2 CE Concert Harp (Plucked Workstation Layer)",
+      "license": "CC0-1.0",
+      "author": "Versilian Studios LLC, VSCO 2 Community Edition",
+      "repo": "sgossner/VSCO-2-CE",
+      "commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
+      "files": [
+        {
+          "path": "Strings/Harp/KSHarp_E1_f.wav",
+          "note": "E1",
+          "bytes": 4001190,
+          "sha256": "70f534627d6155bab46262e0383a8b431c25fde78ca029947d453748b1f73038"
+        },
+        {
+          "path": "Strings/Harp/KSHarp_B1_mf.wav",
+          "note": "B1",
+          "bytes": 2284022,
+          "sha256": "284034807efbb429cb63f6fb744834b18e6281a4914e6460de0a5818b5d0d0e6"
+        },
+        {
+          "path": "Strings/Harp/KSHarp_F2_mf.wav",
+          "note": "F2",
+          "bytes": 3086590,
+          "sha256": "d5c0fb42c176af334fd6f6d1b97858556619c51e177efb5b0c6c23bc19ce6dad"
+        },
+        {
+          "path": "Strings/Harp/KSHarp_C3_mf.wav",
+          "note": "C3",
+          "bytes": 1586172,
+          "sha256": "e5d232771704e140959819de8cf2a3e0ba49d021ca77354c42664ce4fce6d9f3"
+        },
+        {
+          "path": "Strings/Harp/KSHarp_G3_mf.wav",
+          "note": "G3",
+          "bytes": 1806874,
+          "sha256": "62600eb1b37bc2829ca65351f7ca7e506c9ae472abd5bea0765a8b8fa7df2772"
+        },
+        {
+          "path": "Strings/Harp/KSHarp_D4_mf.wav",
+          "note": "D4",
+          "bytes": 1921690,
+          "sha256": "ebfde8aab4411019e37e3426f4dd88d6a52a38c2d0261d7f10ec63d8ff584dc7"
+        },
+        {
+          "path": "Strings/Harp/KSHarp_A4_mf.wav",
+          "note": "A4",
+          "bytes": 2143618,
+          "sha256": "3665f3975cad4a33f46784aa4f896f4b4319ba2b7831e892d975bc38c9f09f23"
+        },
+        {
+          "path": "Strings/Harp/KSHarp_E5_mf.wav",
+          "note": "E5",
+          "bytes": 1171586,
+          "sha256": "95dd9ddb0bd15bee7687906e00f25aafcaa43020cc9501f0e8b6cabf0e9a53ec"
+        },
+        {
+          "path": "Strings/Harp/KSHarp_C5_mf.wav",
+          "note": "C5",
+          "bytes": 1237142,
+          "sha256": "7c8b862f6fd3f1442ed87537af976d84bda8c05a5b4900e8907d570b5202a517"
+        },
+        {
+          "path": "Strings/Harp/KSHarp_A6_mf.wav",
+          "note": "A6",
+          "bytes": 636870,
+          "sha256": "4605355d22fae6f58190bf0d033d2ebdd745d63e2e43204d6f41ad27e4f09af0"
+        }
+      ]
+    },
+    {
+      "id": "vsco2ce-glockenspiel",
+      "name": "VSCO 2 CE Glockenspiel (Bright Bell Attack Transient)",
+      "license": "CC0-1.0",
+      "author": "Versilian Studios LLC, VSCO 2 Community Edition",
+      "repo": "sgossner/VSCO-2-CE",
+      "commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
+      "files": [
+        {
+          "path": "Percussion/Glock/glock_medium_G4.wav",
+          "note": "G4",
+          "bytes": 1271310,
+          "sha256": "6c4649b13e24fa01e4634edad8fe8edf18aef33facc5d49fe53097b376bac4da"
+        },
+        {
+          "path": "Percussion/Glock/glock_medium_C5.wav",
+          "note": "C5",
+          "bytes": 1271310,
+          "sha256": "635f898e0bcb6975b96b18efd9c896f6f1b97ff12174a339ada4814e49675660"
+        },
+        {
+          "path": "Percussion/Glock/glock_medium_G5.wav",
+          "note": "G5",
+          "bytes": 1226714,
+          "sha256": "7045c0ef7260e2f1ad11a64406cf7575ed898d1207a91104d33d78caefac63e4"
+        },
+        {
+          "path": "Percussion/Glock/glock_medium_C6.wav",
+          "note": "C6",
+          "bytes": 1271310,
+          "sha256": "e942cbf502cf6731df2925945fe3234c876cb63f047d91007b6929887f9e4904"
+        },
+        {
+          "path": "Percussion/Glock/glock_medium_G6.wav",
+          "note": "G6",
+          "bytes": 843122,
+          "sha256": "a2ba94e59119cd5272c1161fc8b8fbfb94c7b44de45a9a6cc5973b1c332103af"
+        },
+        {
+          "path": "Percussion/Glock/glock_medium_C7.wav",
+          "note": "C7",
+          "bytes": 492418,
+          "sha256": "b2ecbe0e60c983bbfaa49a1f45f8a11559f7dba27b8c8a032eb2cb7366a36910"
+        }
+      ]
+    },
+    {
+      "id": "vsco2ce-marimba",
+      "name": "VSCO 2 CE Concert Marimba (Woody Mallet Pluck)",
+      "license": "CC0-1.0",
+      "author": "Versilian Studios LLC, VSCO 2 Community Edition",
+      "repo": "sgossner/VSCO-2-CE",
+      "commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
+      "files": [
+        {
+          "path": "Percussion/Marimba/Marimba_hit_Outrigger_F1_loud_01.wav",
+          "note": "F1",
+          "bytes": 972392,
+          "sha256": "c5cb5ce59540b0a23628a919e90153a6cee9bb35325b056e0710c12b64f0b193"
+        },
+        {
+          "path": "Percussion/Marimba/Marimba_hit_Outrigger_C2_loud_01.wav",
+          "note": "C2",
+          "bytes": 2236004,
+          "sha256": "bfad3b0e57d04c31e6079aba11fb0a6c5c84627fd4bc46e4e0923663586c460c"
+        },
+        {
+          "path": "Percussion/Marimba/Marimba_hit_Outrigger_G2_loud_01.wav",
+          "note": "G2",
+          "bytes": 1855448,
+          "sha256": "3bd173f56481e537c3489a94d1e4dd59c304f9f98679c7c90890fc9f5795c25d"
+        },
+        {
+          "path": "Percussion/Marimba/Marimba_hit_Outrigger_F3_loud_01.wav",
+          "note": "F3",
+          "bytes": 1589876,
+          "sha256": "379e749add43b12959fae06cc272f1871899cc05460faf41ead77b93e5d01843"
+        },
+        {
+          "path": "Percussion/Marimba/Marimba_hit_Outrigger_C4_loud_01.wav",
+          "note": "C4",
+          "bytes": 1016564,
+          "sha256": "4af539d47a452d7fad26e171b1c8adcca272cee97191f040d192680462c880b8"
+        },
+        {
+          "path": "Percussion/Marimba/Marimba_hit_Outrigger_G4_loud_01.wav",
+          "note": "G4",
+          "bytes": 800102,
+          "sha256": "36f39f9f24789001add2b4c440defb7641178b0e8449c5cb7f1960bccaf0aaaf"
+        },
+        {
+          "path": "Percussion/Marimba/Marimba_hit_Outrigger_F5_loud_01.wav",
+          "note": "F5",
+          "bytes": 551306,
+          "sha256": "a434c15978b2ea4b8921feeb3fd1f177447324d06c177801e0e46c12a97abc86"
+        },
+        {
+          "path": "Percussion/Marimba/Marimba_hit_Outrigger_C6_loud_01.wav",
+          "note": "C6",
+          "bytes": 472142,
+          "sha256": "2e42b1b6f6923f32e3daadc12b063e94d15af20fa410ddcb267eb906fd6e0e89"
+        }
+      ]
+    },
+    {
+      "id": "vsco2ce-flute-susvib",
+      "name": "VSCO 2 CE Concert Flute (Sustained Vibrato)",
+      "license": "CC0-1.0",
+      "author": "Versilian Studios LLC, VSCO 2 Community Edition",
+      "repo": "sgossner/VSCO-2-CE",
+      "commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
+      "files": [
+        {
+          "path": "Woodwinds/Flute/susvib/LDFlute_susvib_C3_v1_1.wav",
+          "note": "C3",
+          "bytes": 2088144,
+          "sha256": "073631c8442b275d803e608e840c2ce6cad3b08320018e08510cf3cb57373154"
+        },
+        {
+          "path": "Woodwinds/Flute/susvib/LDFlute_susvib_E3_v1_1.wav",
+          "note": "E3",
+          "bytes": 2802054,
+          "sha256": "831386b21a704a5fccf204b18a536d638ea191f1b56662200192241215e21abd"
+        },
+        {
+          "path": "Woodwinds/Flute/susvib/LDFlute_susvib_A3_v1_1.wav",
+          "note": "A3",
+          "bytes": 2117124,
+          "sha256": "4ea04a7a2ba152752e1b475798619a62f2546f54972caa6ddcd88f29a2046c81"
+        },
+        {
+          "path": "Woodwinds/Flute/susvib/LDFlute_susvib_C4_v1_1.wav",
+          "note": "C4",
+          "bytes": 2009832,
+          "sha256": "e88a0ff35e6b8c29fd88bc778a4c817d955b2c3a2934def97a7d093b72e2ae97"
+        },
+        {
+          "path": "Woodwinds/Flute/susvib/LDFlute_susvib_E4_v1_1.wav",
+          "note": "E4",
+          "bytes": 2144718,
+          "sha256": "83d4eed0c54ebfe25fe9dfb0475fb90a88a43d11777bc2afac879b8b695e494c"
+        },
+        {
+          "path": "Woodwinds/Flute/susvib/LDFlute_susvib_A4_v1_1.wav",
+          "note": "A4",
+          "bytes": 1942296,
+          "sha256": "cf3c1c30943b8b8ef8b5b9ced89430c014987a037204098d002f86e424391ba9"
+        },
+        {
+          "path": "Woodwinds/Flute/susvib/LDFlute_susvib_C5_v1_1.wav",
+          "note": "C5",
+          "bytes": 1930938,
+          "sha256": "ecb78c59069866ea7c3327594851827cd2f50c5d411aad422269a88e53614fbe"
+        },
+        {
+          "path": "Woodwinds/Flute/susvib/LDFlute_susvib_E5_v1_1.wav",
+          "note": "E5",
+          "bytes": 1586118,
+          "sha256": "6eab0a4827c43b49415cb0c846affd40e9555c884c74683422554923faf17681"
+        },
+        {
+          "path": "Woodwinds/Flute/susvib/LDFlute_susvib_A5_v1_1.wav",
+          "note": "A5",
+          "bytes": 1457676,
+          "sha256": "067a42df19ec1864389c28235a6794033471c0ffa3d7e16637396a505ca7d7fd"
+        },
+        {
+          "path": "Woodwinds/Flute/susvib/LDFlute_susvib_C6_v1_1.wav",
+          "note": "C6",
+          "bytes": 1260120,
+          "sha256": "0ead172a529daad09ecbab66027027b92189afe79f50f71dc20ee58ca66c9135"
+        }
+      ]
+    }
+  ]
 }

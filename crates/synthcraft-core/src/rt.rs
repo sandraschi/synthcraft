@@ -49,6 +49,10 @@ struct Voice {
     layer_x_phase: f64,
     layers: [Layer; MAX_LAYERS],
     n_layers: usize,
+    layers_b: [Layer; MAX_LAYERS],
+    n_layers_b: usize,
+    dac_phase: f32,
+    dac_held: f32,
     /// A one-shot zone is sounding: note-off is ignored until the sample ends.
     hold: bool,
     /// Fixed position of this voice slot in the stereo field, -1..=1.
@@ -76,6 +80,10 @@ impl Voice {
             layer_x_phase: 0.0,
             layers: [IDLE_LAYER; MAX_LAYERS],
             n_layers: 0,
+            layers_b: [IDLE_LAYER; MAX_LAYERS],
+            n_layers_b: 0,
+            dac_phase: 0.0,
+            dac_held: 0.0,
             hold: false,
             pan: (i as f32 * 0.618_034).fract() * 2.0 - 1.0,
             time_s: 0.0,
@@ -121,6 +129,7 @@ pub struct SynthRt {
     sr: f32,
     patch: SynthPatch,
     bank: Option<Arc<SampleBank>>,
+    bank_b: Option<Arc<SampleBank>>,
     chorus: Chorus,
     reverb: Reverb,
     reverb_r: Reverb,
@@ -197,6 +206,7 @@ impl SynthRt {
             gain_s: patch.master_gain,
             patch,
             bank: None,
+            bank_b: None,
             chorus: Chorus::new(sr),
             reverb: Reverb::new(sr),
             reverb_r: Reverb::with_spread(sr, 23.0),
@@ -289,8 +299,16 @@ impl SynthRt {
         std::mem::replace(&mut self.bank, bank)
     }
 
+    /// Install (or clear) the Layer B AI2 Combi sample bank. Returns the old bank for off-thread drop.
+    pub fn set_bank_b(&mut self, bank: Option<Arc<SampleBank>>) -> Option<Arc<SampleBank>> {
+        for v in &mut self.voices {
+            v.n_layers_b = 0;
+        }
+        std::mem::replace(&mut self.bank_b, bank)
+    }
+
     pub fn has_bank(&self) -> bool {
-        self.bank.is_some()
+        self.bank.is_some() || self.bank_b.is_some()
     }
 
     pub fn set_options(&mut self, opts: RtOptions) {
@@ -409,6 +427,9 @@ impl SynthRt {
         v.layer_m1_phase = 0.0;
         v.layer_x_phase = 0.0;
         v.n_layers = 0;
+        v.n_layers_b = 0;
+        v.dac_phase = 0.0;
+        v.dac_held = 0.0;
         v.hold = false;
         if let Some(bank) = self.bank.as_deref() {
             let mut found = [0usize; MAX_LAYERS];
@@ -424,6 +445,31 @@ impl SynthRt {
                     };
                     v.n_layers += 1;
                     v.hold |= z.one_shot && z.loop_range.is_none();
+                }
+            }
+        }
+        if let Some(bank_b) = self.bank_b.as_deref() {
+            let oct_shift = i32::from(self.patch.sampler.layer_b_octave.clamp(-2, 2)) * 12;
+            let note_b = (i32::from(note) + oct_shift).clamp(0, 127) as u8;
+            let detune_ratio = 2.0_f32.powf(
+                (self.patch.sampler.layer_b_detune_cents.clamp(-50.0, 50.0)
+                    + (oct_shift as f32) * 100.0)
+                    / 1200.0,
+            );
+            let mut found = [0usize; MAX_LAYERS];
+            let n = bank_b.find_all(note_b, v.vel, &mut found);
+            for &zi in &found[..n] {
+                if let Some(z) = bank_b.zones.get(zi) {
+                    let root_hz = midi_hz(z.root_key) * (self.opts.a4_hz / 440.0);
+                    v.layers_b[v.n_layers_b] = Layer {
+                        zone: zi,
+                        pos: 0.0,
+                        step: z.sample_rate / self.sr
+                            * 2.0_f32.powf(z.tune_cents / 1200.0)
+                            * detune_ratio
+                            / root_hz.max(1.0),
+                    };
+                    v.n_layers_b += 1;
                 }
             }
         }
@@ -645,7 +691,7 @@ impl SynthRt {
             let mix = p.vco_mix.clamp(0.0, 1.0);
             let drive_in = 1.0 + p.drive_saturation.clamp(0.0, 3.0) * 0.8;
             let drive_out = 1.0 + p.drive_saturation.clamp(0.0, 3.0) * 1.2;
-            let sampler_mix = if self.bank.is_some() {
+            let sampler_mix = if self.bank.is_some() || self.bank_b.is_some() {
                 p.sampler.mix.clamp(0.0, 1.0)
             } else {
                 0.0
@@ -732,17 +778,19 @@ impl SynthRt {
                 }
                 let mut layer_pan = 0.0_f32;
                 if sampler_mix > 0.0 || v.hold {
-                    let mut smp = 0.0;
-                    let mut alive = 0_u32;
+                    let mut smp_a = 0.0_f32;
+                    let mut smp_b = 0.0_f32;
+                    let mut alive_a = 0_u32;
+                    let mut alive_b = 0_u32;
                     let mut pan_acc = 0.0_f32;
                     if let Some(bank) = self.bank.as_deref() {
                         for l in &mut v.layers[..v.n_layers] {
                             let Some(z) = bank.zones.get(l.zone) else {
                                 continue;
                             };
-                            smp += z.read(l.pos) * z.gain;
+                            smp_a += z.read(l.pos) * z.gain;
                             pan_acc += z.pan;
-                            alive += 1;
+                            alive_a += 1;
                             l.pos += f64::from(f * l.step);
                             match z.loop_range {
                                 Some((ls, le)) if l.pos >= le as f64 && le > ls => {
@@ -753,6 +801,25 @@ impl SynthRt {
                             }
                         }
                     }
+                    if let Some(bank_b) = self.bank_b.as_deref() {
+                        for l in &mut v.layers_b[..v.n_layers_b] {
+                            let Some(z) = bank_b.zones.get(l.zone) else {
+                                continue;
+                            };
+                            smp_b += z.read(l.pos) * z.gain;
+                            pan_acc += z.pan;
+                            alive_b += 1;
+                            l.pos += f64::from(f * l.step);
+                            match z.loop_range {
+                                Some((ls, le)) if l.pos >= le as f64 && le > ls => {
+                                    l.pos -= (le - ls) as f64;
+                                }
+                                None if l.pos >= z.len() as f64 => l.zone = NO_ZONE,
+                                _ => {}
+                            }
+                        }
+                    }
+                    let alive = alive_a + alive_b;
                     if alive > 0 {
                         layer_pan = pan_acc / alive as f32;
                     }
@@ -760,6 +827,22 @@ impl SynthRt {
                         v.hold = false;
                         v.gate = false;
                         v.env.gate_off();
+                    }
+                    let b_bal = p.sampler.layer_b_mix.clamp(0.0, 1.0);
+                    let mut smp = match (self.bank.is_some(), self.bank_b.is_some()) {
+                        (true, true) => smp_a * (1.0 - b_bal) + smp_b * b_bal,
+                        (true, false) => smp_a,
+                        (false, true) => smp_b,
+                        (false, false) => 0.0,
+                    };
+                    if p.sampler.vintage_dac {
+                        // Authentic 1988 32 kHz sample-and-hold + 12-bit DAC quantization
+                        v.dac_phase += 32_000.0 / sr;
+                        if v.dac_phase >= 1.0 {
+                            v.dac_phase -= v.dac_phase.floor();
+                            v.dac_held = (smp.clamp(-1.0, 1.0) * 2048.0).round() / 2048.0;
+                        }
+                        smp = v.dac_held;
                     }
                     raw = raw * (1.0 - sampler_mix) + smp * sampler_mix;
                 }

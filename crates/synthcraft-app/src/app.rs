@@ -131,6 +131,11 @@ pub struct SynthCraftApp {
     pub bank_loading: Option<String>,
     pub bank_tx: std::sync::mpsc::Sender<BankResult>,
     pub bank_rx: std::sync::mpsc::Receiver<BankResult>,
+    pub bank_b_input: String,
+    pub bank_b_loaded_spec: Option<String>,
+    pub bank_b_loading: Option<String>,
+    pub bank_b_tx: std::sync::mpsc::Sender<BankResult>,
+    pub bank_b_rx: std::sync::mpsc::Receiver<BankResult>,
     pub bank_fetch_rx: Option<std::sync::mpsc::Receiver<crate::netfetch::FetchMsg>>,
     pub bank_fetch_id: Option<String>,
     pub sf2_presets: Vec<String>,
@@ -184,6 +189,7 @@ impl SynthCraftApp {
         };
         let (midi_tx, midi_rx) = channel();
         let (bank_tx, bank_rx) = channel();
+        let (bank_b_tx, bank_b_rx) = channel();
         let midi_shared = MidiShared::new(
             engine.midi_hw.midi_channel,
             engine.midi_hw.pitch_bend_semitones,
@@ -244,6 +250,11 @@ impl SynthCraftApp {
             bank_loading: None,
             bank_tx,
             bank_rx,
+            bank_b_input: String::new(),
+            bank_b_loaded_spec: None,
+            bank_b_loading: None,
+            bank_b_tx,
+            bank_b_rx,
             bank_fetch_rx: None,
             bank_fetch_id: None,
             sf2_presets: Vec::new(),
