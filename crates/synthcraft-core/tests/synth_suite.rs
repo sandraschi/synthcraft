@@ -997,3 +997,51 @@ fn mpe_poly_mod_and_neural_ddsp_timbre_transfer_synthesize_cleanly() {
         "MPE + Neural DDSP chain must produce audible PCM"
     );
 }
+
+#[test]
+fn chord_memory_vocoder_scene_morph_and_mastering_chain_work_end_to_end() {
+    let eng = SynthEngine::factory_seed();
+    let mut p = eng.active_patch().clone();
+
+    // 1. 1-Finger Chord Memory + Scale Lock + Riff Generator
+    p.chord_mem.chord_mode = synthcraft_core::ChordMode::HouseStabM9;
+    p.chord_mem.scale_lock = synthcraft_core::ScaleLock::Dorian;
+    let (chord, count) = p.chord_mem.expand_chord(57);
+    assert_eq!(count, 5);
+    assert!(chord.iter().all(|&n| (24..=108).contains(&n)));
+    let riff = p.chord_mem.generate_riff(32, 3, "house_chord_groove");
+    assert_eq!(riff.len(), 32);
+
+    // 2. 8-Scene Performance Crossfade & 4-Corner XY Morph
+    p.scenes = synthcraft_core::SceneMorphBank::factory_club_scenes();
+    p.scenes.crossfade = 0.5;
+    p.scenes.blended_crossfade().apply_to(&mut p);
+    p.scenes.xy_x = 0.6;
+    p.scenes.xy_y = 0.4;
+    p.scenes.blended_xy().apply_to(&mut p);
+
+    // 3. 16-Band Analog Vocoder + Studio Mastering Chain (4-Band EQ + Mono Bass + M/S + Limiter)
+    p.vocoder.enabled = true;
+    p.vocoder.mix = 0.7;
+    p.mastering.enabled = true;
+    p.mastering.eq_low_db = 3.0;
+    p.mastering.eq_high_db = 2.0;
+    p.mastering.stereo_width = 1.35;
+    p.mastering.limiter_enabled = true;
+    p.mastering.limiter_ceiling_db = -0.3;
+
+    let mut rt = SynthRt::new(SR, p);
+    rt.note_on(57, 0.9);
+    // Single note_on with HouseStabM9 must allocate 5 polyphonic voices!
+    assert_eq!(rt.active_voices(), 5);
+    let mut l = vec![0.0_f32; 4096];
+    let mut r = vec![0.0_f32; 4096];
+    rt.process_stereo(&mut l, &mut r);
+    assert!(l.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    assert!(r.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+    let energy: f32 = l.iter().map(|s| s * s).sum();
+    assert!(
+        energy > 0.01,
+        "Chord Memory + 16-Band Vocoder + Mastering Bus must produce audible bounded PCM"
+    );
+}

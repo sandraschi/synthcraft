@@ -187,6 +187,8 @@ pub struct SynthRt {
     physical_mesh: crate::physical::PhysicalMeshRuntime,
     wdf_circuit: crate::physical::WdfCircuitRuntime,
     ddsp: crate::neural_ddsp::DdspRuntime,
+    vocoder: crate::vocoder::VocoderRuntime,
+    mastering: crate::mastering::MasteringRuntime,
 }
 
 impl std::fmt::Debug for SynthRt {
@@ -272,6 +274,8 @@ impl SynthRt {
             physical_mesh: crate::physical::PhysicalMeshRuntime::new(),
             wdf_circuit: crate::physical::WdfCircuitRuntime::new(),
             ddsp: crate::neural_ddsp::DdspRuntime::new(),
+            vocoder: crate::vocoder::VocoderRuntime::new(),
+            mastering: crate::mastering::MasteringRuntime::new(),
         }
     }
 
@@ -596,7 +600,10 @@ impl SynthRt {
             self.arp.key_down(note, velocity, self.patch.arp.latch);
             return;
         }
-        self.trigger_voice_note_on(note, velocity);
+        let (chord_notes, count) = self.patch.chord_mem.expand_chord(note);
+        for &cn in &chord_notes[..count] {
+            self.trigger_voice_note_on(cn, velocity);
+        }
     }
 
     pub fn note_off(&mut self, note: u8) {
@@ -604,7 +611,10 @@ impl SynthRt {
             self.arp.key_up(note);
             return;
         }
-        self.trigger_voice_note_off(note);
+        let (chord_notes, count) = self.patch.chord_mem.expand_chord(note);
+        for &cn in &chord_notes[..count] {
+            self.trigger_voice_note_off(cn);
+        }
     }
 
     pub fn all_notes_off(&mut self) {
@@ -1058,6 +1068,23 @@ impl SynthRt {
             (out_l, out_r) = self
                 .ddsp
                 .tick_stereo(out_l, out_r, active_freq, &self.patch.ddsp, sr);
+            let ext_voc =
+                if ext_gain > 0.001 && sample_idx < ext_l.len() && sample_idx < ext_r.len() {
+                    Some((ext_l[sample_idx] + ext_r[sample_idx]) * 0.5 * ext_gain)
+                } else {
+                    None
+                };
+            (out_l, out_r) = self.vocoder.process_stereo(
+                out_l,
+                out_r,
+                ext_voc,
+                &self.patch.vocoder,
+                self.patch.bpm,
+                sr,
+            );
+            (out_l, out_r) = self
+                .mastering
+                .process_stereo(out_l, out_r, &self.patch.mastering, sr);
 
             if self.opts.dc_blocker {
                 out_l = self.dc.process(out_l);

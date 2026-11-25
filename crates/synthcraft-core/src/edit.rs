@@ -222,6 +222,18 @@ impl SynthPatch {
         if a.ddsp != b.ddsp {
             out.push(Command::SetDdspParams { ddsp: b.ddsp });
         }
+        if a.chord_mem != b.chord_mem
+            || a.vocoder != b.vocoder
+            || a.scenes != b.scenes
+            || a.mastering != b.mastering
+        {
+            out.push(Command::SetPerfMasterParams {
+                chord_mem: b.chord_mem,
+                vocoder: b.vocoder,
+                scenes: Box::new(b.scenes.clone()),
+                mastering: b.mastering,
+            });
+        }
         if a.steps.len() != b.steps.len() {
             out.push(Command::SetSequencerLength {
                 steps: b.steps.len(),

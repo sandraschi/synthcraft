@@ -7,6 +7,7 @@
 
 pub mod arp;
 pub mod banks;
+pub mod chord_mem;
 pub mod clap_host;
 #[cfg(feature = "sqlite")]
 pub mod db;
@@ -19,6 +20,7 @@ pub mod fm_unison;
 pub mod fx_rack;
 pub mod genopatch;
 pub mod granular;
+pub mod mastering;
 pub mod midi;
 pub mod mod_matrix;
 pub mod model;
@@ -33,11 +35,14 @@ pub mod rompler;
 pub mod rt;
 pub mod sampler;
 pub mod sandbox;
+pub mod scenes;
 pub mod smf_import;
 pub mod tuning;
+pub mod vocoder;
 pub mod wavetable;
 
 pub use arp::{ArpMode, ArpParams};
+pub use chord_mem::{ChordMemoryParams, ChordMode, ScaleLock};
 pub use clap_host::{ClapHostConfig, ClapParamInfo, ClapPluginInfo, ExternalClapProcessor};
 #[cfg(feature = "sqlite")]
 pub use db::{default_db_path, load_from_db, save_to_db};
@@ -65,6 +70,7 @@ pub use genopatch::{
 pub use granular::{
     GranularParams, GranularRuntime, SpectralParams, SpectralRuntime, MAX_GRAINS, SPECTRAL_PARTIALS,
 };
+pub use mastering::{MasteringParams, MasteringRuntime};
 pub use mod_matrix::{ModDest, ModRoute, ModSource};
 pub use model::{
     analyze_patch_spectrum, export_clap_descriptor, export_djcraft_stem_manifest, midi_to_freq_hz,
@@ -92,8 +98,10 @@ pub use rompler::{
     RackRouting,
 };
 pub use rt::{RtOptions, SynthRt, MAX_VOICES};
+pub use scenes::{PerformanceScene, SceneMorphBank, SCENE_COUNT};
 pub use smf_import::{import_midi_smf_file, parse_smf_to_steps, ImportedMidiPattern};
 pub use tuning::{build_pitch_table, parse_scala_scl, TuningPreset};
+pub use vocoder::{VocoderParams, VocoderPhrase, VocoderRuntime, VOCODER_BANDS};
 pub use wavetable::Wavetable;
 
 use serde::{Deserialize, Serialize};
@@ -226,6 +234,10 @@ impl SynthEngine {
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
                 ddsp: DdspParams::default(),
+                chord_mem: ChordMemoryParams::default(),
+                vocoder: VocoderParams::default(),
+                scenes: SceneMorphBank::default(),
+                mastering: MasteringParams::default(),
                 steps: mk_steps(&[
                     45, 45, 57, 45, 48, 45, 55, 52, 45, 45, 60, 45, 50, 52, 55, 57,
                 ]),
@@ -275,6 +287,10 @@ impl SynthEngine {
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
                 ddsp: DdspParams::default(),
+                chord_mem: ChordMemoryParams::default(),
+                vocoder: VocoderParams::default(),
+                scenes: SceneMorphBank::default(),
+                mastering: MasteringParams::default(),
                 steps: mk_steps(&[
                     41, 41, 41, 41, 44, 44, 44, 44, 39, 39, 39, 39, 36, 36, 39, 41,
                 ]),
@@ -324,6 +340,10 @@ impl SynthEngine {
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
                 ddsp: DdspParams::default(),
+                chord_mem: ChordMemoryParams::default(),
+                vocoder: VocoderParams::default(),
+                scenes: SceneMorphBank::default(),
+                mastering: MasteringParams::default(),
                 steps: mk_steps(&[
                     51, 51, 58, 51, 54, 51, 61, 58, 51, 51, 58, 54, 51, 54, 58, 63,
                 ]),
@@ -373,6 +393,10 @@ impl SynthEngine {
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
                 ddsp: DdspParams::default(),
+                chord_mem: ChordMemoryParams::default(),
+                vocoder: VocoderParams::default(),
+                scenes: SceneMorphBank::default(),
+                mastering: MasteringParams::default(),
                 steps: mk_steps(&[
                     64, 67, 71, 76, 74, 71, 67, 64, 66, 69, 71, 74, 71, 69, 66, 64,
                 ]),
@@ -422,6 +446,10 @@ impl SynthEngine {
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
                 ddsp: DdspParams::default(),
+                chord_mem: ChordMemoryParams::default(),
+                vocoder: VocoderParams::default(),
+                scenes: SceneMorphBank::default(),
+                mastering: MasteringParams::default(),
                 steps: mk_steps(&[
                     57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
                 ]),
@@ -471,6 +499,10 @@ impl SynthEngine {
                 physical_mesh: PhysicalMeshParams::default(),
                 wdf_circuit: WdfCircuitParams::default(),
                 ddsp: DdspParams::default(),
+                chord_mem: ChordMemoryParams::default(),
+                vocoder: VocoderParams::default(),
+                scenes: SceneMorphBank::default(),
+                mastering: MasteringParams::default(),
                 steps: mk_steps(&[
                     57, 57, 61, 61, 64, 64, 69, 69, 68, 68, 64, 64, 61, 61, 57, 57,
                 ]),
@@ -582,6 +614,12 @@ pub enum Command {
     },
     SetDdspParams {
         ddsp: DdspParams,
+    },
+    SetPerfMasterParams {
+        chord_mem: ChordMemoryParams,
+        vocoder: VocoderParams,
+        scenes: Box<SceneMorphBank>,
+        mastering: MasteringParams,
     },
     SynthesizePreview {
         duration_ms: u32,
@@ -944,6 +982,25 @@ impl Command {
                     "ddsp_enabled": p.ddsp.enabled,
                     "timbre_a": p.ddsp.timbre_a.label(),
                     "timbre_b": p.ddsp.timbre_b.label(),
+                }))
+            }
+            Self::SetPerfMasterParams {
+                chord_mem,
+                vocoder,
+                scenes,
+                mastering,
+            } => {
+                let mut sc = (**scenes).clone();
+                sc.ensure_len();
+                let p = engine.active_patch_mut();
+                p.chord_mem = *chord_mem;
+                p.vocoder = *vocoder;
+                p.scenes = sc;
+                p.mastering = *mastering;
+                Ok(json!({
+                    "chord_mode": p.chord_mem.chord_mode.label(),
+                    "vocoder_enabled": p.vocoder.enabled,
+                    "mastering_enabled": p.mastering.enabled,
                 }))
             }
             Self::SynthesizePreview { duration_ms } => {
@@ -1534,6 +1591,10 @@ fn ambient_patches(mk_steps: &dyn Fn(&[u8]) -> Vec<SequencerStep>) -> Vec<SynthP
         physical_mesh: PhysicalMeshParams::default(),
         wdf_circuit: WdfCircuitParams::default(),
         ddsp: DdspParams::default(),
+        chord_mem: ChordMemoryParams::default(),
+        vocoder: VocoderParams::default(),
+        scenes: SceneMorphBank::default(),
+        mastering: MasteringParams::default(),
         steps: mk_steps(&[
             57, 57, 57, 57, 57, 57, 57, 57, 64, 64, 64, 64, 64, 64, 64, 64,
         ])

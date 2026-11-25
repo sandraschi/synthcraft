@@ -210,6 +210,14 @@ pub struct SynthPatch {
     pub wdf_circuit: crate::physical::WdfCircuitParams,
     #[serde(default)]
     pub ddsp: crate::neural_ddsp::DdspParams,
+    #[serde(default)]
+    pub chord_mem: crate::chord_mem::ChordMemoryParams,
+    #[serde(default)]
+    pub vocoder: crate::vocoder::VocoderParams,
+    #[serde(default)]
+    pub scenes: crate::scenes::SceneMorphBank,
+    #[serde(default)]
+    pub mastering: crate::mastering::MasteringParams,
     pub steps: Vec<SequencerStep>,
 }
 
