@@ -1134,6 +1134,7 @@ impl SynthCraftApp {
                             WaveformKind::WhiteNoise,
                             WaveformKind::SubOctave,
                             WaveformKind::AtmoPad,
+                            WaveformKind::Wavetable,
                         ] {
                             if ui.selectable_label(p.vco1_wave == w, w.as_str()).clicked() {
                                 p.vco1_wave = w;
@@ -1153,6 +1154,7 @@ impl SynthCraftApp {
                             WaveformKind::WhiteNoise,
                             WaveformKind::SubOctave,
                             WaveformKind::AtmoPad,
+                            WaveformKind::Wavetable,
                         ] {
                             if ui.selectable_label(p.vco2_wave == w, w.as_str()).clicked() {
                                 p.vco2_wave = w;
@@ -1160,6 +1162,23 @@ impl SynthCraftApp {
                             }
                         }
                     });
+                    if p.vco1_wave == WaveformKind::Wavetable
+                        || p.vco2_wave == WaveformKind::Wavetable
+                    {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("Wavetable:");
+                            for (name, desc) in synthcraft_core::Wavetable::BUILTINS {
+                                if ui
+                                    .selectable_label(p.wavetable == name, name)
+                                    .on_hover_text(desc)
+                                    .clicked()
+                                {
+                                    p.wavetable = name.to_string();
+                                    changed = true;
+                                }
+                            }
+                        });
+                    }
                     ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
                         changed |= rotary_knob(

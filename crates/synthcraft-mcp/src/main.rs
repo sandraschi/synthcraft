@@ -289,6 +289,10 @@ pub enum CliSub {
         #[arg(long)]
         scala_scl: Option<String>,
     },
+    /// Load a built-in morphing wavetable (analog_morph, formant_vowel, metallic_bell, acid_fold) or a .wav file
+    LoadWavetable { spec: String },
+    /// Import a Standard MIDI File (.mid) into the 16-step sequencer
+    ImportMidi { path: String },
     /// Reset all patches to factory defaults
     ResetFactory,
 }
@@ -570,6 +574,8 @@ fn main() {
             latch,
         },
         CliSub::SetTuning { preset, scala_scl } => Command::SetTuning { preset, scala_scl },
+        CliSub::LoadWavetable { spec } => Command::LoadWavetable { spec },
+        CliSub::ImportMidi { path } => Command::ImportMidiFile { path },
         CliSub::ResetFactory => Command::ResetFactoryPatches,
     };
     let cmd = if policy.is_active() {
@@ -664,6 +670,18 @@ fn enforce_command(
             Command::SetSamplerBank {
                 bank: Some(format!("{}{suffix}", resolved.to_string_lossy())),
                 mix,
+            }
+        }
+        Command::ImportMidiFile { path } => Command::ImportMidiFile {
+            path: policy.check_read(&path)?.to_string_lossy().into_owned(),
+        },
+        Command::LoadWavetable { spec } => {
+            if synthcraft_core::Wavetable::builtin(&spec).is_some() {
+                Command::LoadWavetable { spec }
+            } else {
+                Command::LoadWavetable {
+                    spec: policy.check_read(&spec)?.to_string_lossy().into_owned(),
+                }
             }
         }
         other => other,
@@ -1104,6 +1122,24 @@ pub fn handle_mcp_request(
                         .map(String::from),
                 }
                 .dispatch(engine),
+                "load_wavetable" => {
+                    let spec = args
+                        .get("spec")
+                        .and_then(Value::as_str)
+                        .unwrap_or("analog_morph")
+                        .to_string();
+                    enforce_command(Command::LoadWavetable { spec }, policy)
+                        .and_then(|c| c.dispatch(engine))
+                }
+                "import_midi_file" => {
+                    let path = args
+                        .get("path")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                    enforce_command(Command::ImportMidiFile { path }, policy)
+                        .and_then(|c| c.dispatch(engine))
+                }
                 "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
                 other => Err(synthcraft_core::SynthError::Validation(format!(
                     "Unknown tool '{other}'"
@@ -1190,6 +1226,8 @@ fn mcp_tools_schema() -> Value {
         { "name": "clear_mod_matrix", "description": "Clear all routes from the active patch's Modulation Matrix.", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "set_arpeggiator", "description": "Configure the real-time Arpeggiator: mode (off, up, down, up_down, random), rate_div (1=1/4, 2=1/8, 4=1/16, 8=1/32), octaves (1..4), gate (0.1..1.0), latch (bool).", "inputSchema": { "type": "object", "properties": { "mode": { "type": "string" }, "rate_div": { "type": "integer" }, "octaves": { "type": "integer" }, "gate": { "type": "number" }, "latch": { "type": "boolean" } }, "required": ["mode"] } },
         { "name": "set_tuning", "description": "Set microtonal tuning preset (equal_12, just_5_limit, pythagorean, equal_19, equal_24, equal_31, bohlen_pierce) or pass custom Scala .scl text in scala_scl.", "inputSchema": { "type": "object", "properties": { "preset": { "type": "string" }, "scala_scl": { "type": "string" } } } },
+        { "name": "load_wavetable", "description": "Load a built-in morphing wavetable (analog_morph, formant_vowel, metallic_bell, acid_fold) or a .wav file (inside --automation-read-root) and switch VCO1 to Wavetable mode.", "inputSchema": { "type": "object", "properties": { "spec": { "type": "string" } }, "required": ["spec"] } },
+        { "name": "import_midi_file", "description": "Import a Standard MIDI File (.mid, inside --automation-read-root) and quantize the first bar into the 16-step sequencer.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } },
         { "name": "reset_factory_patches", "description": "Reset all factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
     ])
 }
@@ -1249,7 +1287,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 39);
+        assert_eq!(tools, 41);
         let _ = std::fs::remove_file(&db);
     }
 

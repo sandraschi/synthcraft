@@ -525,7 +525,7 @@ fn draw_mini_scope(ui: &mut egui::Ui, samples: &[f32]) {
     p.add(egui::Shape::line(pts, Stroke::new(1.4, EMERALD)));
 }
 
-fn all_waveforms() -> [WaveformKind; 9] {
+fn all_waveforms() -> [WaveformKind; 10] {
     [
         WaveformKind::Sine,
         WaveformKind::Saw,
@@ -536,6 +536,7 @@ fn all_waveforms() -> [WaveformKind; 9] {
         WaveformKind::WhiteNoise,
         WaveformKind::SubOctave,
         WaveformKind::AtmoPad,
+        WaveformKind::Wavetable,
     ]
 }
 

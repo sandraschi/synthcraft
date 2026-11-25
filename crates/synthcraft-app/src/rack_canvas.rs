@@ -278,7 +278,8 @@ fn next_waveform(w: WaveformKind) -> WaveformKind {
         WaveformKind::SuperSaw => WaveformKind::WhiteNoise,
         WaveformKind::WhiteNoise => WaveformKind::SubOctave,
         WaveformKind::SubOctave => WaveformKind::AtmoPad,
-        WaveformKind::AtmoPad => WaveformKind::Sine,
+        WaveformKind::AtmoPad => WaveformKind::Wavetable,
+        WaveformKind::Wavetable => WaveformKind::Sine,
     }
 }
 

@@ -119,6 +119,11 @@ impl Osc {
         (x as f32 / 2_147_483_648.0) - 1.0
     }
 
+    /// Current normalized oscillator phase in `[0.0, 1.0)`.
+    pub fn phase(&self) -> f32 {
+        self.phase
+    }
+
     /// Produce one sample at `freq` Hz. `pm` is phase modulation in cycles (used for FM).
     pub fn tick(
         &mut self,
@@ -146,6 +151,7 @@ impl Osc {
             WaveformKind::WhiteNoise => self.next_noise(),
             WaveformKind::SubOctave => (PI * p).sin() * self.flip,
             WaveformKind::AtmoPad => self.pad_tick(freq, sr),
+            WaveformKind::Wavetable => (TAU * p).sin(),
             WaveformKind::SuperSaw => {
                 let mut acc = 0.0_f32;
                 let mut norm = 0.0_f32;

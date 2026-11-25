@@ -22,6 +22,7 @@ pub enum WaveformKind {
     WhiteNoise,
     SubOctave,
     AtmoPad,
+    Wavetable,
 }
 
 impl WaveformKind {
@@ -36,6 +37,7 @@ impl WaveformKind {
             Self::WhiteNoise => "white_noise",
             Self::SubOctave => "sub_octave",
             Self::AtmoPad => "atmo_pad",
+            Self::Wavetable => "wavetable",
         }
     }
 
@@ -50,6 +52,7 @@ impl WaveformKind {
             "white_noise" | "noise" => Some(Self::WhiteNoise),
             "sub_octave" | "sub" => Some(Self::SubOctave),
             "atmo_pad" | "pad" | "atmo" => Some(Self::AtmoPad),
+            "wavetable" | "wt" => Some(Self::Wavetable),
             _ => None,
         }
     }
@@ -94,6 +97,7 @@ impl WaveformKind {
             // `phase` is the phase of the sub itself: one full sine period, no DC offset.
             Self::SubOctave => (2.0 * PI * phase).sin(),
             Self::AtmoPad => (2.0 * PI * phase).sin(),
+            Self::Wavetable => (2.0 * PI * phase).sin(),
         }
     }
 }
@@ -182,6 +186,8 @@ pub struct SynthPatch {
     pub arp: crate::arp::ArpParams,
     #[serde(default)]
     pub tuning: crate::tuning::TuningPreset,
+    #[serde(default = "default_wavetable")]
+    pub wavetable: String,
     pub steps: Vec<SequencerStep>,
 }
 
@@ -232,6 +238,10 @@ fn default_half() -> f32 {
 
 fn default_extreme_off() -> ExtremeDspMode {
     ExtremeDspMode::Off
+}
+
+fn default_wavetable() -> String {
+    "analog_morph".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

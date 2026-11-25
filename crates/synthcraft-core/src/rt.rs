@@ -153,6 +153,8 @@ pub struct SynthRt {
     pitch_table: [f32; 128],
     pitch_tuning: crate::tuning::TuningPreset,
     pitch_a4: f32,
+    wt: Arc<crate::wavetable::Wavetable>,
+    wt_spec: String,
 }
 
 impl SynthRt {
@@ -166,6 +168,15 @@ impl SynthRt {
         let pitch_tuning = patch.tuning.clone();
         let pitch_a4 = RtOptions::default().a4_hz;
         let pitch_table = crate::tuning::build_pitch_table(&pitch_tuning, pitch_a4);
+        let wt_spec = patch.wavetable.clone();
+        let wt = crate::wavetable::Wavetable::load(&wt_spec)
+            .or_else(|_| crate::wavetable::Wavetable::load("analog_morph"))
+            .unwrap_or_else(|_| {
+                Arc::new(crate::wavetable::Wavetable {
+                    name: "fallback".into(),
+                    frames: vec![[0.0; 256]],
+                })
+            });
         Self {
             sr,
             cutoff_s: patch.cutoff_hz,
@@ -201,6 +212,8 @@ impl SynthRt {
             pitch_table,
             pitch_tuning,
             pitch_a4,
+            wt,
+            wt_spec,
         }
     }
 
@@ -273,6 +286,12 @@ impl SynthRt {
             self.pitch_tuning = self.patch.tuning.clone();
             self.pitch_a4 = self.opts.a4_hz;
             self.pitch_table = crate::tuning::build_pitch_table(&self.pitch_tuning, self.pitch_a4);
+        }
+        if self.patch.wavetable != self.wt_spec {
+            self.wt_spec = self.patch.wavetable.clone();
+            if let Ok(loaded) = crate::wavetable::Wavetable::load(&self.wt_spec) {
+                self.wt = loaded;
+            }
         }
     }
 
@@ -617,11 +636,23 @@ impl SynthRt {
                 };
                 let pw = (p.pulse_width + mo.pulse_width).clamp(0.05, 0.95);
                 let r = self.routing;
-                let s2 = v.osc2.tick(p.vco2_wave, f * voice_detune, sr, pw, 0.0);
+                let wt_morph = (morph + mo.morph).clamp(0.0, 1.0);
+                let s2_raw = v.osc2.tick(p.vco2_wave, f * voice_detune, sr, pw, 0.0);
+                let s2 = if p.vco2_wave == crate::model::WaveformKind::Wavetable {
+                    self.wt.sample(v.osc2.phase(), wt_morph)
+                } else {
+                    s2_raw
+                };
                 let fm = s2 * (p.fm_index + mo.fm_index).clamp(0.0, 4.0) * 0.08 * r.vco2_to_fm
                     + lfo * r.lfo_to_fm * 0.15
                     + sh_cv * r.sh_to_fm * 0.12;
-                let s1 = v.osc1.tick(p.vco1_wave, f, sr, pw, fm);
+                let s1_raw = v.osc1.tick(p.vco1_wave, f, sr, pw, fm);
+                let s1 = if p.vco1_wave == crate::model::WaveformKind::Wavetable {
+                    self.wt
+                        .sample((v.osc1.phase() + fm).rem_euclid(1.0), wt_morph)
+                } else {
+                    s1_raw
+                };
                 let mut raw = s1 * (1.0 - mix) * r.vco1_to_vcf + s2 * (mix + r.vco2_to_vcf * 0.5);
                 let fold = (r.fold_amount + mo.wavefold).clamp(0.0, 1.0);
                 if fold > 0.01 {

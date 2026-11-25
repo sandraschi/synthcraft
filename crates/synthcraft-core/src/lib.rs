@@ -22,7 +22,9 @@ pub mod rompler;
 pub mod rt;
 pub mod sampler;
 pub mod sandbox;
+pub mod smf_import;
 pub mod tuning;
+pub mod wavetable;
 
 pub use arp::{ArpMode, ArpParams};
 pub use db::{default_db_path, load_from_db, save_to_db};
@@ -45,7 +47,9 @@ pub use rompler::{
     RackRouting,
 };
 pub use rt::{RtOptions, SynthRt, MAX_VOICES};
+pub use smf_import::{import_midi_smf_file, parse_smf_to_steps, ImportedMidiPattern};
 pub use tuning::{build_pitch_table, parse_scala_scl, TuningPreset};
+pub use wavetable::Wavetable;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -161,6 +165,7 @@ impl SynthEngine {
                 mod_matrix: Vec::new(),
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
+                wavetable: "analog_morph".into(),
                 steps: mk_steps(&[
                     45, 45, 57, 45, 48, 45, 55, 52, 45, 45, 60, 45, 50, 52, 55, 57,
                 ]),
@@ -198,6 +203,7 @@ impl SynthEngine {
                 mod_matrix: Vec::new(),
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
+                wavetable: "analog_morph".into(),
                 steps: mk_steps(&[
                     41, 41, 41, 41, 44, 44, 44, 44, 39, 39, 39, 39, 36, 36, 39, 41,
                 ]),
@@ -235,6 +241,7 @@ impl SynthEngine {
                 mod_matrix: Vec::new(),
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
+                wavetable: "analog_morph".into(),
                 steps: mk_steps(&[
                     51, 51, 58, 51, 54, 51, 61, 58, 51, 51, 58, 54, 51, 54, 58, 63,
                 ]),
@@ -272,6 +279,7 @@ impl SynthEngine {
                 mod_matrix: Vec::new(),
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
+                wavetable: "analog_morph".into(),
                 steps: mk_steps(&[
                     64, 67, 71, 76, 74, 71, 67, 64, 66, 69, 71, 74, 71, 69, 66, 64,
                 ]),
@@ -309,6 +317,7 @@ impl SynthEngine {
                 mod_matrix: Vec::new(),
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
+                wavetable: "analog_morph".into(),
                 steps: mk_steps(&[
                     57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
                 ]),
@@ -346,6 +355,7 @@ impl SynthEngine {
                 mod_matrix: Vec::new(),
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
+                wavetable: "analog_morph".into(),
                 steps: mk_steps(&[
                     57, 57, 61, 61, 64, 64, 69, 69, 68, 68, 64, 64, 61, 61, 57, 57,
                 ]),
@@ -541,6 +551,12 @@ pub enum Command {
     SetTuning {
         preset: String,
         scala_scl: Option<String>,
+    },
+    LoadWavetable {
+        spec: String,
+    },
+    ImportMidiFile {
+        path: String,
     },
     ResetFactoryPatches,
 }
@@ -1123,6 +1139,30 @@ impl Command {
                 engine.active_patch_mut().tuning = tuning.clone();
                 Ok(json!({ "tuning": tuning.id(), "label": tuning.label() }))
             }
+            Self::LoadWavetable { spec } => {
+                let wt = Wavetable::load(spec)?;
+                let p = engine.active_patch_mut();
+                p.wavetable = spec.clone();
+                p.vco1_wave = WaveformKind::Wavetable;
+                Ok(json!({
+                    "wavetable": wt.name,
+                    "frames": wt.frames.len(),
+                    "vco1_wave": p.vco1_wave.as_str(),
+                }))
+            }
+            Self::ImportMidiFile { path } => {
+                let pat = import_midi_smf_file(Path::new(path))?;
+                let p = engine.active_patch_mut();
+                p.steps = pat.steps;
+                if let Some(b) = pat.bpm {
+                    p.bpm = b;
+                }
+                Ok(json!({
+                    "imported_mid": path,
+                    "note_count": pat.note_count,
+                    "bpm": p.bpm,
+                }))
+            }
             Self::ResetFactoryPatches => {
                 *engine = SynthEngine::factory_seed();
                 Ok(json!({
@@ -1176,6 +1216,7 @@ fn ambient_patches(mk_steps: &dyn Fn(&[u8]) -> Vec<SequencerStep>) -> Vec<SynthP
         mod_matrix: Vec::new(),
         arp: ArpParams::default(),
         tuning: TuningPreset::default(),
+        wavetable: "analog_morph".into(),
         steps: mk_steps(&[
             57, 57, 57, 57, 57, 57, 57, 57, 64, 64, 64, 64, 64, 64, 64, 64,
         ])
