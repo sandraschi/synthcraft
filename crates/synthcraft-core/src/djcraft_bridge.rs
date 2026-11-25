@@ -21,9 +21,56 @@ use std::path::{Path, PathBuf};
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant};
 
-/// Loopback UDP port where DJCraft mirrors its `DJLK` Link beacons for local Craft apps.
+/// Loopback UDP port where DJCraft mirrors its `DJLK` Link beacons and `DJPD` pad events.
 pub const DJCRAFT_LINK_LOOPBACK_PORT: u16 = 20809;
+/// Loopback UDP port where DJCraft streams `DJFX` 128-frame stereo PCM blocks for 3U FX send.
+pub const DJCRAFT_AUX_FX_PORT: u16 = 20810;
 const MAGIC: &[u8; 4] = b"DJLK";
+const PAD_MAGIC: &[u8; 4] = b"DJPD";
+const FX_MAGIC: &[u8; 4] = b"DJFX";
+
+/// Decoded live Reloop Ready / MPC performance pad event from DJCraft (`DJPD`, 12 bytes).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct DjcraftPadEvent {
+    pub pad_index: u8,
+    pub pressed: bool,
+    pub velocity: f32,
+    pub deck: u8,
+}
+
+impl DjcraftPadEvent {
+    pub fn decode(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < 8 || &bytes[0..4] != PAD_MAGIC {
+            return None;
+        }
+        Some(Self {
+            pad_index: bytes[4].min(7),
+            pressed: bytes[5] != 0,
+            velocity: (f32::from(bytes[6].min(127)) / 127.0).clamp(0.05, 1.0),
+            deck: bytes[7],
+        })
+    }
+}
+
+/// Decode a `DJFX` UDP stereo PCM packet (`b"DJFX" | seq: u32 | N x (l: f32, r: f32)`) into `out`.
+pub fn decode_aux_fx_packet(bytes: &[u8], out: &mut Vec<(f32, f32)>) -> Option<u32> {
+    if bytes.len() < 16 || &bytes[0..4] != FX_MAGIC {
+        return None;
+    }
+    let seq = u32::from_le_bytes(bytes[4..8].try_into().ok()?);
+    let payload = &bytes[8..];
+    let frames = payload.len() / 8;
+    out.reserve(frames);
+    for i in 0..frames {
+        let off = i * 8;
+        let l = f32::from_le_bytes(payload[off..off + 4].try_into().ok()?);
+        let r = f32::from_le_bytes(payload[off + 4..off + 8].try_into().ok()?);
+        if l.is_finite() && r.is_finite() {
+            out.push((l.clamp(-2.0, 2.0), r.clamp(-2.0, 2.0)));
+        }
+    }
+    Some(seq)
+}
 
 /// Decoded live Link beacon from DJCraft.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -165,21 +212,33 @@ impl DjcraftLinkReceiver {
         }
     }
 
-    /// Drain pending UDP packets and return the latest decoded `DjcraftBeacon`, if any arrived.
-    pub fn poll(&mut self) -> Option<DjcraftBeacon> {
-        let sock = self.socket.as_ref()?;
+    /// Drain pending UDP packets, returning the latest `DjcraftBeacon` (if any) plus all
+    /// `DjcraftPadEvent` triggers received since the last call.
+    pub fn poll_all(&mut self) -> (Option<DjcraftBeacon>, Vec<DjcraftPadEvent>) {
+        let Some(sock) = self.socket.as_ref() else {
+            return (None, Vec::new());
+        };
         let mut latest = None;
+        let mut pads = Vec::new();
         let mut buf = [0u8; 64];
         while let Ok((n, _)) = sock.recv_from(&mut buf) {
-            if let Some(b) = DjcraftBeacon::decode(&buf[..n]) {
+            let slice = &buf[..n];
+            if let Some(b) = DjcraftBeacon::decode(slice) {
                 latest = Some(b);
+            } else if let Some(pad) = DjcraftPadEvent::decode(slice) {
+                pads.push(pad);
             }
         }
         if let Some(ref b) = latest {
             self.last_beacon = Some(b.clone());
             self.last_seen = Some(Instant::now());
         }
-        latest
+        (latest, pads)
+    }
+
+    /// Drain pending UDP packets and return the latest decoded `DjcraftBeacon`, if any arrived.
+    pub fn poll(&mut self) -> Option<DjcraftBeacon> {
+        self.poll_all().0
     }
 
     pub fn last_beacon(&self) -> Option<&DjcraftBeacon> {
@@ -189,6 +248,58 @@ impl DjcraftLinkReceiver {
     pub fn is_connected(&self) -> bool {
         self.last_seen
             .is_some_and(|t| t.elapsed() < Duration::from_secs(2))
+    }
+}
+
+/// Non-blocking UDP stereo PCM receiver (`127.0.0.1:20810`, `DJFX` packets) feeding DJCraft's
+/// Auxiliary FX Send directly into SynthCraft's 3U Modular FX chain.
+#[cfg(not(target_arch = "wasm32"))]
+pub struct DjcraftAuxReceiver {
+    socket: UdpSocket,
+    ring: std::collections::VecDeque<(f32, f32)>,
+    pkt_buf: [u8; 2048],
+    scratch: Vec<(f32, f32)>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DjcraftAuxReceiver {
+    pub fn bind() -> Option<Self> {
+        let addr = SocketAddrV4::new(Ipv4Addr::LOCALHOST, DJCRAFT_AUX_FX_PORT);
+        let socket = UdpSocket::bind(addr).ok()?;
+        let _ = socket.set_nonblocking(true);
+        Some(Self {
+            socket,
+            ring: std::collections::VecDeque::with_capacity(8192),
+            pkt_buf: [0u8; 2048],
+            scratch: Vec::with_capacity(256),
+        })
+    }
+
+    /// Drain incoming UDP `DJFX` packets and fill `left`/`right` with stereo samples (zero-padded
+    /// if the queue runs dry). Keeps total buffering bounded to ~85 ms at 48 kHz.
+    pub fn read_into(&mut self, left: &mut [f32], right: &mut [f32]) {
+        const MAX_QUEUE: usize = 4096;
+        while let Ok((n, _)) = self.socket.recv_from(&mut self.pkt_buf) {
+            self.scratch.clear();
+            if decode_aux_fx_packet(&self.pkt_buf[..n], &mut self.scratch).is_some() {
+                for &lr in &self.scratch {
+                    if self.ring.len() >= MAX_QUEUE {
+                        self.ring.pop_front();
+                    }
+                    self.ring.push_back(lr);
+                }
+            }
+        }
+        let n = left.len().min(right.len());
+        for i in 0..n {
+            if let Some((l, r)) = self.ring.pop_front() {
+                left[i] = l;
+                right[i] = r;
+            } else {
+                left[i] = 0.0;
+                right[i] = 0.0;
+            }
+        }
     }
 }
 
@@ -314,5 +425,30 @@ mod tests {
             p.steps[0].midi_note,
             (i32::from(orig_note) - 5).clamp(24, 96) as u8
         );
+    }
+
+    #[test]
+    fn decodes_djpd_pad_event_and_djfx_stereo_pcm_packet() {
+        let pad_pkt = [b'D', b'J', b'P', b'D', 5, 1, 112, 0, 0, 0, 0, 0];
+        let pad = DjcraftPadEvent::decode(&pad_pkt);
+        assert!(pad.is_some());
+        if let Some(p) = pad {
+            assert_eq!(p.pad_index, 5);
+            assert!(p.pressed);
+            assert!(p.velocity > 0.85);
+            assert_eq!(p.deck, 0);
+        }
+
+        let mut fx_pkt = Vec::new();
+        fx_pkt.extend_from_slice(b"DJFX");
+        fx_pkt.extend_from_slice(&7_u32.to_le_bytes());
+        fx_pkt.extend_from_slice(&0.25_f32.to_le_bytes());
+        fx_pkt.extend_from_slice(&(-0.5_f32).to_le_bytes());
+        let mut frames = Vec::new();
+        let seq = decode_aux_fx_packet(&fx_pkt, &mut frames);
+        assert_eq!(seq, Some(7));
+        assert_eq!(frames.len(), 1);
+        assert!((frames[0].0 - 0.25).abs() < 1e-6);
+        assert!((frames[0].1 + 0.5).abs() < 1e-6);
     }
 }

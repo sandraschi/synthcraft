@@ -184,6 +184,66 @@ impl SynthCraftApp {
         }
     }
 
+    /// Fire one of the 8 Camelot-key-locked live DJ performance pads (triggered either by
+    /// DJCraft's Reloop Ready `DJPD` UDP bridge or by the Workbench 5 audition strip).
+    pub fn fire_djcraft_pad(&mut self, pad_index: u8, velocity: f32) {
+        let root_pc =
+            synthcraft_core::camelot_to_root_semitone(&self.engine.active_patch().camelot_key)
+                .unwrap_or(9); // default A (8A Am)
+        let base_c3 = 48 + root_pc; // C3..B3 root
+        let vel = velocity.clamp(0.1, 1.0);
+        match pad_index {
+            0 => {
+                // Sub Drop (root - 12 st)
+                self.note_on((base_c3 - 12).clamp(24, 96) as u8, 1.0);
+                self.status_line = format!("DJ Pad 1: Sub Drop (MIDI {})", base_c3 - 12);
+            }
+            1 => {
+                self.note_on(base_c3.clamp(24, 96) as u8, vel);
+                self.status_line = format!("DJ Pad 2: Root Acid Stab (MIDI {base_c3})");
+            }
+            2 => {
+                self.note_on((base_c3 + 3).clamp(24, 96) as u8, vel);
+                self.status_line = format!("DJ Pad 3: Minor 3rd Stab (MIDI {})", base_c3 + 3);
+            }
+            3 => {
+                self.note_on((base_c3 + 7).clamp(24, 96) as u8, vel);
+                self.status_line = format!("DJ Pad 4: Fifth Stab (MIDI {})", base_c3 + 7);
+            }
+            4 => {
+                self.note_on((base_c3 + 12).clamp(24, 96) as u8, vel);
+                self.status_line = format!("DJ Pad 5: Octave Rave Stab (MIDI {})", base_c3 + 12);
+            }
+            5 => {
+                // Dub Siren High (+19 st + mod wheel LFO depth)
+                if let Some(a) = &self.audio {
+                    a.send(AudioMsg::ModWheel(0.85));
+                }
+                self.note_on((base_c3 + 19).clamp(24, 108) as u8, vel);
+                self.status_line = "DJ Pad 6: Dub Siren High".into();
+            }
+            6 => {
+                // Riser Sweep: open filter cutoff and trigger root
+                let before = self.engine.active_patch().clone();
+                let mut edited = before.clone();
+                edited.cutoff_hz = (edited.cutoff_hz * 1.6).clamp(120.0, 14000.0);
+                self.apply_patch_edit(&before, &edited);
+                self.note_on((base_c3 + 12).clamp(24, 96) as u8, 0.95);
+                self.status_line = format!(
+                    "DJ Pad 7: Riser Sweep (cutoff -> {:.0} Hz)",
+                    edited.cutoff_hz
+                );
+            }
+            _ => {
+                if let Some(a) = &self.audio {
+                    a.send(AudioMsg::AllNotesOff);
+                    a.send(AudioMsg::ModWheel(0.0));
+                }
+                self.status_line = "DJ Pad 8: Panic Cut (All Notes Off)".into();
+            }
+        }
+    }
+
     pub fn toggle_play(&mut self) {
         match &self.audio {
             Some(a) => {
@@ -216,10 +276,11 @@ impl SynthCraftApp {
         while let Ok(ev) = self.midi_rx.try_recv() {
             self.apply_midi_controller(ev);
         }
-        // Poll DJCraft loopback Link UDP beacons (127.0.0.1:20809) when sync or key-lock is armed.
-        if self.djcraft_link_sync || self.djcraft_auto_camelot {
+        // Poll DJCraft loopback Link UDP beacons (`DJLK`) and Reloop Ready pad events (`DJPD`).
+        if self.djcraft_link_sync || self.djcraft_auto_camelot || self.djcraft_pad_listen {
             self.djcraft_link_rx.ensure_bound();
-            if let Some(beacon) = self.djcraft_link_rx.poll() {
+            let (beacon_opt, pad_events) = self.djcraft_link_rx.poll_all();
+            if let Some(beacon) = beacon_opt {
                 let before = self.engine.active_patch().clone();
                 let mut edited = before.clone();
                 let mut touched = false;
@@ -253,6 +314,13 @@ impl SynthCraftApp {
                         if a.meters.playing() != beacon.playing {
                             a.send(AudioMsg::Play(beacon.playing));
                         }
+                    }
+                }
+            }
+            if self.djcraft_pad_listen {
+                for pad in pad_events {
+                    if pad.pressed {
+                        self.fire_djcraft_pad(pad.pad_index, pad.velocity);
                     }
                 }
             }

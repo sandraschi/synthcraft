@@ -33,6 +33,8 @@ pub enum AudioMsg {
     ClapHost(Option<Box<dyn ExternalClapProcessor>>, Option<u32>),
     /// Update the CLAP parameter ID modulated by the 3U `PARAM CV` jack.
     ClapHostCvParam(Option<u32>),
+    /// Set external Aux FX input gain (`0.0..=1.0`) for streaming audio from DJCraft (`127.0.0.1:20810`).
+    AuxInGain(f32),
 }
 
 /// Shared read-only view of what the callback is doing, for meters and the scope.
@@ -287,6 +289,10 @@ impl AudioHandle {
         let err_slot = Arc::clone(last_error);
         let mut mono = vec![0.0_f32; 4096];
         let mut right_buf = vec![0.0_f32; 4096];
+        let mut ext_l = vec![0.0_f32; 4096];
+        let mut ext_r = vec![0.0_f32; 4096];
+        let mut aux_in_gain = 0.0_f32;
+        let mut aux_rx: Option<synthcraft_core::DjcraftAuxReceiver> = None;
         device
             .build_output_stream(
                 config,
@@ -317,13 +323,36 @@ impl AudioHandle {
                             AudioMsg::ClapHostCvParam(cv_param) => {
                                 rt.set_clap_host_cv_param(cv_param);
                             }
+                            AudioMsg::AuxInGain(g) => {
+                                aux_in_gain = g.clamp(0.0, 1.0);
+                                if aux_in_gain > 0.001 && aux_rx.is_none() {
+                                    aux_rx = synthcraft_core::DjcraftAuxReceiver::bind();
+                                } else if aux_in_gain <= 0.001 {
+                                    aux_rx = None;
+                                }
+                            }
                         }
                     }
                     let frames = data.len() / channels;
                     let mut done = 0;
                     while done < frames {
                         let n = (frames - done).min(mono.len());
-                        rt.process_stereo(&mut mono[..n], &mut right_buf[..n]);
+                        if aux_in_gain > 0.001 {
+                            if let Some(ref mut rx_aux) = aux_rx {
+                                rx_aux.read_into(&mut ext_l[..n], &mut ext_r[..n]);
+                                rt.process_stereo_with_ext_in(
+                                    &mut mono[..n],
+                                    &mut right_buf[..n],
+                                    &ext_l[..n],
+                                    &ext_r[..n],
+                                    aux_in_gain,
+                                );
+                            } else {
+                                rt.process_stereo(&mut mono[..n], &mut right_buf[..n]);
+                            }
+                        } else {
+                            rt.process_stereo(&mut mono[..n], &mut right_buf[..n]);
+                        }
                         for (i, (&l, &r)) in mono[..n].iter().zip(&right_buf[..n]).enumerate() {
                             let base = (done + i) * channels;
                             for (c, slot) in data[base..base + channels].iter_mut().enumerate() {

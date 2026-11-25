@@ -34,11 +34,13 @@ pub use clap_host::{ClapHostConfig, ClapParamInfo, ClapPluginInfo, ExternalClapP
 #[cfg(feature = "sqlite")]
 pub use db::{default_db_path, load_from_db, save_to_db};
 pub use djcraft_bridge::{
-    camelot_to_root_semitone, transpose_patch_to_camelot, DjcraftBeacon, DJCRAFT_LINK_LOOPBACK_PORT,
+    camelot_to_root_semitone, decode_aux_fx_packet, transpose_patch_to_camelot, DjcraftBeacon,
+    DjcraftPadEvent, DJCRAFT_AUX_FX_PORT, DJCRAFT_LINK_LOOPBACK_PORT,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use djcraft_bridge::{
-    djcraft_live_port, query_djcraft_live_status, send_stem_to_djcraft_deck, DjcraftLinkReceiver,
+    djcraft_live_port, query_djcraft_live_status, send_stem_to_djcraft_deck, DjcraftAuxReceiver,
+    DjcraftLinkReceiver,
 };
 pub use error::SynthError;
 pub use mod_matrix::{ModDest, ModRoute, ModSource};

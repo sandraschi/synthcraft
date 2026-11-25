@@ -96,6 +96,8 @@ pub struct SynthCraftApp {
     pub djcraft_link_rx: synthcraft_core::DjcraftLinkReceiver,
     pub djcraft_link_sync: bool,
     pub djcraft_auto_camelot: bool,
+    pub djcraft_pad_listen: bool,
+    pub djcraft_aux_in_gain: f32,
     pub djcraft_target_deck: String,
     // Workbench 6: Assistant & Modals
     pub chat_input: String,
@@ -206,6 +208,8 @@ impl SynthCraftApp {
             djcraft_link_rx: synthcraft_core::DjcraftLinkReceiver::new(),
             djcraft_link_sync: false,
             djcraft_auto_camelot: false,
+            djcraft_pad_listen: true,
+            djcraft_aux_in_gain: 0.0,
             djcraft_target_deck: "B".into(),
             chat_input: String::new(),
             chat_history: vec![(
@@ -1691,6 +1695,10 @@ impl SynthCraftApp {
                     &mut self.djcraft_auto_camelot,
                     "Auto-Camelot Key-Lock Transpose",
                 );
+                ui.checkbox(
+                    &mut self.djcraft_pad_listen,
+                    "Listen for Reloop Ready Pads (DJPD)",
+                );
                 if ui.small_button("Pull Live BPM/Key").clicked() {
                     match synthcraft_core::query_djcraft_live_status() {
                         Ok(val) => {
@@ -1764,6 +1772,39 @@ impl SynthCraftApp {
                             }
                         }
                         Err(e) => self.status_line = format!("Stem render failed: {e}"),
+                    }
+                }
+            });
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Live Performance Pads (Key-Locked):");
+                const PAD_LABELS: [&str; 8] = [
+                    "1: Sub Drop",
+                    "2: Root Acid",
+                    "3: Minor 3rd",
+                    "4: Fifth Stab",
+                    "5: Octave Rave",
+                    "6: Dub Siren",
+                    "7: Riser Sweep",
+                    "8: Panic Cut",
+                ];
+                for (idx, lbl) in PAD_LABELS.iter().enumerate() {
+                    if ui.small_button(*lbl).clicked() {
+                        self.fire_djcraft_pad(idx as u8, 0.92);
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                let prev_aux = self.djcraft_aux_in_gain;
+                ui.add(
+                    egui::Slider::new(&mut self.djcraft_aux_in_gain, 0.0..=1.0)
+                        .text("Aux FX In from DJCraft (UDP 20810 -> 3U Rack FX)"),
+                );
+                if (self.djcraft_aux_in_gain - prev_aux).abs() > 1e-4 {
+                    if let Some(a) = &self.audio {
+                        a.send(crate::audio_io::AudioMsg::AuxInGain(
+                            self.djcraft_aux_in_gain,
+                        ));
                     }
                 }
             });

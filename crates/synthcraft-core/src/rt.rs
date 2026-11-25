@@ -565,6 +565,20 @@ impl SynthRt {
     /// Render `left.len().min(right.len())` stereo frames. This is the one synthesis path.
     /// Does not allocate.
     pub fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+        self.process_stereo_with_ext_in(left, right, &[], &[], 0.0);
+    }
+
+    /// Render stereo into `left` and `right`, optionally mixing an external stereo audio input
+    /// (`ext_l`, `ext_r`, e.g. DJCraft's Auxiliary FX Send) directly into SynthCraft's 3U
+    /// Modular FX chain (Wavefolder, Chorus, Stereo Ping-Pong Delay, Reverb, and 3U CLAP Host).
+    pub fn process_stereo_with_ext_in(
+        &mut self,
+        left: &mut [f32],
+        right: &mut [f32],
+        ext_l: &[f32],
+        ext_r: &[f32],
+        ext_gain: f32,
+    ) {
         self.sync_pitch_table_if_needed();
         let sr = self.sr;
         let glide_coef = 1.0 - (-1.0 / (GLIDE_MS * 0.001 * sr)).exp();
@@ -581,7 +595,8 @@ impl SynthRt {
         let spread = fx.stereo_spread.clamp(0.0, 1.0);
         let ambient = fx.ambient_depth.clamp(0.0, 1.0);
 
-        for (left_out, right_out) in left.iter_mut().zip(right.iter_mut()) {
+        for (sample_idx, (left_out, right_out)) in left.iter_mut().zip(right.iter_mut()).enumerate()
+        {
             match self.arp.tick(self.patch.arp, self.patch.bpm, sr) {
                 crate::arp::ArpAction::NoteOn(n, vel) => self.trigger_voice_note_on(n, vel),
                 crate::arp::ArpAction::NoteOff(n) => self.trigger_voice_note_off(n),
@@ -777,6 +792,17 @@ impl SynthRt {
             let g = self.gain_s.clamp(0.0, 1.0) * headroom;
             let mut out_l = sum_l * g;
             let mut out_r = sum_r * g;
+            if ext_gain > 0.001 && sample_idx < ext_l.len() && sample_idx < ext_r.len() {
+                let mut el = ext_l[sample_idx] * ext_gain;
+                let mut er = ext_r[sample_idx] * ext_gain;
+                if r.fold_amount > 0.01 {
+                    let fg = 1.0 + r.fold_amount * 4.5;
+                    el = (el * fg + r.fold_symmetry).sin();
+                    er = (er * fg + r.fold_symmetry).sin();
+                }
+                out_l += el;
+                out_r += er;
+            }
             if fx.chorus_mix > 0.001 {
                 (out_l, out_r) =
                     self.chorus
