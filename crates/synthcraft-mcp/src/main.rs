@@ -3,6 +3,7 @@
 #![recursion_limit = "256"]
 
 mod fetch;
+mod mcp_app;
 
 use clap::{Parser, Subcommand};
 use serde_json::{json, Value};
@@ -1334,23 +1335,59 @@ pub fn handle_mcp_request(
             "id": req_id,
             "result": {
                 "protocolVersion": "2026-07-28",
-                "capabilities": { "tools": { "listChanged": false } },
+                "capabilities": {
+                    "tools": { "listChanged": false },
+                    "resources": { "listChanged": false }
+                },
                 "serverInfo": {
                     "name": "synthcraft-mcp",
                     "version": APP_VERSION
                 }
             }
         })),
-        "tools/list" => Some(json!({
+        "resources/list" => Some(json!({
             "jsonrpc": "2.0",
             "id": req_id,
-            "result": {
-                "tools": mcp_tools_schema()
-            }
+            "result": mcp_app::resources_list()
         })),
+        "resources/read" => {
+            let uri = req
+                .get("params")
+                .and_then(|p| p.get("uri"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            match mcp_app::resource_read(uri) {
+                Ok(result) => Some(json!({ "jsonrpc": "2.0", "id": req_id, "result": result })),
+                Err((code, message)) => Some(json!({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": { "code": code, "message": message }
+                })),
+            }
+        }
+        "tools/list" => {
+            let mut tools = mcp_tools_schema();
+            if let Some(arr) = tools.as_array_mut() {
+                arr.push(mcp_app::tool_spec());
+            }
+            Some(json!({
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "tools": tools
+                }
+            }))
+        }
         "tools/call" => {
             let params = req.get("params").cloned().unwrap_or_else(|| json!({}));
             let name = params.get("name").and_then(Value::as_str).unwrap_or("");
+            if name == mcp_app::TOOL_NAME {
+                return Some(json!({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": mcp_app::call_dashboard(engine)
+                }));
+            }
             let args = params
                 .get("arguments")
                 .cloned()
@@ -2494,7 +2531,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 60);
+        assert_eq!(tools, 61);
         let _ = std::fs::remove_file(&db);
     }
 
