@@ -168,6 +168,10 @@ pub struct SynthRt {
     clap_host_dry_l: Vec<f32>,
     clap_host_dry_r: Vec<f32>,
     drums: crate::drums::DrumSynth,
+    mseg: crate::nextgen::MsegRuntime,
+    filter2: crate::nextgen::Filter2StereoState,
+    granular: crate::granular::GranularRuntime,
+    spectral: crate::granular::SpectralRuntime,
 }
 
 impl std::fmt::Debug for SynthRt {
@@ -243,7 +247,16 @@ impl SynthRt {
             clap_host_dry_l: vec![0.0; 2048],
             clap_host_dry_r: vec![0.0; 2048],
             drums: crate::drums::DrumSynth::new(),
+            mseg: crate::nextgen::MsegRuntime::default(),
+            filter2: crate::nextgen::Filter2StereoState::new(),
+            granular: crate::granular::GranularRuntime::new(),
+            spectral: crate::granular::SpectralRuntime::new(),
         }
+    }
+
+    /// Current live MSEG modulation value (`0.0..=1.0`) for animated rotary knob rings.
+    pub fn mseg_value(&self) -> f32 {
+        self.mseg.last_value
     }
 
     /// Audition one drum voice immediately (used by UI drum pads & MIDI drum triggers).
@@ -928,6 +941,36 @@ impl SynthRt {
                 out_l = out_l * (1.0 - 0.4 * m) + self.reverb.process(out_l) * m;
                 out_r = out_r * (1.0 - 0.4 * m) + self.reverb_r.process(out_r) * m;
             }
+            let mseg_val = self.mseg.tick(&self.patch.mseg, self.patch.bpm, sr);
+            let active_freq = self
+                .voices
+                .iter()
+                .find(|v| v.active)
+                .map(|v| v.freq)
+                .unwrap_or(110.0);
+            let (spec_l, spec_r) = self
+                .spectral
+                .tick_stereo(active_freq, &self.patch.spectral, sr);
+            out_l += spec_l;
+            out_r += spec_r;
+
+            let f2_mod = mseg_val * self.patch.mseg.filter2_depth;
+            if self.patch.filter2.routing == crate::nextgen::Filter2Routing::Parallel {
+                let (fl, fr) =
+                    self.filter2
+                        .process_stereo(out_l, out_r, &self.patch.filter2, f2_mod, sr);
+                out_l = (out_l + fl) * 0.5;
+                out_r = (out_r + fr) * 0.5;
+            } else {
+                (out_l, out_r) =
+                    self.filter2
+                        .process_stereo(out_l, out_r, &self.patch.filter2, f2_mod, sr);
+            }
+
+            (out_l, out_r) = self
+                .granular
+                .tick_stereo(out_l, out_r, &self.patch.granular, sr);
+
             let (drum_l, drum_r) = self.drums.tick_stereo(&self.patch.drums, sr);
             out_l += drum_l;
             out_r += drum_r;

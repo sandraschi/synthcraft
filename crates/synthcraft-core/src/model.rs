@@ -190,6 +190,14 @@ pub struct SynthPatch {
     pub wavetable: String,
     #[serde(default)]
     pub drums: crate::drums::DrumMachinePatch,
+    #[serde(default)]
+    pub mseg: crate::nextgen::MsegParams,
+    #[serde(default)]
+    pub filter2: crate::nextgen::Filter2Params,
+    #[serde(default)]
+    pub granular: crate::granular::GranularParams,
+    #[serde(default)]
+    pub spectral: crate::granular::SpectralParams,
     pub steps: Vec<SequencerStep>,
 }
 

@@ -193,6 +193,18 @@ impl SynthPatch {
                 drums: b.drums.clone(),
             });
         }
+        if a.mseg != b.mseg
+            || a.filter2 != b.filter2
+            || a.granular != b.granular
+            || a.spectral != b.spectral
+        {
+            out.push(Command::SetNextGenParams {
+                mseg: b.mseg.clone(),
+                filter2: b.filter2,
+                granular: b.granular.clone(),
+                spectral: b.spectral.clone(),
+            });
+        }
         if a.steps.len() != b.steps.len() {
             out.push(Command::SetSequencerLength {
                 steps: b.steps.len(),

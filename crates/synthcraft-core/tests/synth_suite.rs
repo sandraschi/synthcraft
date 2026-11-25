@@ -881,3 +881,52 @@ fn sequencer_expands_to_64_steps_and_drum_machine_synthesizes_all_8_voices() {
         assert!(energy > 0.01, "drum preset {pid} must produce audible PCM");
     }
 }
+
+#[test]
+fn nextgen_mseg_dual_filter_granular_spectral_and_genopatch_work_end_to_end() {
+    let eng = SynthEngine::factory_seed();
+    let mut p = eng.active_patch().clone();
+
+    // 1. Drawable MSEG evaluation across presets
+    for (pid, _) in synthcraft_core::MsegParams::preset_names() {
+        p.mseg.points = synthcraft_core::MsegParams::preset_points(pid);
+        p.mseg.mode = synthcraft_core::MsegMode::TempoLoop;
+        let v0 = p.mseg.eval(0.0);
+        let v_mid = p.mseg.eval(0.5);
+        assert!((0.0..=1.0).contains(&v0) && (0.0..=1.0).contains(&v_mid));
+    }
+
+    // 2. Dual Morphing Filter B (Formant A-E-I-O-U, Comb+, MS-20 Screamer) + Granular + 64-Partial Spectral
+    p.filter2.mode = synthcraft_core::Filter2Mode::FormantVowel;
+    p.filter2.vowel_morph = 1.5;
+    p.filter2.mix = 0.8;
+    p.granular.enabled = true;
+    p.granular.mix = 0.5;
+    p.spectral.enabled = true;
+    p.spectral.load_preset("vocal_choir");
+    p.spectral.mix = 0.5;
+
+    let mut rt = SynthRt::new(SR, p.clone());
+    rt.note_on(57, 0.9);
+    let mut l = vec![0.0_f32; 4096];
+    let mut r = vec![0.0_f32; 4096];
+    rt.process_stereo(&mut l, &mut r);
+    assert!(l.iter().all(|x| x.is_finite() && x.abs() <= 1.0));
+    assert!(r.iter().all(|x| x.is_finite() && x.abs() <= 1.0));
+    let energy: f32 = l.iter().map(|x| x * x).sum();
+    assert!(energy > 0.01, "Next-Gen DSP chain must produce audible PCM");
+
+    // 3. Multi-Core Genopatch Evolutionary Matcher
+    let target = synthcraft_core::synthesize_audio_buffer(&p, 48_000, 120);
+    let report = synthcraft_core::evolve_matching_patches(
+        "test_target",
+        &target,
+        eng.active_patch(),
+        48_000,
+        3,
+        16,
+    );
+    assert_eq!(report.candidates.len(), 6);
+    assert!(report.threads_used >= 1);
+    assert!(report.candidates[0].similarity_pct > 25.0);
+}
