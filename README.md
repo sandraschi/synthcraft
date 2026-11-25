@@ -1,6 +1,8 @@
 # SynthCraft
 
-**Pure-Rust Modular Synthesizer Studio, 64-Step Acid Sequencer, 8-Voice TR-808/909 Drum Machine, 6-Op FM, Granular & Spectral Engine, Neural DDSP, 16-Band Vocoder, Mastering Bus, CLAP `1.2.2` Plugin (SoundCraft / REAPER), Native VCV Rack 2 Module & DJCraft Stem Forge** (`L1 synthcraft-core` + `L2 synthcraft-mcp` + `L3 synthcraft-app`).
+**Pure-Rust Modular Synthesizer Studio, Cathedral Pipe Organ Console, 64-Step Acid Sequencer, 8-Voice TR-808/909 Drum Machine, 6-Op FM, Granular & Spectral Engine, Neural DDSP, 16-Band Vocoder, Mastering Bus, CLAP `1.2.2` Plugin (SoundCraft / REAPER), Native VCV Rack 2 Module & DJCraft Stem Forge** (`L1 synthcraft-core` + `L2 synthcraft-mcp` + `L3 synthcraft-app`).
+
+![The Genesis of SynthCraft](docs/assets/synthcraft_genesis_comic.jpg)
 
 > **Interactive Browser Guide**: Open [`docs/site/index.html`](docs/site/index.html) in any browser for a searchable, interactive studio handbook covering all **14 workbenches**, **37 subpages**, **hardware lineage**, **famous tracks**, and **60 CLI/MCP tools**.
 
