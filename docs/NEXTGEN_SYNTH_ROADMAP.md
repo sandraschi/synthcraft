@@ -37,9 +37,9 @@ Dedicated hardware boxes (Elektron, Roland, Korg, Moog, Waldorf) run on embedded
 
 ---
 
-## 3. Step-by-Step Buildout Plan (All 8 Phases)
+## 3. Step-by-Step Buildout Plan (All 8 Phases + Bonus Suite -- 100% Implemented 2026-11-25)
 
-### Phase 1 -- Drawable MSEG, Dual Morphing Filter & Animated Knob Mod Rings *(Implementing Now)*
+### Phase 1 -- Drawable MSEG, Dual Morphing Filter & Animated Knob Mod Rings *(Implemented & Verified)*
 - **Core (`crates/synthcraft-core/src/nextgen.rs`)**:
   - `MsegParams` & `MsegRuntime`: up to 16 drawable `(time, value, curve)` points, modes (`Off`, `OneShot`, `TempoLoop`, `FreeHz`), presets (`Acid Pluck`, `Trance Gate`, `EDM Riser`, `Wobble Sub`, `Swelling Pad`, `Chaos Lorenz`).
   - `Filter2Params` & `Filter2State`: `Off`, `LowPass24dB`, `BandPass12dB`, `HighPass12dB`, `CombPos`, `CombNeg`, `FormantVowel` (3-bandpass morphing vocal tract `A -> E -> I -> O -> U`), `Ms20Screamer` (Sallen-Key diode feedback), with `Serial` / `Parallel` routing and MSEG modulation depth.

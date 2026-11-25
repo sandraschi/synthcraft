@@ -313,6 +313,138 @@ pub enum CliSub {
     },
     /// Export the Web Audio AudioWorklet JS bridge (and compiled .wasm if built) to a directory
     ExportWasmBundle { output_dir: String },
+    /// Set sequencer pattern length (16, 32, 48, or 64 steps = 1..4 bars)
+    SetSequencerLength {
+        #[arg(long, default_value_t = 32)]
+        steps: usize,
+    },
+    /// Load a built-in 8-voice TR-808/909 drum machine kit preset
+    LoadDrumPreset {
+        /// Preset id: tr909_berlin_techno, tr808_electro, house_1990_classic, dnb_amen_174, acid_303_groove, polyrhythm_64
+        preset_id: String,
+    },
+    /// Configure Drawable MSEG & Dual Morphing Filter B (Formant/Comb/MS-20)
+    SetMsegFilter2 {
+        #[arg(long, default_value = "tempo_loop")]
+        mseg_mode: String,
+        #[arg(long, default_value = "acid_pluck")]
+        mseg_preset: String,
+        #[arg(long, default_value = "formant_vowel")]
+        filter2_mode: String,
+        #[arg(long, default_value_t = 1400.0)]
+        filter2_cutoff_hz: f32,
+        #[arg(long, default_value_t = 1.0)]
+        vowel_morph: f32,
+        #[arg(long, default_value_t = 0.75)]
+        filter2_mix: f32,
+    },
+    /// Configure 24-Grain Granular Cloud & 64-Partial Spectral Resynthesis
+    SetGranularSpectral {
+        #[arg(long, default_value_t = true)]
+        granular_enabled: bool,
+        #[arg(long, default_value_t = 0.45)]
+        granular_mix: f32,
+        #[arg(long, default_value_t = 90.0)]
+        grain_size_ms: f32,
+        #[arg(long, default_value_t = false)]
+        freeze: bool,
+        #[arg(long, default_value_t = true)]
+        spectral_enabled: bool,
+        #[arg(long, default_value = "vocal_choir")]
+        spectral_preset: String,
+        #[arg(long, default_value_t = 0.40)]
+        spectral_mix: f32,
+    },
+    /// Run multi-core Genopatch Audio-to-Patch evolutionary search against a .wav or active patch
+    RunGenopatch {
+        #[arg(long)]
+        wav_path: Option<String>,
+        #[arg(long, default_value_t = 6)]
+        generations: usize,
+        #[arg(long, default_value_t = 32)]
+        population: usize,
+        #[arg(long, default_value_t = false)]
+        apply_best: bool,
+    },
+    /// Configure 6-Op Thru-Zero FM Matrix & 16-Voice Hyper-Unison Stack
+    SetFm6Unison {
+        #[arg(long, default_value = "dx7_epiano")]
+        fm6_preset: String,
+        #[arg(long, default_value_t = true)]
+        fm6_enabled: bool,
+        #[arg(long, default_value_t = 0.65)]
+        fm6_mix: f32,
+        #[arg(long, default_value_t = true)]
+        unison_enabled: bool,
+        #[arg(long, default_value_t = 7)]
+        unison_voices: u32,
+        #[arg(long, default_value_t = 22.0)]
+        unison_detune_cents: f32,
+    },
+    /// Configure Reorderable Studio FX Rack (OTT, Convolution IR, Shimmer, Tape/Bitcrusher)
+    SetStudioFx {
+        #[arg(long, default_value_t = true)]
+        enabled: bool,
+        #[arg(long, default_value_t = 0.45)]
+        ott_depth: f32,
+        #[arg(long, default_value_t = 0.30)]
+        conv_mix: f32,
+        #[arg(long, default_value_t = 0.35)]
+        shimmer_mix: f32,
+        #[arg(long, default_value_t = 0.25)]
+        tape_wow: f32,
+        #[arg(long, default_value_t = 16.0)]
+        crush_bits: f32,
+    },
+    /// Configure Goliath 2D FDTD Physical Modeling Mesh & 8x Oversampled WDF Circuit Sim
+    SetPhysicalWdf {
+        #[arg(long, default_value_t = true)]
+        mesh_enabled: bool,
+        #[arg(long, default_value = "titanium_plate")]
+        material: String,
+        #[arg(long, default_value_t = 0.28)]
+        tension: f32,
+        #[arg(long, default_value_t = 0.45)]
+        mesh_mix: f32,
+        #[arg(long, default_value = "buchla292")]
+        wdf_mode: String,
+        #[arg(long, default_value_t = 1.2)]
+        wdf_drive: f32,
+    },
+    /// Configure Neural DDSP Timbre Transfer (32-Harmonic + Filtered-Noise Decoder)
+    SetDdspTimbre {
+        #[arg(long, default_value_t = true)]
+        enabled: bool,
+        #[arg(long, default_value = "solo_violin_bow")]
+        timbre_a: String,
+        #[arg(long, default_value = "vienna_brass_horn")]
+        timbre_b: String,
+        #[arg(long, default_value_t = 0.35)]
+        morph: f32,
+        #[arg(long, default_value_t = 0.65)]
+        bow_pressure: f32,
+        #[arg(long, default_value_t = 0.25)]
+        breath_noise: f32,
+        #[arg(long, default_value_t = 0.50)]
+        mix: f32,
+    },
+    /// Configure 1-Finger Chord Memory, Scale Lock, 16-Band Vocoder, 8-Scene Crossfader & Mastering Bus
+    SetPerfMaster {
+        #[arg(long, default_value = "house_stab_m9")]
+        chord_mode: String,
+        #[arg(long, default_value = "dorian")]
+        scale_lock: String,
+        #[arg(long, default_value_t = false)]
+        vocoder_enabled: bool,
+        #[arg(long, default_value_t = 0.0)]
+        scene_crossfade: f32,
+        #[arg(long, default_value_t = true)]
+        mastering_enabled: bool,
+        #[arg(long, default_value_t = 1.0)]
+        stereo_width: f32,
+        #[arg(long, default_value_t = -0.3)]
+        limiter_ceiling_db: f32,
+    },
     /// Reset all patches to factory defaults
     ResetFactory,
 }
@@ -831,6 +963,205 @@ fn run_cli_subcommand(
                     eprintln!("error: {e}");
                     std::process::exit(1);
                 }
+            }
+        }
+        CliSub::SetSequencerLength { steps } => Command::SetSequencerLength { steps },
+        CliSub::LoadDrumPreset { preset_id } => Command::LoadDrumPreset { preset_id },
+        CliSub::SetMsegFilter2 {
+            mseg_mode,
+            mseg_preset,
+            filter2_mode,
+            filter2_cutoff_hz,
+            vowel_morph,
+            filter2_mix,
+        } => {
+            let mut p = engine.active_patch().clone();
+            p.mseg.mode = parse_mseg_mode(&mseg_mode);
+            p.mseg.points = synthcraft_core::MsegParams::preset_points(&mseg_preset);
+            p.filter2.mode = parse_filter2_mode(&filter2_mode);
+            p.filter2.cutoff_hz = filter2_cutoff_hz.clamp(40.0, 16000.0);
+            p.filter2.vowel_morph = vowel_morph.clamp(0.0, 4.0);
+            p.filter2.mix = filter2_mix.clamp(0.0, 1.0);
+            Command::SetNextGenParams {
+                mseg: p.mseg,
+                filter2: p.filter2,
+                granular: p.granular,
+                spectral: p.spectral,
+            }
+        }
+        CliSub::SetGranularSpectral {
+            granular_enabled,
+            granular_mix,
+            grain_size_ms,
+            freeze,
+            spectral_enabled,
+            spectral_preset,
+            spectral_mix,
+        } => {
+            let mut p = engine.active_patch().clone();
+            p.granular.enabled = granular_enabled;
+            p.granular.mix = granular_mix.clamp(0.0, 1.0);
+            p.granular.grain_size_ms = grain_size_ms.clamp(10.0, 400.0);
+            p.granular.freeze = freeze;
+            p.spectral.enabled = spectral_enabled;
+            p.spectral.load_preset(&spectral_preset);
+            p.spectral.mix = spectral_mix.clamp(0.0, 1.0);
+            Command::SetNextGenParams {
+                mseg: p.mseg,
+                filter2: p.filter2,
+                granular: p.granular,
+                spectral: p.spectral,
+            }
+        }
+        CliSub::RunGenopatch {
+            wav_path,
+            generations,
+            population,
+            apply_best,
+        } => {
+            let before = serde_json::to_string(engine).unwrap_or_default();
+            match run_genopatch_tool(
+                engine,
+                wav_path.as_deref(),
+                generations,
+                population,
+                apply_best,
+                policy,
+            ) {
+                Ok(val) => {
+                    if let Err(e) = save_if_changed(engine, &before, db_path) {
+                        eprintln!("error: saving failed: {e}");
+                        std::process::exit(1);
+                    }
+                    let out =
+                        serde_json::to_string_pretty(&val).unwrap_or_else(|_| "{}".to_string());
+                    println!("{out}");
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        CliSub::SetFm6Unison {
+            fm6_preset,
+            fm6_enabled,
+            fm6_mix,
+            unison_enabled,
+            unison_voices,
+            unison_detune_cents,
+        } => {
+            let mut p = engine.active_patch().clone();
+            p.fm6 = synthcraft_core::Fm6Params::preset(&fm6_preset);
+            p.fm6.enabled = fm6_enabled;
+            p.fm6.mix = fm6_mix.clamp(0.0, 1.0);
+            p.unison.enabled = unison_enabled;
+            p.unison.voices = unison_voices.clamp(2, 16);
+            p.unison.detune_cents = unison_detune_cents.clamp(0.0, 100.0);
+            Command::SetProLabParams {
+                fm6: Box::new(p.fm6),
+                unison: p.unison,
+                studio_fx: Box::new(p.studio_fx),
+                physical_mesh: p.physical_mesh,
+                wdf_circuit: p.wdf_circuit,
+            }
+        }
+        CliSub::SetStudioFx {
+            enabled,
+            ott_depth,
+            conv_mix,
+            shimmer_mix,
+            tape_wow,
+            crush_bits,
+        } => {
+            let mut p = engine.active_patch().clone();
+            p.studio_fx.enabled = enabled;
+            p.studio_fx.ott_enabled = ott_depth > 0.001;
+            p.studio_fx.ott_depth = ott_depth.clamp(0.0, 1.0);
+            p.studio_fx.conv_enabled = conv_mix > 0.001;
+            p.studio_fx.conv_mix = conv_mix.clamp(0.0, 1.0);
+            p.studio_fx.shimmer_enabled = shimmer_mix > 0.001;
+            p.studio_fx.shimmer_mix = shimmer_mix.clamp(0.0, 1.0);
+            p.studio_fx.tape_enabled = tape_wow > 0.001 || crush_bits < 15.9;
+            p.studio_fx.tape_wow = tape_wow.clamp(0.0, 1.0);
+            p.studio_fx.crush_bits = crush_bits.clamp(4.0, 16.0);
+            Command::SetProLabParams {
+                fm6: Box::new(p.fm6),
+                unison: p.unison,
+                studio_fx: Box::new(p.studio_fx),
+                physical_mesh: p.physical_mesh,
+                wdf_circuit: p.wdf_circuit,
+            }
+        }
+        CliSub::SetPhysicalWdf {
+            mesh_enabled,
+            material,
+            tension,
+            mesh_mix,
+            wdf_mode,
+            wdf_drive,
+        } => {
+            let mut p = engine.active_patch().clone();
+            p.physical_mesh.enabled = mesh_enabled;
+            p.physical_mesh.material = parse_physical_material(&material);
+            p.physical_mesh.tension = tension.clamp(0.05, 0.44);
+            p.physical_mesh.mix = mesh_mix.clamp(0.0, 1.0);
+            p.wdf_circuit.mode = parse_wdf_mode(&wdf_mode);
+            p.wdf_circuit.drive = wdf_drive.clamp(0.0, 3.0);
+            Command::SetProLabParams {
+                fm6: Box::new(p.fm6),
+                unison: p.unison,
+                studio_fx: Box::new(p.studio_fx),
+                physical_mesh: p.physical_mesh,
+                wdf_circuit: p.wdf_circuit,
+            }
+        }
+        CliSub::SetDdspTimbre {
+            enabled,
+            timbre_a,
+            timbre_b,
+            morph,
+            bow_pressure,
+            breath_noise,
+            mix,
+        } => {
+            let mut ddsp = engine.active_patch().ddsp;
+            ddsp.enabled = enabled;
+            ddsp.timbre_a = parse_ddsp_timbre(&timbre_a);
+            ddsp.timbre_b = parse_ddsp_timbre(&timbre_b);
+            ddsp.morph = morph.clamp(0.0, 1.0);
+            ddsp.bow_pressure = bow_pressure.clamp(0.0, 1.0);
+            ddsp.breath_noise = breath_noise.clamp(0.0, 1.0);
+            ddsp.mix = mix.clamp(0.0, 1.0);
+            Command::SetDdspParams { ddsp }
+        }
+        CliSub::SetPerfMaster {
+            chord_mode,
+            scale_lock,
+            vocoder_enabled,
+            scene_crossfade,
+            mastering_enabled,
+            stereo_width,
+            limiter_ceiling_db,
+        } => {
+            let mut p = engine.active_patch().clone();
+            p.chord_mem.chord_mode = parse_chord_mode(&chord_mode);
+            p.chord_mem.scale_lock = parse_scale_lock(&scale_lock);
+            p.vocoder.enabled = vocoder_enabled;
+            p.scenes.ensure_len();
+            p.scenes.crossfade = scene_crossfade.clamp(0.0, 1.0);
+            if scene_crossfade > 0.001 {
+                p.scenes.blended_crossfade().apply_to(&mut p);
+            }
+            p.mastering.enabled = mastering_enabled;
+            p.mastering.stereo_width = stereo_width.clamp(0.0, 2.0);
+            p.mastering.limiter_ceiling_db = limiter_ceiling_db.clamp(-6.0, -0.1);
+            Command::SetPerfMasterParams {
+                chord_mem: p.chord_mem,
+                vocoder: p.vocoder,
+                scenes: Box::new(p.scenes),
+                mastering: p.mastering,
             }
         }
         CliSub::ResetFactory => Command::ResetFactoryPatches,
@@ -1508,6 +1839,234 @@ pub fn handle_mcp_request(
                         .and_then(|resolved| forge_and_load_djcraft(engine, deck, bars, &resolved))
                 }
                 "reset_factory_patches" => Command::ResetFactoryPatches.dispatch(engine),
+                "set_sequencer_length" => {
+                    let steps = args.get("steps").and_then(Value::as_u64).unwrap_or(32) as usize;
+                    Command::SetSequencerLength { steps }.dispatch(engine)
+                }
+                "load_drum_preset" => {
+                    let preset_id = args
+                        .get("preset_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("tr909_berlin_techno")
+                        .to_string();
+                    Command::LoadDrumPreset { preset_id }.dispatch(engine)
+                }
+                "set_mseg_filter2" => {
+                    let mut p = engine.active_patch().clone();
+                    if let Some(m) = args.get("mseg_mode").and_then(Value::as_str) {
+                        p.mseg.mode = parse_mseg_mode(m);
+                    }
+                    if let Some(pr) = args.get("mseg_preset").and_then(Value::as_str) {
+                        p.mseg.points = synthcraft_core::MsegParams::preset_points(pr);
+                    }
+                    if let Some(fm) = args.get("filter2_mode").and_then(Value::as_str) {
+                        p.filter2.mode = parse_filter2_mode(fm);
+                    }
+                    if let Some(c) = args.get("filter2_cutoff_hz").and_then(Value::as_f64) {
+                        p.filter2.cutoff_hz = (c as f32).clamp(40.0, 16000.0);
+                    }
+                    if let Some(v) = args.get("vowel_morph").and_then(Value::as_f64) {
+                        p.filter2.vowel_morph = (v as f32).clamp(0.0, 4.0);
+                    }
+                    if let Some(mx) = args.get("filter2_mix").and_then(Value::as_f64) {
+                        p.filter2.mix = (mx as f32).clamp(0.0, 1.0);
+                    }
+                    Command::SetNextGenParams {
+                        mseg: p.mseg,
+                        filter2: p.filter2,
+                        granular: p.granular,
+                        spectral: p.spectral,
+                    }
+                    .dispatch(engine)
+                }
+                "set_granular_spectral" => {
+                    let mut p = engine.active_patch().clone();
+                    if let Some(b) = args.get("granular_enabled").and_then(Value::as_bool) {
+                        p.granular.enabled = b;
+                    }
+                    if let Some(v) = args.get("granular_mix").and_then(Value::as_f64) {
+                        p.granular.mix = (v as f32).clamp(0.0, 1.0);
+                    }
+                    if let Some(v) = args.get("grain_size_ms").and_then(Value::as_f64) {
+                        p.granular.grain_size_ms = (v as f32).clamp(10.0, 400.0);
+                    }
+                    if let Some(b) = args.get("freeze").and_then(Value::as_bool) {
+                        p.granular.freeze = b;
+                    }
+                    if let Some(b) = args.get("spectral_enabled").and_then(Value::as_bool) {
+                        p.spectral.enabled = b;
+                    }
+                    if let Some(pr) = args.get("spectral_preset").and_then(Value::as_str) {
+                        p.spectral.load_preset(pr);
+                    }
+                    if let Some(v) = args.get("spectral_mix").and_then(Value::as_f64) {
+                        p.spectral.mix = (v as f32).clamp(0.0, 1.0);
+                    }
+                    Command::SetNextGenParams {
+                        mseg: p.mseg,
+                        filter2: p.filter2,
+                        granular: p.granular,
+                        spectral: p.spectral,
+                    }
+                    .dispatch(engine)
+                }
+                "run_genopatch" => {
+                    let wav = args.get("wav_path").and_then(Value::as_str);
+                    let gens =
+                        args.get("generations").and_then(Value::as_u64).unwrap_or(5) as usize;
+                    let pop = args.get("population").and_then(Value::as_u64).unwrap_or(24) as usize;
+                    let apply = args
+                        .get("apply_best")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    run_genopatch_tool(engine, wav, gens, pop, apply, policy)
+                }
+                "set_fm6_unison" => {
+                    let mut p = engine.active_patch().clone();
+                    if let Some(pr) = args.get("fm6_preset").and_then(Value::as_str) {
+                        p.fm6 = synthcraft_core::Fm6Params::preset(pr);
+                    }
+                    if let Some(b) = args.get("fm6_enabled").and_then(Value::as_bool) {
+                        p.fm6.enabled = b;
+                    }
+                    if let Some(v) = args.get("fm6_mix").and_then(Value::as_f64) {
+                        p.fm6.mix = (v as f32).clamp(0.0, 1.0);
+                    }
+                    if let Some(b) = args.get("unison_enabled").and_then(Value::as_bool) {
+                        p.unison.enabled = b;
+                    }
+                    if let Some(v) = args.get("unison_voices").and_then(Value::as_u64) {
+                        p.unison.voices = (v as u32).clamp(2, 16);
+                    }
+                    if let Some(v) = args.get("unison_detune_cents").and_then(Value::as_f64) {
+                        p.unison.detune_cents = (v as f32).clamp(0.0, 100.0);
+                    }
+                    Command::SetProLabParams {
+                        fm6: Box::new(p.fm6),
+                        unison: p.unison,
+                        studio_fx: Box::new(p.studio_fx),
+                        physical_mesh: p.physical_mesh,
+                        wdf_circuit: p.wdf_circuit,
+                    }
+                    .dispatch(engine)
+                }
+                "set_studio_fx" => {
+                    let mut p = engine.active_patch().clone();
+                    if let Some(b) = args.get("enabled").and_then(Value::as_bool) {
+                        p.studio_fx.enabled = b;
+                    }
+                    if let Some(v) = args.get("ott_depth").and_then(Value::as_f64) {
+                        p.studio_fx.ott_depth = (v as f32).clamp(0.0, 1.0);
+                        p.studio_fx.ott_enabled = p.studio_fx.ott_depth > 0.001;
+                    }
+                    if let Some(v) = args.get("conv_mix").and_then(Value::as_f64) {
+                        p.studio_fx.conv_mix = (v as f32).clamp(0.0, 1.0);
+                        p.studio_fx.conv_enabled = p.studio_fx.conv_mix > 0.001;
+                    }
+                    if let Some(v) = args.get("shimmer_mix").and_then(Value::as_f64) {
+                        p.studio_fx.shimmer_mix = (v as f32).clamp(0.0, 1.0);
+                        p.studio_fx.shimmer_enabled = p.studio_fx.shimmer_mix > 0.001;
+                    }
+                    if let Some(v) = args.get("tape_wow").and_then(Value::as_f64) {
+                        p.studio_fx.tape_wow = (v as f32).clamp(0.0, 1.0);
+                        p.studio_fx.tape_enabled = p.studio_fx.tape_wow > 0.001;
+                    }
+                    Command::SetProLabParams {
+                        fm6: Box::new(p.fm6),
+                        unison: p.unison,
+                        studio_fx: Box::new(p.studio_fx),
+                        physical_mesh: p.physical_mesh,
+                        wdf_circuit: p.wdf_circuit,
+                    }
+                    .dispatch(engine)
+                }
+                "set_physical_wdf" => {
+                    let mut p = engine.active_patch().clone();
+                    if let Some(b) = args.get("mesh_enabled").and_then(Value::as_bool) {
+                        p.physical_mesh.enabled = b;
+                    }
+                    if let Some(m) = args.get("material").and_then(Value::as_str) {
+                        p.physical_mesh.material = parse_physical_material(m);
+                    }
+                    if let Some(v) = args.get("tension").and_then(Value::as_f64) {
+                        p.physical_mesh.tension = (v as f32).clamp(0.05, 0.44);
+                    }
+                    if let Some(v) = args.get("mesh_mix").and_then(Value::as_f64) {
+                        p.physical_mesh.mix = (v as f32).clamp(0.0, 1.0);
+                    }
+                    if let Some(w) = args.get("wdf_mode").and_then(Value::as_str) {
+                        p.wdf_circuit.mode = parse_wdf_mode(w);
+                    }
+                    if let Some(v) = args.get("wdf_drive").and_then(Value::as_f64) {
+                        p.wdf_circuit.drive = (v as f32).clamp(0.0, 3.0);
+                    }
+                    Command::SetProLabParams {
+                        fm6: Box::new(p.fm6),
+                        unison: p.unison,
+                        studio_fx: Box::new(p.studio_fx),
+                        physical_mesh: p.physical_mesh,
+                        wdf_circuit: p.wdf_circuit,
+                    }
+                    .dispatch(engine)
+                }
+                "set_ddsp_timbre" => {
+                    let mut ddsp = engine.active_patch().ddsp;
+                    if let Some(b) = args.get("enabled").and_then(Value::as_bool) {
+                        ddsp.enabled = b;
+                    }
+                    if let Some(s) = args.get("timbre_a").and_then(Value::as_str) {
+                        ddsp.timbre_a = parse_ddsp_timbre(s);
+                    }
+                    if let Some(s) = args.get("timbre_b").and_then(Value::as_str) {
+                        ddsp.timbre_b = parse_ddsp_timbre(s);
+                    }
+                    if let Some(v) = args.get("morph").and_then(Value::as_f64) {
+                        ddsp.morph = (v as f32).clamp(0.0, 1.0);
+                    }
+                    if let Some(v) = args.get("bow_pressure").and_then(Value::as_f64) {
+                        ddsp.bow_pressure = (v as f32).clamp(0.0, 1.0);
+                    }
+                    if let Some(v) = args.get("breath_noise").and_then(Value::as_f64) {
+                        ddsp.breath_noise = (v as f32).clamp(0.0, 1.0);
+                    }
+                    if let Some(v) = args.get("mix").and_then(Value::as_f64) {
+                        ddsp.mix = (v as f32).clamp(0.0, 1.0);
+                    }
+                    Command::SetDdspParams { ddsp }.dispatch(engine)
+                }
+                "set_perf_master" => {
+                    let mut p = engine.active_patch().clone();
+                    if let Some(s) = args.get("chord_mode").and_then(Value::as_str) {
+                        p.chord_mem.chord_mode = parse_chord_mode(s);
+                    }
+                    if let Some(s) = args.get("scale_lock").and_then(Value::as_str) {
+                        p.chord_mem.scale_lock = parse_scale_lock(s);
+                    }
+                    if let Some(b) = args.get("vocoder_enabled").and_then(Value::as_bool) {
+                        p.vocoder.enabled = b;
+                    }
+                    if let Some(v) = args.get("scene_crossfade").and_then(Value::as_f64) {
+                        p.scenes.ensure_len();
+                        p.scenes.crossfade = (v as f32).clamp(0.0, 1.0);
+                        p.scenes.blended_crossfade().apply_to(&mut p);
+                    }
+                    if let Some(b) = args.get("mastering_enabled").and_then(Value::as_bool) {
+                        p.mastering.enabled = b;
+                    }
+                    if let Some(v) = args.get("stereo_width").and_then(Value::as_f64) {
+                        p.mastering.stereo_width = (v as f32).clamp(0.0, 2.0);
+                    }
+                    if let Some(v) = args.get("limiter_ceiling_db").and_then(Value::as_f64) {
+                        p.mastering.limiter_ceiling_db = (v as f32).clamp(-6.0, -0.1);
+                    }
+                    Command::SetPerfMasterParams {
+                        chord_mem: p.chord_mem,
+                        vocoder: p.vocoder,
+                        scenes: Box::new(p.scenes),
+                        mastering: p.mastering,
+                    }
+                    .dispatch(engine)
+                }
                 other => Err(synthcraft_core::SynthError::Validation(format!(
                     "Unknown tool '{other}'"
                 ))),
@@ -1604,8 +2163,159 @@ fn mcp_tools_schema() -> Value {
         { "name": "export_wasm_bundle", "description": "Export the Web Audio AudioWorklet bridge (synthcraft-worklet.js) and compiled synthcraft_wasm.wasm (if built) into output_dir (inside --automation-write-root).", "inputSchema": { "type": "object", "properties": { "output_dir": { "type": "string" } }, "required": ["output_dir"] } },
         { "name": "djcraft_live_status", "description": "Query a running DJCraft GUI's live 4-deck BPM, playing state, and Camelot keys via its loopback live.port IPC.", "inputSchema": { "type": "object", "properties": {} } },
         { "name": "forge_and_load_djcraft_deck", "description": "Render a BPM/Camelot-locked WAV stem (output_path inside --automation-write-root) and load it directly onto Deck A/B/C/D of a running DJCraft GUI.", "inputSchema": { "type": "object", "properties": { "deck": { "type": "string" }, "bars": { "type": "integer", "minimum": 1, "maximum": 16 }, "output_path": { "type": "string" } }, "required": ["output_path"] } },
-        { "name": "reset_factory_patches", "description": "Reset all factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } }
+        { "name": "reset_factory_patches", "description": "Reset all factory patches to their default state.", "inputSchema": { "type": "object", "properties": {} } },
+        { "name": "set_sequencer_length", "description": "Set the acid sequencer pattern length to 16, 32, 48, or 64 steps (1..4 bars).", "inputSchema": { "type": "object", "properties": { "steps": { "type": "integer", "enum": [16, 32, 48, 64] } }, "required": ["steps"] } },
+        { "name": "load_drum_preset", "description": "Load a built-in 8-voice TR-808/909 drum machine kit preset (tr909_berlin_techno, tr808_electro, house_1990_classic, dnb_amen_174, acid_303_groove, polyrhythm_64).", "inputSchema": { "type": "object", "properties": { "preset_id": { "type": "string" } }, "required": ["preset_id"] } },
+        { "name": "set_mseg_filter2", "description": "Configure the drawable MSEG envelope and Dual Morphing Filter B (formant_vowel, comb_positive, comb_negative, ms20_screamer, lp24, bp12, hp12).", "inputSchema": { "type": "object", "properties": { "mseg_mode": { "type": "string" }, "mseg_preset": { "type": "string" }, "filter2_mode": { "type": "string" }, "filter2_cutoff_hz": { "type": "number" }, "vowel_morph": { "type": "number" }, "filter2_mix": { "type": "number" } } } },
+        { "name": "set_granular_spectral", "description": "Configure the 24-grain live-capture Granular Cloud and 64-Partial Spectral Additive Resynthesis engine.", "inputSchema": { "type": "object", "properties": { "granular_enabled": { "type": "boolean" }, "granular_mix": { "type": "number" }, "grain_size_ms": { "type": "number" }, "freeze": { "type": "boolean" }, "spectral_enabled": { "type": "boolean" }, "spectral_preset": { "type": "string" }, "spectral_mix": { "type": "number" } } } },
+        { "name": "run_genopatch", "description": "Run multi-core evolutionary Genopatch audio-to-patch search against a target .wav file (inside --automation-read-root) or the active patch, returning 6 ranked DNA branches.", "inputSchema": { "type": "object", "properties": { "wav_path": { "type": "string" }, "generations": { "type": "integer" }, "population": { "type": "integer" }, "apply_best": { "type": "boolean" } } } },
+        { "name": "set_fm6_unison", "description": "Configure the 6-Operator Thru-Zero FM Matrix (dx7_epiano, berlin_fm_bell, lately_bass, neuro_growl, glass_choir) and 16-Voice Hyper-Unison stack.", "inputSchema": { "type": "object", "properties": { "fm6_preset": { "type": "string" }, "fm6_enabled": { "type": "boolean" }, "fm6_mix": { "type": "number" }, "unison_enabled": { "type": "boolean" }, "unison_voices": { "type": "integer" }, "unison_detune_cents": { "type": "number" } } } },
+        { "name": "set_studio_fx", "description": "Configure the Reorderable Studio FX Rack (OTT 3-band compressor, Convolution IR reverb, Shimmer pitch reverb, Analog Tape & Bitcrusher).", "inputSchema": { "type": "object", "properties": { "enabled": { "type": "boolean" }, "ott_depth": { "type": "number" }, "conv_mix": { "type": "number" }, "shimmer_mix": { "type": "number" }, "tape_wow": { "type": "number" } } } },
+        { "name": "set_physical_wdf", "description": "Configure the Goliath 2D FDTD Physical Modeling Mesh (titanium_plate, glass_marimba, kettle_membrane, bowed_cello) and 8x Oversampled WDF Circuit Sim (moog_cp3, buchla292, tb303).", "inputSchema": { "type": "object", "properties": { "mesh_enabled": { "type": "boolean" }, "material": { "type": "string" }, "tension": { "type": "number" }, "mesh_mix": { "type": "number" }, "wdf_mode": { "type": "string" }, "wdf_drive": { "type": "number" } } } },
+        { "name": "set_ddsp_timbre", "description": "Configure the Neural DDSP Timbre Transfer decoder (solo_violin_bow, vienna_brass_horn, breath_flute, gamelan_metal, alien_vocal_choir, cello_sul_ponticello).", "inputSchema": { "type": "object", "properties": { "enabled": { "type": "boolean" }, "timbre_a": { "type": "string" }, "timbre_b": { "type": "string" }, "morph": { "type": "number" }, "bow_pressure": { "type": "number" }, "breath_noise": { "type": "number" }, "mix": { "type": "number" } } } },
+        { "name": "set_perf_master", "description": "Configure 1-Finger Chord Memory, Scale Lock, 16-Band Analog Vocoder, 8-Scene Crossfader, and the Studio Mastering Chain (4-band EQ, M/S width, brickwall limiter).", "inputSchema": { "type": "object", "properties": { "chord_mode": { "type": "string" }, "scale_lock": { "type": "string" }, "vocoder_enabled": { "type": "boolean" }, "scene_crossfade": { "type": "number" }, "mastering_enabled": { "type": "boolean" }, "stereo_width": { "type": "number" }, "limiter_ceiling_db": { "type": "number" } } } }
     ])
+}
+
+fn parse_mseg_mode(s: &str) -> synthcraft_core::MsegMode {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "off" => synthcraft_core::MsegMode::Off,
+        "free_hz" | "free" => synthcraft_core::MsegMode::FreeHz,
+        "one_shot" | "oneshot" => synthcraft_core::MsegMode::OneShot,
+        _ => synthcraft_core::MsegMode::TempoLoop,
+    }
+}
+
+fn parse_filter2_mode(s: &str) -> synthcraft_core::Filter2Mode {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "off" => synthcraft_core::Filter2Mode::Off,
+        "lp24" | "lowpass" => synthcraft_core::Filter2Mode::LowPass24dB,
+        "bp12" | "bandpass" => synthcraft_core::Filter2Mode::BandPass12dB,
+        "hp12" | "highpass" => synthcraft_core::Filter2Mode::HighPass12dB,
+        "comb_positive" | "comb+" => synthcraft_core::Filter2Mode::CombPositive,
+        "comb_negative" | "comb-" => synthcraft_core::Filter2Mode::CombNegative,
+        "ms20_screamer" | "ms20" => synthcraft_core::Filter2Mode::Ms20Screamer,
+        _ => synthcraft_core::Filter2Mode::FormantVowel,
+    }
+}
+
+fn parse_physical_material(s: &str) -> synthcraft_core::PhysicalMaterial {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "glass_marimba" | "glass" => synthcraft_core::PhysicalMaterial::GlassMarimba,
+        "kettle_membrane" | "kettle" => synthcraft_core::PhysicalMaterial::KettleMembrane,
+        "bowed_cello" | "cello" => synthcraft_core::PhysicalMaterial::BowedCelloBody,
+        _ => synthcraft_core::PhysicalMaterial::TitaniumPlate,
+    }
+}
+
+fn parse_wdf_mode(s: &str) -> synthcraft_core::WdfCircuitMode {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "off" => synthcraft_core::WdfCircuitMode::Off,
+        "moog_cp3" | "cp3" => synthcraft_core::WdfCircuitMode::MoogCp3Overdrive,
+        "tb303" | "tb303_diode" => synthcraft_core::WdfCircuitMode::Tb303DiodeLadder,
+        _ => synthcraft_core::WdfCircuitMode::Buchla292VactrolLpg,
+    }
+}
+
+fn parse_ddsp_timbre(s: &str) -> synthcraft_core::DdspTimbre {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "vienna_brass_horn" | "brass" => synthcraft_core::DdspTimbre::ViennaBrassHorn,
+        "breath_flute" | "flute" => synthcraft_core::DdspTimbre::BreathFlute,
+        "gamelan_metal" | "gamelan" => synthcraft_core::DdspTimbre::GamelanMetal,
+        "alien_vocal_choir" | "choir" => synthcraft_core::DdspTimbre::AlienVocalChoir,
+        "cello_sul_ponticello" | "cello" => synthcraft_core::DdspTimbre::CelloSulPonticello,
+        _ => synthcraft_core::DdspTimbre::SoloViolinBow,
+    }
+}
+
+fn parse_chord_mode(s: &str) -> synthcraft_core::ChordMode {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "off" => synthcraft_core::ChordMode::Off,
+        "power_5th" | "5th" => synthcraft_core::ChordMode::Power5th,
+        "minor_triad" | "minor" => synthcraft_core::ChordMode::MinorTriad,
+        "major_triad" | "major" => synthcraft_core::ChordMode::MajorTriad,
+        "minor_7th" | "m7" => synthcraft_core::ChordMode::Minor7th,
+        "major_7th" | "maj7" => synthcraft_core::ChordMode::Major7th,
+        "dub_techno_m11" | "m11" => synthcraft_core::ChordMode::DubTechnoM11,
+        "techno_sus4" | "sus4" => synthcraft_core::ChordMode::TechnoSus4,
+        "vienna_baroque" | "baroque" => synthcraft_core::ChordMode::ViennaBaroque64,
+        _ => synthcraft_core::ChordMode::HouseStabM9,
+    }
+}
+
+fn parse_scale_lock(s: &str) -> synthcraft_core::ScaleLock {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "chromatic" | "off" => synthcraft_core::ScaleLock::Chromatic,
+        "natural_minor" | "minor" => synthcraft_core::ScaleLock::NaturalMinor,
+        "major" => synthcraft_core::ScaleLock::Major,
+        "phrygian" => synthcraft_core::ScaleLock::Phrygian,
+        "harmonic_minor" => synthcraft_core::ScaleLock::HarmonicMinor,
+        "hirajoshi" => synthcraft_core::ScaleLock::Hirajoshi,
+        "blues" => synthcraft_core::ScaleLock::Blues,
+        _ => synthcraft_core::ScaleLock::Dorian,
+    }
+}
+
+fn run_genopatch_tool(
+    engine: &mut SynthEngine,
+    wav_path: Option<&str>,
+    generations: usize,
+    population: usize,
+    apply_best: bool,
+    policy: &PathPolicy,
+) -> Result<Value, synthcraft_core::SynthError> {
+    let seed = engine.active_patch().clone();
+    let (target_name, samples, sr) = if let Some(wp) = wav_path {
+        let resolved = if policy.is_active() {
+            policy.check_read(wp)?
+        } else {
+            PathBuf::from(wp)
+        };
+        let (s, sr) = synthcraft_core::load_wav_mono_samples(&resolved)
+            .map_err(synthcraft_core::SynthError::Validation)?;
+        (wp.to_string(), s, sr)
+    } else {
+        let s = synthcraft_core::synthesize_audio_buffer(&seed, engine.sample_rate_hz, 160);
+        (seed.name.clone(), s, engine.sample_rate_hz)
+    };
+    let report = synthcraft_core::evolve_matching_patches(
+        &target_name,
+        &samples,
+        &seed,
+        sr,
+        generations,
+        population,
+    );
+    if apply_best {
+        if let Some(best) = report.candidates.first() {
+            Command::ApplyEvolvedPatch {
+                patch: Box::new(best.patch.clone()),
+            }
+            .dispatch(engine)?;
+        }
+    }
+    let summary: Vec<Value> = report
+        .candidates
+        .iter()
+        .map(|c| {
+            json!({
+                "branch_id": c.branch_id,
+                "label": c.label,
+                "similarity_pct": c.similarity_pct,
+                "spectral_distance": c.spectral_distance,
+            })
+        })
+        .collect();
+    Ok(json!({
+        "target_name": report.target_name,
+        "generations": report.generations,
+        "population_size": report.population_size,
+        "threads_used": report.threads_used,
+        "total_evaluations": report.total_evaluations,
+        "elapsed_ms": report.elapsed_ms,
+        "applied_best": apply_best,
+        "candidates": summary,
+    }))
 }
 
 fn forge_and_load_djcraft(
@@ -1784,7 +2494,7 @@ mod tests {
             .as_array()
             .map(Vec::len)
             .unwrap_or(0);
-        assert_eq!(tools, 50);
+        assert_eq!(tools, 60);
         let _ = std::fs::remove_file(&db);
     }
 
