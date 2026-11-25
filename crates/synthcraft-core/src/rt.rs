@@ -167,6 +167,7 @@ pub struct SynthRt {
     clap_host_cv_param_id: Option<u32>,
     clap_host_dry_l: Vec<f32>,
     clap_host_dry_r: Vec<f32>,
+    drums: crate::drums::DrumSynth,
 }
 
 impl std::fmt::Debug for SynthRt {
@@ -241,6 +242,16 @@ impl SynthRt {
             clap_host_cv_param_id: None,
             clap_host_dry_l: vec![0.0; 2048],
             clap_host_dry_r: vec![0.0; 2048],
+            drums: crate::drums::DrumSynth::new(),
+        }
+    }
+
+    /// Audition one drum voice immediately (used by UI drum pads & MIDI drum triggers).
+    pub fn trigger_drum(&mut self, voice_idx: usize, accent: bool) {
+        if let Some(tr) = self.patch.drums.tracks.get(voice_idx) {
+            self.drums.trigger(voice_idx, accent, tr.tune, tr.decay);
+        } else {
+            self.drums.trigger(voice_idx, accent, 0.0, 0.45);
         }
     }
 
@@ -536,6 +547,8 @@ impl SynthRt {
     }
 
     fn trigger_step(&mut self) {
+        // Trigger the synchronized 8-voice TR-808/909 drum machine on every sequencer step.
+        self.drums.trigger_step(&self.patch.drums, self.seq.step);
         let len = self.patch.steps.len();
         if len == 0 {
             return;
@@ -915,6 +928,10 @@ impl SynthRt {
                 out_l = out_l * (1.0 - 0.4 * m) + self.reverb.process(out_l) * m;
                 out_r = out_r * (1.0 - 0.4 * m) + self.reverb_r.process(out_r) * m;
             }
+            let (drum_l, drum_r) = self.drums.tick_stereo(&self.patch.drums, sr);
+            out_l += drum_l;
+            out_r += drum_r;
+
             if self.opts.dc_blocker {
                 out_l = self.dc.process(out_l);
                 out_r = self.dc_r.process(out_r);
@@ -929,10 +946,26 @@ impl SynthRt {
 
             if self.seq.playing {
                 self.seq.pos += 1.0;
-                if self.seq.pos >= step_len {
-                    self.seq.pos -= step_len;
-                    let len = self.patch.steps.len().max(1);
-                    self.seq.step = (self.seq.step + 1) % len;
+                // Apply classic TR/MPC swing to even/odd 16th-note pairs when drum swing > 0.50
+                let swing = self.patch.drums.swing.clamp(0.50, 0.75);
+                let cur_step_len = if self.seq.step.is_multiple_of(2) {
+                    step_len * (swing * 2.0)
+                } else {
+                    step_len * ((1.0 - swing) * 2.0)
+                };
+                if self.seq.pos >= cur_step_len {
+                    self.seq.pos -= cur_step_len;
+                    let synth_len = self.patch.steps.len().max(1);
+                    let drum_len = if self.patch.drums.enabled {
+                        self.patch
+                            .drums
+                            .length
+                            .clamp(1, crate::drums::DRUM_MAX_STEPS)
+                    } else {
+                        synth_len
+                    };
+                    let cycle_len = synth_len.max(drum_len);
+                    self.seq.step = (self.seq.step + 1) % cycle_len;
                     self.trigger_step();
                 }
             }

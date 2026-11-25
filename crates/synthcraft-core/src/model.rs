@@ -188,6 +188,8 @@ pub struct SynthPatch {
     pub tuning: crate::tuning::TuningPreset,
     #[serde(default = "default_wavetable")]
     pub wavetable: String,
+    #[serde(default)]
+    pub drums: crate::drums::DrumMachinePatch,
     pub steps: Vec<SequencerStep>,
 }
 

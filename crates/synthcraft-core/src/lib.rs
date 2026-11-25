@@ -11,6 +11,7 @@ pub mod clap_host;
 #[cfg(feature = "sqlite")]
 pub mod db;
 pub mod djcraft_bridge;
+pub mod drums;
 pub mod dsp;
 pub mod edit;
 pub mod error;
@@ -41,6 +42,9 @@ pub use djcraft_bridge::{
 pub use djcraft_bridge::{
     djcraft_live_port, query_djcraft_live_status, send_stem_to_djcraft_deck, DjcraftAuxReceiver,
     DjcraftLinkReceiver,
+};
+pub use drums::{
+    DrumMachinePatch, DrumSynth, DrumTrack, DrumVoiceKind, DRUM_MAX_STEPS, DRUM_VOICE_COUNT,
 };
 pub use error::SynthError;
 pub use mod_matrix::{ModDest, ModRoute, ModSource};
@@ -184,6 +188,7 @@ impl SynthEngine {
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
                 wavetable: "analog_morph".into(),
+                drums: DrumMachinePatch::default(),
                 steps: mk_steps(&[
                     45, 45, 57, 45, 48, 45, 55, 52, 45, 45, 60, 45, 50, 52, 55, 57,
                 ]),
@@ -222,6 +227,7 @@ impl SynthEngine {
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
                 wavetable: "analog_morph".into(),
+                drums: DrumMachinePatch::default(),
                 steps: mk_steps(&[
                     41, 41, 41, 41, 44, 44, 44, 44, 39, 39, 39, 39, 36, 36, 39, 41,
                 ]),
@@ -260,6 +266,7 @@ impl SynthEngine {
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
                 wavetable: "analog_morph".into(),
+                drums: DrumMachinePatch::default(),
                 steps: mk_steps(&[
                     51, 51, 58, 51, 54, 51, 61, 58, 51, 51, 58, 54, 51, 54, 58, 63,
                 ]),
@@ -298,6 +305,7 @@ impl SynthEngine {
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
                 wavetable: "analog_morph".into(),
+                drums: DrumMachinePatch::default(),
                 steps: mk_steps(&[
                     64, 67, 71, 76, 74, 71, 67, 64, 66, 69, 71, 74, 71, 69, 66, 64,
                 ]),
@@ -336,6 +344,7 @@ impl SynthEngine {
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
                 wavetable: "analog_morph".into(),
+                drums: DrumMachinePatch::default(),
                 steps: mk_steps(&[
                     57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
                 ]),
@@ -374,6 +383,7 @@ impl SynthEngine {
                 arp: ArpParams::default(),
                 tuning: TuningPreset::default(),
                 wavetable: "analog_morph".into(),
+                drums: DrumMachinePatch::default(),
                 steps: mk_steps(&[
                     57, 57, 61, 61, 64, 64, 69, 69, 68, 68, 64, 64, 61, 61, 57, 57,
                 ]),
@@ -457,6 +467,15 @@ pub enum Command {
         accent: bool,
         slide: bool,
         active: bool,
+    },
+    SetSequencerLength {
+        steps: usize,
+    },
+    LoadDrumPreset {
+        preset_id: String,
+    },
+    SetDrumPatch {
+        drums: DrumMachinePatch,
     },
     SynthesizePreview {
         duration_ms: u32,
@@ -696,14 +715,70 @@ impl Command {
                 active,
             } => {
                 let p = engine.active_patch_mut();
+                let max_idx = p.steps.len().saturating_sub(1);
                 let step = p.steps.get_mut(*step_index).ok_or_else(|| {
-                    SynthError::Validation(format!("Step index {step_index} out of bounds (0..15)"))
+                    SynthError::Validation(format!(
+                        "Step index {step_index} out of bounds (0..{max_idx})"
+                    ))
                 })?;
                 step.midi_note = (*midi_note).clamp(24, 96);
                 step.accent = *accent;
                 step.slide = *slide;
                 step.active = *active;
                 Ok(json!({ "step": step.clone() }))
+            }
+            Self::SetSequencerLength { steps } => {
+                let target = match *steps {
+                    1..=16 => 16,
+                    17..=32 => 32,
+                    33..=48 => 48,
+                    _ => 64,
+                };
+                let p = engine.active_patch_mut();
+                let cur = p.steps.len();
+                if target > cur {
+                    let seed: Vec<SequencerStep> = if cur > 0 {
+                        p.steps.clone()
+                    } else {
+                        vec![SequencerStep {
+                            step_index: 0,
+                            midi_note: 45,
+                            velocity: 0.85,
+                            gate_pct: 0.65,
+                            accent: false,
+                            slide: false,
+                            active: true,
+                        }]
+                    };
+                    for i in cur..target {
+                        let mut cloned = seed[i % seed.len()].clone();
+                        cloned.step_index = i;
+                        p.steps.push(cloned);
+                    }
+                } else {
+                    p.steps.truncate(target);
+                }
+                Ok(json!({ "steps_len": p.steps.len() }))
+            }
+            Self::LoadDrumPreset { preset_id } => {
+                let p = engine.active_patch_mut();
+                p.drums = DrumMachinePatch::preset(preset_id);
+                Ok(json!({
+                    "kit_name": p.drums.kit_name,
+                    "length": p.drums.length,
+                    "enabled": p.drums.enabled,
+                }))
+            }
+            Self::SetDrumPatch { drums } => {
+                let mut next = drums.clone();
+                next.ensure_valid();
+                let p = engine.active_patch_mut();
+                p.drums = next;
+                Ok(json!({
+                    "kit_name": p.drums.kit_name,
+                    "length": p.drums.length,
+                    "enabled": p.drums.enabled,
+                }))
             }
             Self::SynthesizePreview { duration_ms } => {
                 let samples = synthesize_audio_buffer(
@@ -1282,6 +1357,7 @@ fn ambient_patches(mk_steps: &dyn Fn(&[u8]) -> Vec<SequencerStep>) -> Vec<SynthP
         arp: ArpParams::default(),
         tuning: TuningPreset::default(),
         wavetable: "analog_morph".into(),
+        drums: DrumMachinePatch::default(),
         steps: mk_steps(&[
             57, 57, 57, 57, 57, 57, 57, 57, 64, 64, 64, 64, 64, 64, 64, 64,
         ])

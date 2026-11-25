@@ -837,3 +837,47 @@ fn ambient_drift_is_seeded_bounded_and_off_at_zero_depth() {
     // Depth zero is the plain engine: it must match a patch that never heard of ambient.
     assert_eq!(off, go(0.0, 99));
 }
+
+#[test]
+fn sequencer_expands_to_64_steps_and_drum_machine_synthesizes_all_8_voices() {
+    let mut eng = SynthEngine::factory_seed();
+    assert!(Command::SetSequencerLength { steps: 64 }
+        .dispatch(&mut eng)
+        .is_ok());
+    assert_eq!(eng.active_patch().steps.len(), 64);
+
+    assert!(Command::SetSequencerStep {
+        step_index: 63,
+        midi_note: 60,
+        accent: true,
+        slide: false,
+        active: true,
+    }
+    .dispatch(&mut eng)
+    .is_ok());
+    assert_eq!(eng.active_patch().steps[63].midi_note, 60);
+
+    // Load every built-in drum kit preset and verify 8 voices synthesize bounded audio
+    for (pid, _) in synthcraft_core::DrumMachinePatch::preset_ids() {
+        assert!(Command::LoadDrumPreset {
+            preset_id: (*pid).to_string(),
+        }
+        .dispatch(&mut eng)
+        .is_ok());
+        let patch = eng.active_patch().clone();
+        assert!(patch.drums.enabled);
+        assert_eq!(patch.drums.tracks.len(), synthcraft_core::DRUM_VOICE_COUNT);
+
+        let mut rt = SynthRt::new(SR, patch);
+        let mut l = vec![0.0_f32; 4096];
+        let mut r = vec![0.0_f32; 4096];
+        for vi in 0..synthcraft_core::DRUM_VOICE_COUNT {
+            rt.trigger_drum(vi, vi % 2 == 0);
+        }
+        rt.process_stereo(&mut l, &mut r);
+        assert!(l.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+        assert!(r.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+        let energy: f32 = l.iter().map(|s| s * s).sum::<f32>();
+        assert!(energy > 0.01, "drum preset {pid} must produce audible PCM");
+    }
+}

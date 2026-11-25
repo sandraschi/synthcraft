@@ -188,12 +188,28 @@ impl SynthPatch {
                 });
             }
         }
-        for (i, (x, y)) in a.steps.iter().zip(&b.steps).enumerate() {
-            if x.midi_note != y.midi_note
-                || x.accent != y.accent
-                || x.slide != y.slide
-                || x.active != y.active
-            {
+        if a.drums != b.drums {
+            out.push(Command::SetDrumPatch {
+                drums: b.drums.clone(),
+            });
+        }
+        if a.steps.len() != b.steps.len() {
+            out.push(Command::SetSequencerLength {
+                steps: b.steps.len(),
+            });
+        }
+        for (i, y) in b.steps.iter().enumerate() {
+            let x = a.steps.get(i);
+            let step_changed = match x {
+                Some(x) => {
+                    x.midi_note != y.midi_note
+                        || x.accent != y.accent
+                        || x.slide != y.slide
+                        || x.active != y.active
+                }
+                None => true,
+            };
+            if step_changed {
                 out.push(Command::SetSequencerStep {
                     step_index: i,
                     midi_note: y.midi_note,
@@ -202,13 +218,13 @@ impl SynthPatch {
                     active: y.active,
                 });
             }
-            if changed(x.velocity, y.velocity) {
+            if x.is_none_or(|x| changed(x.velocity, y.velocity)) {
                 out.push(Command::SetPatchParam {
                     param: format!("step{i}.velocity"),
                     value: y.velocity,
                 });
             }
-            if changed(x.gate_pct, y.gate_pct) {
+            if x.is_none_or(|x| changed(x.gate_pct, y.gate_pct)) {
                 out.push(Command::SetPatchParam {
                     param: format!("step{i}.gate_pct"),
                     value: y.gate_pct,
