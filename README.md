@@ -5,6 +5,7 @@
 ![The Genesis of SynthCraft](docs/assets/synthcraft_genesis_comic.jpg)
 
 > **Interactive Browser Guide**: Open [`docs/site/index.html`](docs/site/index.html) in any browser for a searchable, interactive studio handbook covering all **15 workbenches**, **39 subpages**, **129 presets**, **hardware lineage**, **famous tracks**, and **60 CLI/MCP tools**.
+> **Crate Sub-READMEs**: [`synthcraft-core`](crates/synthcraft-core/README.md) · [`synthcraft-mcp`](crates/synthcraft-mcp/README.md) · [`synthcraft-app`](crates/synthcraft-app/README.md) · [`synthcraft-clap`](crates/synthcraft-clap/README.md) · [`synthcraft-clap-host`](crates/synthcraft-clap-host/README.md) · [`synthcraft-ffi`](crates/synthcraft-ffi/README.md) · [`synthcraft-wasm`](crates/synthcraft-wasm/README.md) | [`HELP.md`](HELP.md)
 >
 > **Thinking of building something similar by hand?** [Read this and sob.](docs/BY_HAND_COST_ESTIMATE.md) *(35,441 lines of pure Rust, 15 workbenches, CLAP + VCV Rack 2 + WASM + Cathedral Pipe Organ -- the exact 2024 3-engineer, 10--16 month bill.)*
 
