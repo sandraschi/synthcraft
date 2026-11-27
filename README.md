@@ -4,6 +4,20 @@
 
 ![The Genesis of SynthCraft](docs/assets/synthcraft_genesis_comic.jpg)
 
+## Screenshots
+
+| 64-Step Acid Sequencer & ADSR (Obsidian VCV) | Cathedral Pipe Organ Console (West-Coast Gold) |
+| :---: | :---: |
+| ![SynthCraft Acid Sequencer](docs/screenshots/02_sequencer_drums.png) | ![SynthCraft Cathedral Pipe Organ](docs/screenshots/03_pipe_organ.png) |
+| **Next-Gen MSEG & Dual Filter Lab (Daylight AAA)** | **3U Eurorack & 129 Factory Patches (Obsidian VCV)** |
+| ![SynthCraft Next-Gen Lab Daylight](docs/screenshots/04_daylight_nextgen.png) | ![SynthCraft Eurorack Patch Bank](docs/screenshots/01_eurorack_studio.png) |
+
+Capture fresh local GPU screenshots into `docs/screenshots/`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\capture-screenshots.ps1
+```
+
 > **Interactive Browser Guide**: Open [`docs/site/index.html`](docs/site/index.html) in any browser for a searchable, interactive studio handbook covering all **15 workbenches**, **39 subpages**, **129 presets**, **hardware lineage**, **famous tracks**, and **60 CLI/MCP tools**.
 > **Crate Sub-READMEs**: [`synthcraft-core`](crates/synthcraft-core/README.md) · [`synthcraft-mcp`](crates/synthcraft-mcp/README.md) · [`synthcraft-app`](crates/synthcraft-app/README.md) · [`synthcraft-clap`](crates/synthcraft-clap/README.md) · [`synthcraft-clap-host`](crates/synthcraft-clap-host/README.md) · [`synthcraft-ffi`](crates/synthcraft-ffi/README.md) · [`synthcraft-wasm`](crates/synthcraft-wasm/README.md) | [`HELP.md`](HELP.md)
 >

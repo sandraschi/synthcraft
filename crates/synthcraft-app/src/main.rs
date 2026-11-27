@@ -22,16 +22,49 @@ mod settings_ui;
 mod subapps;
 mod visualizers_ui;
 
-use app::SynthCraftApp;
+use app::{Page, SynthCraftApp};
+use controls::SynthSkin;
 use std::path::PathBuf;
 use synthcraft_core::{default_db_path, Command, SynthEngine, APP_VERSION};
+
+fn parse_page(name: &str) -> Option<Page> {
+    match name.to_ascii_lowercase().as_str() {
+        "rack" | "modular" | "modular-rack" => Some(Page::ModularRack),
+        "m1" | "pcm" | "extreme" => Some(Page::M1ExtremeDsp),
+        "midi" | "keyboard" => Some(Page::MidiDepot),
+        "demo" | "showcase" => Some(Page::DemoShowcase),
+        "sequencer" | "drums" | "seq" => Some(Page::SequencerEnv),
+        "scope" | "spectrum" => Some(Page::ScopeSpectrum),
+        "clap" | "soundcraft" => Some(Page::ClapSoundcraft),
+        "djcraft" | "forge" => Some(Page::DjcraftForge),
+        "nextgen" | "nextgen-lab" => Some(Page::NextGenLab),
+        "pro" | "pro-lab" => Some(Page::ProLab),
+        "visuals" | "mpe" | "ddsp" => Some(Page::VisualsMpeDdsp),
+        "perf" | "master" | "vocoder" => Some(Page::PerfMaster),
+        "organ" | "pipe-organ" => Some(Page::PipeOrgan),
+        "settings" => Some(Page::Settings),
+        "help" => Some(Page::Help),
+        _ => None,
+    }
+}
+
+fn parse_skin(name: &str) -> Option<(SynthSkin, bool)> {
+    match name.to_ascii_lowercase().as_str() {
+        "obsidian" | "vcv" => Some((SynthSkin::ObsidianVcv, true)),
+        "vintage" | "workstation" => Some((SynthSkin::WorkstationVintage, true)),
+        "silver" | "acid" => Some((SynthSkin::SilverAcid, false)),
+        "gold" | "westcoast" => Some((SynthSkin::WestCoastGold, true)),
+        "daylight" | "light" => Some((SynthSkin::DaylightStudio, false)),
+        _ => None,
+    }
+}
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
     if args.iter().any(|a| a == "-h" || a == "--help") {
         println!(
-            "SynthCraft Desktop Studio v{APP_VERSION}\n\nUsage: synthcraft-app [OPTIONS]\n\nOptions:\n  --db <PATH>   Override SQLite database path\n  --smoke       Run non-interactive smoke verification and exit 0\n  --audio-check Open the audio device, play a note and verify the callback output, then exit\n  -h, --help    Print help\n  -V, --version Print version"
+            "SynthCraft Desktop Studio v{APP_VERSION}\n\nUsage: synthcraft-app [OPTIONS]\n\nOptions:\n  --db <PATH>     Override SQLite database path\n  --page <NAME>   Start on a specific workbench (rack, sequencer, organ, nextgen, pro, visuals, perf, ...)\n  --skin <NAME>   Start with a specific skin (obsidian, vintage, silver, gold, daylight)\n  --smoke         Run non-interactive smoke verification and exit 0\n  --audio-check   Open the audio device, play a note and verify the callback output, then exit\n  -h, --help      Print help\n  -V, --version   Print version"
         );
         return Ok(());
     }
@@ -41,10 +74,18 @@ fn main() -> eframe::Result<()> {
     }
 
     let mut db_path: Option<PathBuf> = None;
+    let mut initial_page: Option<Page> = None;
+    let mut initial_skin: Option<(SynthSkin, bool)> = None;
     let mut idx = 1;
     while idx < args.len() {
         if args[idx] == "--db" && idx + 1 < args.len() {
             db_path = Some(PathBuf::from(&args[idx + 1]));
+            idx += 2;
+        } else if args[idx] == "--page" && idx + 1 < args.len() {
+            initial_page = parse_page(&args[idx + 1]);
+            idx += 2;
+        } else if args[idx] == "--skin" && idx + 1 < args.len() {
+            initial_skin = parse_skin(&args[idx + 1]);
             idx += 2;
         } else {
             idx += 1;
@@ -86,6 +127,13 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             let mut app = SynthCraftApp::with_db_path(resolved_db);
+            if let Some(page) = initial_page {
+                app.page = page;
+            }
+            if let Some((skin, dark)) = initial_skin {
+                app.skin = skin;
+                app.dark_mode = dark;
+            }
             app.start_audio(&cc.egui_ctx);
             Ok(Box::new(app))
         }),
