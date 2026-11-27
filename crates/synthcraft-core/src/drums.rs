@@ -215,13 +215,13 @@ impl DrumMachinePatch {
         self.ensure_valid();
         let len = self.length.clamp(1, DRUM_MAX_STEPS);
         if let Some(tr) = self.tracks.get_mut(voice_idx) {
-            for s in 0..len {
+            for (s, step) in tr.steps.iter_mut().enumerate().take(len) {
                 let hit = if pulses == 0 {
                     false
                 } else {
                     ((s * pulses) % len) < pulses
                 };
-                tr.steps[s] = if hit {
+                *step = if hit {
                     if s.is_multiple_of(4) {
                         2
                     } else {

@@ -267,7 +267,7 @@ impl UnisonRuntime {
         let mut sum_l = 0.0_f32;
         let mut sum_r = 0.0_f32;
 
-        for i in 0..count {
+        for (i, phase) in self.phases.iter_mut().enumerate().take(count) {
             let norm = if count > 1 {
                 (i as f32 / (count - 1) as f32) * 2.0 - 1.0
             } else {
@@ -298,9 +298,9 @@ impl UnisonRuntime {
             };
             let cents = norm * params.detune_cents.clamp(0.0, 100.0) + stack_semitones * 100.0;
             let freq = (base_freq_hz * 2.0_f32.powf(cents / 1200.0)).clamp(15.0, sr * 0.44);
-            self.phases[i] = (self.phases[i] + freq * dt).fract();
+            *phase = (*phase + freq * dt).fract();
             // Band-softened sawtooth
-            let s = 2.0 * self.phases[i] - 1.0;
+            let s = 2.0 * *phase - 1.0;
             let pan = norm * spread;
             let gl = ((1.0 - pan) * 0.5).sqrt();
             let gr = ((1.0 + pan) * 0.5).sqrt();

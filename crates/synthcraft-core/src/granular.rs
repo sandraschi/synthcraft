@@ -258,9 +258,9 @@ impl SpectralParams {
 
     pub fn load_preset(&mut self, name: &str) {
         self.ensure_len();
-        for k in 0..SPECTRAL_PARTIALS {
+        for (k, partial) in self.partials.iter_mut().enumerate().take(SPECTRAL_PARTIALS) {
             let h = (k + 1) as f32;
-            self.partials[k] = match name {
+            *partial = match name {
                 "vocal_choir" => {
                     let f1 = (-((h - 4.0) / 2.2).powi(2)).exp();
                     let f2 = (-((h - 11.0) / 3.0).powi(2)).exp() * 0.85;
