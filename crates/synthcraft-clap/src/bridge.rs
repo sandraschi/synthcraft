@@ -1,4 +1,8 @@
 //! Shared lock-free / try-lock bridge between the CLAP audio/host layer and the plugin GUI.
+//!
+//! The GUI side of this bridge is only driven by the Win32 plug-in window, so off Windows
+//! those items exist but have no caller.
+#![cfg_attr(not(windows), allow(dead_code))]
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;

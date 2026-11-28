@@ -14,14 +14,15 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 clap-sys = "0.5"
+synthcraft-core = { path = "../synthcraft-core" }
+
+# The plug-in window (CLAP_EXT_GUI) is Win32 only, so the GUI stack is too.
+[target.'cfg(windows)'.dependencies]
 egui.workspace = true
+raw-window-handle = "0.6.2"
+wgpu = "30.0.2"
 egui-wgpu = "0.37.0"
 pollster = "1.0.3"
-raw-window-handle = "0.6.2"
-synthcraft-core = { path = "../synthcraft-core" }
-wgpu = "30.0.2"
-
-[target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

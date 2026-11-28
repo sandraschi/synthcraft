@@ -1,13 +1,17 @@
 //! `CLAP_EXT_GUI` implementation: Win32 embedded child `HWND` + `egui-wgpu` hardware UI.
 
+#[cfg(windows)]
 use crate::bridge::GuiBridge;
 use crate::plugin::this;
 use clap_sys::ext::gui::{
     clap_gui_resize_hints, clap_plugin_gui, clap_window, CLAP_WINDOW_API_WIN32,
 };
 use clap_sys::plugin::clap_plugin;
-use std::ffi::{c_char, CStr};
+use std::ffi::c_char;
+#[cfg(windows)]
+use std::ffi::CStr;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+#[cfg(windows)]
 use std::sync::Arc;
 
 pub(crate) const DEFAULT_WIDTH: u32 = 900;
@@ -326,6 +330,8 @@ unsafe extern "C" fn gui_show(p: *const clap_plugin) -> bool {
     if let Some(w) = inst.win.as_mut() {
         w.set_visible(true);
     }
+    #[cfg(not(windows))]
+    let _ = inst;
     true
 }
 
@@ -344,6 +350,8 @@ unsafe extern "C" fn gui_hide(p: *const clap_plugin) -> bool {
     if let Some(w) = inst.win.as_mut() {
         w.set_visible(false);
     }
+    #[cfg(not(windows))]
+    let _ = inst;
     true
 }
 

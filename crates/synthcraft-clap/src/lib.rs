@@ -15,6 +15,8 @@ mod bridge;
 mod ext;
 mod gui;
 mod plugin;
+// The plug-in window is Win32 only, so its egui view is compiled only there.
+#[cfg(windows)]
 mod ui_view;
 
 pub use plugin::{create_for_test, ENTRY_ID};

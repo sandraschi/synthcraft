@@ -507,7 +507,9 @@ mod tests {
     use crate::{clap_entry, ext};
     use clap_sys::audio_buffer::clap_audio_buffer;
     use clap_sys::events::clap_input_events;
-    use clap_sys::ext::gui::{clap_plugin_gui, CLAP_EXT_GUI, CLAP_WINDOW_API_WIN32};
+    #[cfg(windows)]
+    use clap_sys::ext::gui::CLAP_WINDOW_API_WIN32;
+    use clap_sys::ext::gui::{clap_plugin_gui, CLAP_EXT_GUI};
     use clap_sys::ext::params::{clap_param_info, clap_plugin_params, CLAP_EXT_PARAMS};
     use clap_sys::ext::state::{clap_plugin_state, CLAP_EXT_STATE};
     use clap_sys::factory::plugin_factory::CLAP_PLUGIN_FACTORY_ID;
@@ -811,6 +813,8 @@ mod tests {
         unsafe {
             let raw = (*p).get_extension.map(|g| g(p, CLAP_EXT_GUI.as_ptr()));
             let gui = &*raw.unwrap_or(std::ptr::null()).cast::<clap_plugin_gui>();
+            #[cfg(not(windows))]
+            let _ = gui;
             #[cfg(windows)]
             {
                 assert!(gui.is_api_supported.is_some_and(|f| f(
