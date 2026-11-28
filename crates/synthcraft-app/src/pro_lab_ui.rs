@@ -76,10 +76,9 @@ fn render_fm6_and_unison(app: &mut SynthCraftApp, ui: &mut egui::Ui) {
                             ui.strong(format!("Op{}", d + 1));
                         }
                         ui.end_row();
-                        for s in 0..FM_OPS {
+                        for (s, row) in edited.fm6.matrix.iter_mut().enumerate().take(FM_OPS) {
                             ui.strong(format!("Op{}", s + 1));
-                            for d in 0..FM_OPS {
-                                let v = &mut edited.fm6.matrix[s][d];
+                            for (d, v) in row.iter_mut().enumerate().take(FM_OPS) {
                                 let active = *v > 0.01;
                                 let fill = if s == d && active {
                                     pal.led_accent
